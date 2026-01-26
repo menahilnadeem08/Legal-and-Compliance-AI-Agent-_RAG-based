@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Improve default bubble and panel contrast (works with Tailwind classes used in components) */
+.bg-blue-100 {
+  background-color: #dbeafe !important; /* light blue */
+  color: #0b1220 !important;
+}
+.bg-gray-100 {
+  background-color: #f3f4f6 !important; /* light gray */
+  color: #0b1220 !important;
+}
+.bg-white {
+  background-color: #ffffff !important;
+  color: #0b1220 !important;
+}
+
+.text-gray-600 { color: #4b5563 !important; }
+
+input, textarea, select {
+  background: transparent;
+  color: var(--foreground);
+  border-color: rgba(0,0,0,0.12);
+}
+
+button:disabled { opacity: 0.7; }
+
+/* Dark mode overrides to ensure readable bubbles/panels */
+@media (prefers-color-scheme: dark) {
+  .bg-blue-100 {
+    background-color: #083544 !important; /* darker blue */
+    color: #e6fbff !important;
+  }
+  .bg-gray-100 {
+    background-color: #0f1724 !important; /* dark panel */
+    color: #e6eef6 !important;
+  }
+  .bg-white {
+    background-color: #0b0b0b !important;
+    color: #e6eef6 !important;
+  }
+
+  .text-gray-600 { color: #94a3b8 !important; }
+
+  input, textarea, select {
+    background: rgba(255,255,255,0.02);
+    color: var(--foreground);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  /* Ensure upload panel (which uses bg-white) remains visible */
+  .p-6.bg-white {
+    background-color: #071018 !important;
+    color: #e6eef6 !important;
+  }
+}
+
+/* Improve scrollable message area spacing and bubble max width */
+.flex-1.overflow-y-auto.mb-4.space-y-4 {
+  padding: 12px;
+}
+.flex-1.overflow-y-auto.mb-4.space-y-4 > div {
+  max-width: 90%;
+}
