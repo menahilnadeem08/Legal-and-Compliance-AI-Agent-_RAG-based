@@ -47,7 +47,5 @@ next-env.d.ts
 # PDF files
 *.pdf
 
-# TypeScript files (if you want to ignore reranker.ts specifically)
-reranker.ts
 node_modules/
 .next/
