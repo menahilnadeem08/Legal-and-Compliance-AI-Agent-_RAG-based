@@ -49,15 +49,15 @@ export default function DocumentList() {
       <div className="space-y-2">
         {documents.map((doc) => (
           <div key={doc.id} className="p-3 border rounded flex justify-between items-center">
-            <div>
-              <p className="font-medium">{doc.name}</p>
+            <div className="flex-1 min-w-0 mr-4">
+              <p className="font-medium truncate">{doc.name}</p>
               <p className="text-sm text-gray-600">
                 {doc.type} | v{doc.version} | {new Date(doc.upload_date).toLocaleDateString()}
               </p>
             </div>
             <button
               onClick={() => handleDelete(doc.id)}
-              className="px-3 py-1 bg-red-500 text-white rounded text-sm"
+              className="px-3 py-1 bg-red-500 text-white rounded text-sm flex-shrink-0"
             >
               Delete
             </button>
