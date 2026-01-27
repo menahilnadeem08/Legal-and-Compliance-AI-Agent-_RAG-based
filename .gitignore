@@ -42,7 +42,7 @@ next-env.d.ts
 
 #Environment variables
 .env
-env
+!.env.example
 
 # PDF files
 *.pdf
