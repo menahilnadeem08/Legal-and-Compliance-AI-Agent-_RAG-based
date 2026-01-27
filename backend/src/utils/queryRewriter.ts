@@ -10,12 +10,13 @@ Return only the alternative queries, one per line, without numbering or explanat
 
     try {
       const response = await llm.invoke(prompt);
+
       const rewrittenQueries = response.content
         .toString()
         .split('\n')
         .filter(q => q.trim().length > 0)
         .slice(0, 3);
-
+      console.log('Rewritten queries:', rewrittenQueries);
       return [query, ...rewrittenQueries];
     } catch (error) {
       console.error('Query rewriting error:', error);

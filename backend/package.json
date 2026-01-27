@@ -17,6 +17,7 @@
     "@huggingface/inference": "^4.13.10",
     "@langchain/openai": "^1.2.3",
     "@langchain/textsplitters": "^1.0.1",
+    "cohere-ai": "^7.20.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",

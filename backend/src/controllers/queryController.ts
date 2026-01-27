@@ -1,25 +1,25 @@
 import { Request, Response } from 'express';
-import { RetrievalService } from '../services/retrieval';
-import { AnswerGenerator } from '../services/generator';
-import { ContextCompressor } from '../services/compressor';
+import { QueryService } from '../services/queryService';
 
-const retrievalService = new RetrievalService();
-const answerGenerator = new AnswerGenerator();
-const compressor = new ContextCompressor();
+const queryService = new QueryService();
 
 export const queryController = async (req: Request, res: Response) => {
   try {
     const { query } = req.body;
 
+    // Validation
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    const chunks = await retrievalService.hybridSearch(query, 10);
-    const deduplicated = compressor.removeDuplicates(chunks);
-    const compressed = compressor.compress(deduplicated, 3000);
-    const result = await answerGenerator.generateAnswer(query, compressed);
+    if (typeof query !== 'string' || query.trim().length === 0) {
+      return res.status(400).json({ error: 'Query must be a non-empty string' });
+    }
 
+    // Business logic: Process query
+    const result = await queryService.processQuery(query);
+
+    // Standardized response
     return res.json(result);
   } catch (error) {
     console.error('Query error:', error);

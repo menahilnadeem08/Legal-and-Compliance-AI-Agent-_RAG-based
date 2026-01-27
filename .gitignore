@@ -42,12 +42,10 @@ next-env.d.ts
 
 #Environment variables
 .env
-env
+!.env.example
 
 # PDF files
 *.pdf
 
-# TypeScript files (if you want to ignore reranker.ts specifically)
-reranker.ts
 node_modules/
 .next/
