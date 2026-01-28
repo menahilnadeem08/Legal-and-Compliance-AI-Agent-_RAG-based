@@ -2,12 +2,15 @@ import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/database';
 import { DocumentParser } from '../utils/documentParser';
 import { generateEmbedding } from '../utils/emdedding';
+import { DocumentService } from './documentService';
 
 export class UploadService {
   private parser: DocumentParser;
+  private documentService: DocumentService;
 
   constructor() {
     this.parser = new DocumentParser();
+    this.documentService = new DocumentService();
   }
 
   validateFileType(fileExtension: string): boolean {
@@ -31,6 +34,13 @@ export class UploadService {
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [documentId, fileName, docType, version, true, JSON.stringify(parsed.metadata)]
     );
+
+    // Mark this as the latest version (deactivates previous versions)
+    try {
+      await this.documentService.markAsLatest(documentId, fileName);
+    } catch (e) {
+      console.warn(`Failed to update version status for ${fileName}:`, e);
+    }
 
     // Generate embeddings and store chunks
     const chunks = parsed.chunks;
