@@ -73,6 +73,7 @@ export default function FileUpload() {
           <option value="policy" className="bg-gray-800 text-white">Policy</option>
           <option value="contract" className="bg-gray-800 text-white">Contract</option>
           <option value="regulation" className="bg-gray-800 text-white">Regulation</option>
+          <option value="case_law" className="bg-gray-800 text-white">Case Law</option>
         </select>
         <button
           type="submit"
