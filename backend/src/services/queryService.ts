@@ -59,12 +59,12 @@ class BM25Scorer {
   }
 
   private tokenize(text: string): string[] {
-     return text
+    return text
       .toLowerCase()
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
       .filter(t => t.length > 2)
-      .map(t => t.replace(/(ing|ed|s|es|d)$/,'')); // Basic stemming
+      .map(t => t.replace(/(ing|ed|s|es|d)$/, '')); // Basic stemming
   }
 
   private getTermFrequency(term: string, tokens: string[]): number {
@@ -77,7 +77,7 @@ class BM25Scorer {
 
     // Improved: Use partial matching with OR condition for better recall
     const tsQuery = queryTerms.join(' | '); // OR instead of AND
-    
+
     const candidates = await pool.query(
       `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
               d.id as document_id, d.name as document_name, d.version as document_version,
@@ -89,11 +89,14 @@ class BM25Scorer {
 
     if (candidates.rows.length === 0) return [];
 
-    const docs = candidates.rows.map(row => ({
-      ...row,
-      tokens: this.tokenize(row.content),
-      doc_length: row.content.length
-    }));
+    const docs = candidates.rows.map(row => {
+      const tokens = this.tokenize(row.content);
+      return {
+        ...row,
+        tokens,
+        doc_length: tokens.length
+      };
+    });
 
     const avgDocLength = docs.reduce((sum, doc) => sum + doc.doc_length, 0) / docs.length;
     const N = docs.length;
@@ -160,14 +163,14 @@ export class QueryService {
 
     // Sort by relevance score (rerank_score > similarity)
     const sorted = [...chunks].sort((a, b) => {
-      const scoreA = a.rerank_score ?? a.similarity;
-      const scoreB = b.rerank_score ?? b.similarity;
+      const scoreA = Math.min(a.rerank_score ?? a.similarity, 1);
+      const scoreB = Math.min(b.rerank_score ?? b.similarity, 1);
       return scoreB - scoreA;
     });
 
     for (const chunk of sorted) {
       const estimatedTokens = Math.ceil(chunk.content.length / 4);
-      
+
       if (totalTokens + estimatedTokens > maxTokens) {
         break;
       }
@@ -183,13 +186,13 @@ export class QueryService {
   private removeDuplicates(chunks: RetrievedChunk[]): RetrievedChunk[] {
     const seen = new Set<string>();
     const result: RetrievedChunk[] = [];
-    
+
     for (const chunk of chunks) {
       // Use first 200 chars for better dedup
       const key = chunk.content.substring(0, 200).trim();
-      
+
       if (seen.has(key)) continue;
-      
+
       // Check for high overlap with existing chunks
       let isDuplicate = false;
       for (const existing of result) {
@@ -199,13 +202,13 @@ export class QueryService {
           break;
         }
       }
-      
+
       if (!isDuplicate) {
         seen.add(key);
         result.push(chunk);
       }
     }
-    
+
     return result;
   }
 
@@ -225,8 +228,8 @@ export class QueryService {
       vectorWeight = 0.7,
       keywordWeight = 0.3,
       minVectorSimilarity = 0.05, // Lowered for better recall
-        vectorTopK = 80, // Increased from 50
-        keywordTopK = 50, // Increased from 30
+      vectorTopK = 80, // Increased from 50
+      keywordTopK = 50, // Increased from 30
       useBM25 = true,
       bm25Params
     } = options;
@@ -236,7 +239,7 @@ export class QueryService {
     // IMPROVED: Use original query + 1-2 rewrites (not 3+)
     const queries = await this.queryRewriter.rewrite(query);
     const limitedQueries = [queries[0], ...queries.slice(1, 3)]; // Max 3 queries
-    
+
     const allResults = new Map<string, {
       chunk: Omit<RetrievedChunk, 'similarity'>;
       vectorScore: number;
@@ -246,7 +249,7 @@ export class QueryService {
 
     for (const q of limitedQueries) {
       const queryEmbedding = await embeddings.embedQuery(q);
-      
+
       // Vector search
       const vectorResults = await pool.query(
         `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
@@ -265,7 +268,7 @@ export class QueryService {
         try {
           // Convert distance to similarity
           const sim = 1 - (row.distance / 2);
-          
+
           if (sim < minVectorSimilarity) return;
 
           const existing = allResults.get(row.id);
@@ -299,10 +302,10 @@ export class QueryService {
       if (useBM25) {
         try {
           const keywordResults = await this.bm25Scorer.score(q, keywordTopK);
-          
+
           // Normalize keyword scores
           this.bm25Scorer.normalizeScores(keywordResults);
-          
+
           keywordResults.forEach(row => {
             const existing = allResults.get(row.id);
             if (existing) {
@@ -337,13 +340,13 @@ export class QueryService {
     const scoredResults: RetrievedChunk[] = Array.from(allResults.values()).map(result => {
       // Traditional weighted score
       const weightedScore = result.vectorScore * vectorWeight + result.keywordScore * keywordWeight;
-      
+
       // Query diversity bonus
       const queryBoost = Math.min(result.queryCount * 0.05, 0.15);
-      
+
       // Bonus for chunks found by both methods
       const hybridBonus = (result.vectorScore > 0 && result.keywordScore > 0) ? 0.1 : 0;
-      
+
       return {
         ...result.chunk,
         similarity: Math.min(weightedScore + queryBoost + hybridBonus, 1.0),
@@ -362,7 +365,7 @@ export class QueryService {
     const isShort = query.split(/\s+/).length <= 3;
     const hasNumbers = /\d+/.test(query);
     const isTechnicalQuery = /\b(database|api|system|server|protocol|framework|architecture)\b/i.test(query);
-    
+
     let vectorWeight = 0.7;
     let keywordWeight = 0.3;
     let bm25Params: BM25Params = { k1: 1.5, b: 0.75 };
@@ -400,6 +403,8 @@ export class QueryService {
 
   // IMPROVED: Better answer generation with context quality assessment
   async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
+    const normalizeScore = (score?: number) =>
+      Math.min(score ?? 0, 1);
     // Check if we have relevant context
     if (chunks.length === 0) {
       return {
@@ -410,9 +415,16 @@ export class QueryService {
     }
 
     // IMPROVED: Better relevance check using rerank score when available
-    const bestScore = chunks[0].rerank_score ?? chunks[0].similarity;
-    const avgScore = chunks.reduce((sum, c) => sum + (c.rerank_score ?? c.similarity), 0) / chunks.length;
-    
+    const bestScore = normalizeScore(
+      chunks[0].rerank_score ?? chunks[0].similarity
+    );
+
+    const avgScore =
+      chunks.reduce(
+        (sum, c) => sum + normalizeScore(c.rerank_score ?? c.similarity),
+        0
+      ) / chunks.length;
+
     // More lenient threshold
     if (bestScore < 0.15) {
       return {
@@ -425,9 +437,11 @@ export class QueryService {
     // Build context with quality indicators
     const context = chunks
       .map((chunk, idx) => {
-        const score = chunk.rerank_score ?? chunk.similarity;
+        const score = normalizeScore(
+          chunk.rerank_score ?? chunk.similarity
+        );
         let qualityNote = `[Relevance: ${(score * 100).toFixed(0)}%]`;
-        
+
         // Add search method indicators
         if (chunk.vector_score && chunk.keyword_score) {
           if (chunk.vector_score > 0.1 && chunk.keyword_score > 0.1) {
@@ -438,13 +452,13 @@ export class QueryService {
             qualityNote += ' [Keyword Match]';
           }
         }
-        
+
         // Add version info for regulatory compliance
         let versionInfo = '';
         if (chunk.document_version) {
           versionInfo = ` (v${chunk.document_version})`;
         }
-        
+
         return `[${idx + 1}] ${chunk.content}\n📄 Source: ${chunk.document_name}${versionInfo} ${qualityNote}`;
       })
       .join('\n\n---\n\n');
@@ -492,32 +506,36 @@ Answer (be specific and cite sources):`;
         document_name: chunk.document_name,
         version: chunk.document_version || 'N/A',
         section: chunk.section_name || 'N/A',
-        page: chunk.page_number || null, 
-        relevance_score: (chunk.rerank_score ?? chunk.similarity), 
+        page: chunk.page_number || null,
+        relevance_score: normalizeScore(
+          chunk.rerank_score ?? chunk.similarity
+        ),
         content: chunk.content.substring(0, 200) + '...'
       });
     }
 
     // IMPROVED: Better confidence calculation
-    const topScore = bestScore;
-    const avgChunkScore = avgScore;
-    
+    const topScore = normalizeScore(bestScore);
+    const avgChunkScore = normalizeScore(avgScore);
+
     // Base confidence from scores
     let confidence = (topScore * 0.6 + avgChunkScore * 0.4) * 100;
-    
+
     // Bonus for multiple relevant chunks
-    const relevantCount = chunks.filter(c => (c.rerank_score ?? c.similarity) > 0.3).length;
+    const relevantCount = chunks.filter(
+      c => normalizeScore(c.rerank_score ?? c.similarity) > 0.3
+    ).length;
     const countBonus = Math.min(relevantCount * 3, 15);
-    
+
     // Bonus for hybrid matches
-    const hybridCount = chunks.filter(c => 
+    const hybridCount = chunks.filter(c =>
       (c.vector_score || 0) > 0.1 && (c.keyword_score || 0) > 0.1
     ).length;
     const hybridBonus = Math.min(hybridCount * 5, 15);
-    
+
     // Bonus for citations
     const citationBonus = Math.min(citations.length * 2, 10);
-    
+
     confidence = confidence + countBonus + hybridBonus + citationBonus;
     confidence = Math.min(Math.max(confidence, 0), 100);
     const roundedConfidence = Math.round(confidence);
@@ -541,10 +559,10 @@ Answer (be specific and cite sources):`;
   // IMPROVED: Main query processing with better debugging
   async processQuery(query: string, debug: boolean = true): Promise<QueryResult> {
     console.log('\n🔍 Starting query processing:', query);
-    
+
     // Step 1: Search for relevant chunks
-      const results = await this.search(query, 30); // Get more candidates (already set to 30)
-    
+    const results = await this.search(query, 30); // Get more candidates (already set to 30)
+
     if (debug) {
       console.log('\n[DEBUG] Retrieved Chunks (after hybrid search):', results.length);
       console.log('Top 5 results:');
@@ -584,7 +602,7 @@ Answer (be specific and cite sources):`;
         15, // Get top 15
         0.01 // Very low threshold - let the answer generation handle filtering
       );
-      
+
       if (debug) {
         console.log('\n[DEBUG] After reranking:', reranked.length);
         if (reranked.length > 0) {
@@ -605,7 +623,7 @@ Answer (be specific and cite sources):`;
 
     // Step 4: Fallback to original if reranking fails or returns nothing
     const finalChunks = (reranked.length > 0) ? reranked : deduplicated.slice(0, 15);
-    
+
     if (debug) {
       console.log('\n[DEBUG] Final chunks for generation:', finalChunks.length);
       console.log('Using:', reranked.length > 0 ? 'reranked results' : 'original results (reranking failed/empty)');
@@ -619,7 +637,7 @@ Answer (be specific and cite sources):`;
 
     // Step 6: Generate answer
     const result = await this.generateAnswer(query, compressed);
-    
+
     if (debug) {
       console.log('\n[DEBUG] Final Result:');
       console.log({
