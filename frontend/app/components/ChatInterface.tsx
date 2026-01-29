@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 
 interface Citation {
   document_name: string;
@@ -33,26 +34,6 @@ export default function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const [expandedCitation, setExpandedCitation] = useState<number | null>(null);
 
-  const getRelevanceColor = (score?: number): string => {
-    if (!score) return 'bg-gray-100 text-gray-800';
-    if (score >= 0.9) return 'bg-green-100 text-green-800';
-    if (score >= 0.7) return 'bg-blue-100 text-blue-800';
-    if (score >= 0.5) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
-  };
-
-  const getSearchMethodIcon = (method?: string): string => {
-    switch (method) {
-      case 'both':
-        return '🎯';
-      case 'vector':
-        return '🔍';
-      case 'keyword':
-        return '📝';
-      default:
-        return '📄';
-    }
-  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -94,130 +75,55 @@ export default function ChatInterface() {
       
       <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {messages.map((msg, idx) => (
-          <div 
-            key={idx} 
-            className={`p-4 rounded-lg ${
-              msg.role === 'user' 
-                ? 'bg-teal-900 bg-opacity-50 border border-teal-700' 
-                : 'bg-gray-800 bg-opacity-50 border border-gray-700'
-            }`}
-          >
-            <p className="font-semibold text-white mb-2">
-              {msg.role === 'user' ? '👤 You' : '⚖️ Assistant'}
-            </p>
+          <div key={idx} className={`p-4 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+            <p className="font-semibold">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
             
-            {/* Main Answer */}
-            <p className="text-gray-200 whitespace-pre-wrap mb-3">{msg.content}</p>
-
-            {/* Confidence Badge */}
-            {msg.confidence !== undefined && (
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-xs font-semibold text-gray-400">Confidence:</span>
-                <div className="w-32 h-2 bg-gray-600 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${
-                      msg.confidence >= 70
-                        ? 'bg-green-500'
-                        : msg.confidence >= 50
-                        ? 'bg-yellow-500'
-                        : 'bg-red-500'
-                    }`}
-                    style={{ width: `${msg.confidence}%` }}
-                  />
-                </div>
-                <span className="text-xs text-gray-300">{msg.confidence}%</span>
+            {/* Use ReactMarkdown for assistant messages */}
+            {msg.role === 'assistant' ? (
+              <div className="mt-2 prose prose-sm max-w-none">
+                <ReactMarkdown
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-3 mb-2" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-2 mb-1" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-5 my-2" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal ml-5 my-2" {...props} />,
+                    li: ({node, ...props}) => <li className="my-1" {...props} />,
+                    p: ({node, ...props}) => <p className="my-2" {...props} />,
+                    hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
               </div>
+            ) : (
+              <p className="mt-2">{msg.content}</p>
             )}
-
-            {/* Version Warnings */}
-            {msg.version_warnings && msg.version_warnings.length > 0 && (
-              <div className="mb-3 bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded p-3">
-                <p className="text-xs font-semibold text-yellow-200 mb-1">⚠️ Version Notice:</p>
-                {msg.version_warnings.map((warning, i) => (
-                  <p key={i} className="text-xs text-yellow-100 mb-1">{warning}</p>
+            
+            {msg.citations && msg.citations.length > 0 && (
+              <div className="mt-4 border-t pt-2">
+                <p className="text-sm font-semibold">Citations:</p>
+                {msg.citations.map((cite, i) => (
+                  <div key={i} className="text-sm mt-2">
+                    <p className="font-medium">[{i + 1}] {cite.document_name}</p>
+                    {cite.section && (
+                      <p className="text-gray-600">Section: {cite.section}</p>
+                    )}
+                    {cite.content && (
+                      <p className="text-gray-700 mt-1">{cite.content}</p>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
-
-            {/* Sources Summary */}
-            {msg.sources_used && (
-              <div className="mb-3 text-xs text-gray-400 bg-gray-700 bg-opacity-30 rounded p-2">
-                <p className="font-semibold text-gray-300 mb-1">📚 Sources Used:</p>
-                <ul className="space-y-1">
-                  {msg.sources_used.versions.map((v, i) => (
-                    <li key={i}>• {v}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Citations Section */}
-            {msg.citations && msg.citations.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-600">
-                <p className="text-sm font-semibold text-white mb-3">📖 Grounded Citations:</p>
-                <div className="space-y-2">
-                  {msg.citations.map((citation, i) => (
-                    <div
-                      key={i}
-                      className="bg-gray-700 bg-opacity-50 rounded-lg p-3 border border-gray-600 hover:border-gray-500 transition-colors cursor-pointer"
-                      onClick={() => setExpandedCitation(expandedCitation === i ? null : i)}
-                    >
-                      {/* Citation Header */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <p className="font-semibold text-white text-sm">
-                            [{i + 1}] {citation.document_name}
-                            {citation.document_version && (
-                              <span className="text-xs text-gray-400 ml-2">v{citation.document_version}</span>
-                            )}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {citation.section && (
-                              <span className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">
-                                {citation.section}
-                              </span>
-                            )}
-                            <span className="text-xs bg-gray-600 text-gray-200 px-2 py-1 rounded">
-                              {citation.page ? `Page: ${citation.page}` : 'N/A'}
-                            </span>
-                            {citation.search_method && (
-                              <span className="text-xs text-gray-300">
-                                {getSearchMethodIcon(citation.search_method)} {citation.search_method}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {expandedCitation === i && (
-                        <div className="mt-3 pt-3 border-t border-gray-600">
-                          <div className="bg-gray-800 bg-opacity-50 rounded p-2 mb-2">
-                            <p className="text-xs font-semibold text-gray-300 mb-1">Quote:</p>
-                            <blockquote className="text-xs text-gray-200 italic border-l-2 border-blue-500 pl-2">
-                              "{citation.content}"
-                            </blockquote>
-                          </div>
-                          {citation.section_id && (
-                            <p className="text-xs text-gray-400">
-                              <span className="font-semibold">Section ID:</span> {citation.section_id}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            
+            {msg.confidence !== undefined && (
+              <p className="text-sm text-gray-600 mt-2">Confidence: {msg.confidence}%</p>
             )}
           </div>
         ))}
-        {loading && (
-          <div className="flex items-center gap-2 text-gray-400">
-            <div className="animate-pulse">●</div>
-            <p>Analyzing documents and generating answer...</p>
-          </div>
-        )}
+        {loading && <p className="text-gray-500">Thinking...</p>}
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
