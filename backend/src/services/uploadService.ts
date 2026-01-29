@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/database';
-import { DocumentParser } from '../utils/documentParser';
+import { DocumentParser, ChunkWithMetadata } from '../utils/documentParser';
 import { generateEmbedding } from '../utils/emdedding';
 import { DocumentService } from './documentService';
 
@@ -42,20 +42,37 @@ export class UploadService {
       console.warn(`Failed to update version status for ${fileName}:`, e);
     }
 
-    // Generate embeddings and store chunks
+    // Generate embeddings and store chunks with metadata
     const chunks = parsed.chunks;
+    console.log(`Processing ${chunks.length} chunks for ${fileName}...`);
+    
     for (let i = 0; i < chunks.length; i++) {
+      const chunk: ChunkWithMetadata = chunks[i];
       const chunkId = uuidv4();
-      const embedding = await generateEmbedding(chunks[i]);
+      const embedding = await generateEmbedding(chunk.content);
+
+      // Log section detection for debugging
+      if (chunk.section_name) {
+        console.log(`Chunk ${i}: Section="${chunk.section_name.substring(0, 50)}..." Page=${chunk.page_number || 'N/A'}`);
+      }
 
       await pool.query(
-        `INSERT INTO chunks (id, document_id, content, embedding, chunk_index) 
-         VALUES ($1, $2, $3, $4::vector, $5)`,
-        [chunkId, documentId, chunks[i], JSON.stringify(embedding), i]
+        `INSERT INTO chunks (id, document_id, content, embedding, chunk_index, section_name, page_number) 
+         VALUES ($1, $2, $3, $4::vector, $5, $6, $7)`,
+        [
+          chunkId, 
+          documentId, 
+          chunk.content, 
+          JSON.stringify(embedding), 
+          i,
+          chunk.section_name || null,
+          chunk.page_number || null
+        ]
       );
     }
 
-    console.log(`Document ${fileName} ingested with ${chunks.length} chunks`);
+    const sectionsDetected = chunks.filter(c => c.section_name).length;
+    console.log(`Document ${fileName} ingested with ${chunks.length} chunks (${sectionsDetected} with sections detected)`);
     return documentId;
   }
 }
