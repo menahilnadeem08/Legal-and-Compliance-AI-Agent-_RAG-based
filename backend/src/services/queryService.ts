@@ -3,6 +3,7 @@ import { llm } from '../config/openai';
 import { QueryRewriter } from '../utils/queryRewriter';
 import { Reranker } from '../utils/reranker';
 import { embeddings } from '../config/openai';
+import { DocumentService } from './documentService'; 
 
 // Types
 export interface QueryResult {
@@ -149,11 +150,42 @@ export class QueryService {
   private queryRewriter: QueryRewriter;
   private bm25Scorer: BM25Scorer;
   private reranker: Reranker;
+  private documentService: DocumentService; 
 
   constructor(bm25Params?: BM25Params, cohereApiKey?: string) {
     this.queryRewriter = new QueryRewriter();
     this.bm25Scorer = new BM25Scorer(bm25Params);
     this.reranker = new Reranker(cohereApiKey);
+    this.documentService = new DocumentService(); 
+  }
+
+  private detectVersionQuery(query: string): {
+    isVersionQuery: boolean;
+    documentName?: string;
+    version1?: string;
+    version2?: string;
+  } {
+    const patterns = [
+      // More flexible patterns
+      /(?:diff|difference|compare|changes?)\s+(?:between|in)\s+(.+?)\s+versions?\s*(\d+\.?\d*)\s+(?:and|vs|versus)\s+(\d+\.?\d*)/i,
+      /(?:what|show).*?(?:changed?|updates?)\s+(?:in|for)\s+(.+?)\s+(?:from|between)\s+v?(\d+\.?\d*)\s+(?:to|and)\s+v?(\d+\.?\d*)/i,
+      // Match "test.pdf version1 and 2" (no space after version)
+      /(?:diff|difference|compare)\s+(?:between|in)?\s*(.+?)\s+version\s*(\d+\.?\d*)\s+(?:and|vs)\s+(\d+\.?\d*)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = query.match(pattern);
+      if (match) {
+        return {
+          isVersionQuery: true,
+          documentName: match[1].trim(),
+          version1: match[2],
+          version2: match[3]
+        };
+      }
+    }
+
+    return { isVersionQuery: false };
   }
 
   // IMPROVED: Better context compression with relevance preservation
@@ -227,194 +259,99 @@ export class QueryService {
       topK = 10,
       vectorWeight = 0.7,
       keywordWeight = 0.3,
-      minVectorSimilarity = 0.05, // Lowered for better recall
-      vectorTopK = 80, // Increased from 50
-      keywordTopK = 50, // Increased from 30
+      minVectorSimilarity = 0.05,
+      vectorTopK = 80,
+      keywordTopK = 50,
       useBM25 = true,
       bm25Params
     } = options;
 
     if (bm25Params) this.bm25Scorer = new BM25Scorer(bm25Params);
 
-    // IMPROVED: Use original query + 1-2 rewrites (not 3+)
     const queries = await this.queryRewriter.rewrite(query);
-    const limitedQueries = [queries[0], ...queries.slice(1, 3)]; // Max 3 queries
+    const vectorResults: Array<RetrievedChunk & { id?: string }> = [];
 
-    const allResults = new Map<string, {
-      chunk: Omit<RetrievedChunk, 'similarity'>;
-      vectorScore: number;
-      keywordScore: number;
-      queryCount: number;
-    }>();
-
-    for (const q of limitedQueries) {
-      const queryEmbedding = await embeddings.embedQuery(q);
-
-      // Vector search
-      const vectorResults = await pool.query(
+    for (const q of queries) {
+      const embedding = await embeddings.embedQuery(q);
+      const result = await pool.query(
         `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
                 d.id as document_id, d.name as document_name, d.version as document_version,
                 d.type as document_type, d.upload_date,
-                c.embedding <=> $1::vector as distance
-         FROM chunks c 
-         JOIN documents d ON c.document_id = d.id 
-         WHERE d.is_latest = true 
-         ORDER BY c.embedding <=> $1::vector 
+                1 - (c.embedding <=> $1::vector) as similarity
+         FROM chunks c
+         JOIN documents d ON c.document_id = d.id
+         WHERE d.is_latest = true AND c.embedding IS NOT NULL
+         ORDER BY c.embedding <=> $1::vector
          LIMIT $2`,
-        [JSON.stringify(queryEmbedding), vectorTopK]
+        [JSON.stringify(embedding), vectorTopK]
       );
+      vectorResults.push(...result.rows);
+    }
 
-      vectorResults.rows.forEach(row => {
-        try {
-          // Convert distance to similarity
-          const sim = 1 - (row.distance / 2);
+    const vectorMap = new Map<string, RetrievedChunk>();
+    for (const r of vectorResults) {
+      if (r.similarity < minVectorSimilarity) continue;
 
-          if (sim < minVectorSimilarity) return;
-
-          const existing = allResults.get(row.id);
-          if (existing) {
-            existing.vectorScore = Math.max(existing.vectorScore, sim);
-            existing.queryCount++;
-          } else {
-            allResults.set(row.id, {
-              chunk: {
-                content: row.content,
-                document_name: row.document_name,
-                document_id: row.document_id,
-                document_version: row.document_version,
-                document_type: row.document_type,
-                upload_date: row.upload_date,
-                section_name: row.section_name,
-                page_number: row.page_number,
-                chunk_index: row.chunk_index
-              },
-              vectorScore: sim,
-              keywordScore: 0,
-              queryCount: 1
-            });
-          }
-        } catch (error) {
-          console.error('Error processing vector result:', error);
-        }
-      });
-
-      // Keyword search with BM25
-      if (useBM25) {
-        try {
-          const keywordResults = await this.bm25Scorer.score(q, keywordTopK);
-
-          // Normalize keyword scores
-          this.bm25Scorer.normalizeScores(keywordResults);
-
-          keywordResults.forEach(row => {
-            const existing = allResults.get(row.id);
-            if (existing) {
-              existing.keywordScore = Math.max(existing.keywordScore, row.similarity);
-              existing.queryCount++;
-            } else {
-              allResults.set(row.id, {
-                chunk: {
-                  content: row.content,
-                  document_name: row.document_name,
-                  document_id: row.document_id,
-                  document_version: row.document_version,
-                  document_type: row.document_type,
-                  upload_date: row.upload_date,
-                  section_name: row.section_name,
-                  page_number: row.page_number,
-                  chunk_index: row.chunk_index
-                },
-                vectorScore: 0,
-                keywordScore: row.similarity,
-                queryCount: 1
-              });
-            }
-          });
-        } catch (error) {
-          console.error('BM25 search error:', error);
-        }
+      const key = r.id || `${r.document_id}_${r.chunk_index}`;
+      if (!vectorMap.has(key) || (vectorMap.get(key)!.similarity < r.similarity)) {
+        vectorMap.set(key, {
+          ...r,
+          vector_score: r.similarity,
+          keyword_score: 0,
+          similarity: r.similarity
+        });
       }
     }
 
-    // IMPROVED: Better scoring with RRF (Reciprocal Rank Fusion)
-    const scoredResults: RetrievedChunk[] = Array.from(allResults.values()).map(result => {
-      // Traditional weighted score
-      const weightedScore = result.vectorScore * vectorWeight + result.keywordScore * keywordWeight;
-
-      // Query diversity bonus
-      const queryBoost = Math.min(result.queryCount * 0.05, 0.15);
-
-      // Bonus for chunks found by both methods
-      const hybridBonus = (result.vectorScore > 0 && result.keywordScore > 0) ? 0.1 : 0;
-
-      return {
-        ...result.chunk,
-        similarity: Math.min(weightedScore + queryBoost + hybridBonus, 1.0),
-        vector_score: result.vectorScore,
-        keyword_score: result.keywordScore
-      };
-    });
-
-    return scoredResults.sort((a, b) => b.similarity - a.similarity).slice(0, topK * 2); // Get more for reranking
-  }
-
-  // IMPROVED: Adaptive search with better query analysis
-  async search(query: string, topK: number = 20): Promise<RetrievedChunk[]> {
-    const hasQuotes = /["']/.test(query);
-    const hasSpecificTerms = /\b(section|page|chapter|clause|article|paragraph)\s+\d+/i.test(query);
-    const isShort = query.split(/\s+/).length <= 3;
-    const hasNumbers = /\d+/.test(query);
-    const isTechnicalQuery = /\b(database|api|system|server|protocol|framework|architecture)\b/i.test(query);
-
-    let vectorWeight = 0.7;
-    let keywordWeight = 0.3;
-    let bm25Params: BM25Params = { k1: 1.5, b: 0.75 };
-
-    // Adjust weights based on query type
-    if (hasQuotes || hasSpecificTerms) {
-      vectorWeight = 0.3;
-      keywordWeight = 0.7;
-      bm25Params = { k1: 2.0, b: 0.5 };
-    } else if (isShort) {
-      vectorWeight = 0.8;
-      keywordWeight = 0.2;
-    } else if (isTechnicalQuery) {
-      // Technical queries benefit from both methods equally
-      vectorWeight = 0.6;
-      keywordWeight = 0.4;
-      bm25Params = { k1: 1.8, b: 0.65 };
-    } else if (hasNumbers) {
-      vectorWeight = 0.5;
-      keywordWeight = 0.5;
-      bm25Params = { k1: 1.8, b: 0.6 };
+    let keywordResults: Array<RetrievedChunk & { id: string }> = [];
+    if (useBM25) {
+      keywordResults = await this.bm25Scorer.score(query, keywordTopK);
+      this.bm25Scorer.normalizeScores(keywordResults);
     }
 
+    for (const r of keywordResults) {
+      const key = r.id;
+      if (vectorMap.has(key)) {
+        const existing = vectorMap.get(key)!;
+        existing.keyword_score = r.similarity;
+        existing.similarity = (existing.vector_score || 0) * vectorWeight + r.similarity * keywordWeight;
+      } else {
+        vectorMap.set(key, {
+          ...r,
+          keyword_score: r.similarity,
+          vector_score: 0,
+          similarity: r.similarity * keywordWeight
+        });
+      }
+    }
+
+    const combined = Array.from(vectorMap.values());
+    return combined.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
+  }
+
+  private async search(query: string, topK: number = 20): Promise<RetrievedChunk[]> {
     return this.hybridSearch(query, {
       topK,
-      vectorWeight,
-      keywordWeight,
-      useBM25: true,
-      bm25Params,
-      minVectorSimilarity: 0.05, // Lower threshold for better recall
-      vectorTopK: 60,
-      keywordTopK: 40
+      vectorWeight: 0.7,
+      keywordWeight: 0.3,
+      minVectorSimilarity: 0.05,
+      vectorTopK: 80,
+      keywordTopK: 50,
+      useBM25: true
     });
   }
 
-  // IMPROVED: Better answer generation with context quality assessment
-  async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
-    const normalizeScore = (score?: number) =>
-      Math.min(score ?? 0, 1);
-    // Check if we have relevant context
+  private async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
+    const normalizeScore = (score: number) => Math.max(0, Math.min(score, 1));
+
     if (chunks.length === 0) {
       return {
-        answer: 'I could not find relevant information in the knowledge base to answer this query. Please try rephrasing your question or check if the relevant documents have been uploaded.',
+        answer: 'No relevant information found in the knowledge base.',
         citations: [],
         confidence: 0,
       };
     }
 
-    // IMPROVED: Better relevance check using rerank score when available
     const bestScore = normalizeScore(
       chunks[0].rerank_score ?? chunks[0].similarity
     );
@@ -425,7 +362,6 @@ export class QueryService {
         0
       ) / chunks.length;
 
-    // More lenient threshold
     if (bestScore < 0.15) {
       return {
         answer: 'The information in the knowledge base does not seem directly relevant to your query. Please try rephrasing or providing more context.',
@@ -434,7 +370,6 @@ export class QueryService {
       };
     }
 
-    // Build context with quality indicators
     const context = chunks
       .map((chunk, idx) => {
         const score = normalizeScore(
@@ -442,7 +377,6 @@ export class QueryService {
         );
         let qualityNote = `[Relevance: ${(score * 100).toFixed(0)}%]`;
 
-        // Add search method indicators
         if (chunk.vector_score && chunk.keyword_score) {
           if (chunk.vector_score > 0.1 && chunk.keyword_score > 0.1) {
             qualityNote += ' [High Confidence: Semantic + Keyword Match]';
@@ -453,7 +387,6 @@ export class QueryService {
           }
         }
 
-        // Add version info for regulatory compliance
         let versionInfo = '';
         if (chunk.document_version) {
           versionInfo = ` (v${chunk.document_version})`;
@@ -463,7 +396,6 @@ export class QueryService {
       })
       .join('\n\n---\n\n');
 
-    // IMPROVED: Better prompt with explicit instructions
     const prompt = `You are a legal and compliance assistant. Answer the question based strictly on the provided context.
 
 CRITICAL RULES:
@@ -484,11 +416,9 @@ Question: ${query}
 
 Answer (be specific and cite sources):`;
 
-    // Generate answer
     const response = await llm.invoke(prompt);
     const answer = response.content.toString();
 
-    // Extract cited sources
     const citedIndices = new Set<number>();
     const citationMatches = answer.matchAll(/\[(\d+)\]/g);
     for (const match of citationMatches) {
@@ -498,7 +428,6 @@ Answer (be specific and cite sources):`;
       }
     }
 
-    // Build citations from actually cited chunks
     const citations: any[] = [];
     for (const idx of citedIndices) {
       const chunk = chunks[idx];
@@ -514,33 +443,27 @@ Answer (be specific and cite sources):`;
       });
     }
 
-    // IMPROVED: Better confidence calculation
     const topScore = normalizeScore(bestScore);
     const avgChunkScore = normalizeScore(avgScore);
 
-    // Base confidence from scores
     let confidence = (topScore * 0.6 + avgChunkScore * 0.4) * 100;
 
-    // Bonus for multiple relevant chunks
     const relevantCount = chunks.filter(
       c => normalizeScore(c.rerank_score ?? c.similarity) > 0.3
     ).length;
     const countBonus = Math.min(relevantCount * 3, 15);
 
-    // Bonus for hybrid matches
     const hybridCount = chunks.filter(c =>
       (c.vector_score || 0) > 0.1 && (c.keyword_score || 0) > 0.1
     ).length;
     const hybridBonus = Math.min(hybridCount * 5, 15);
 
-    // Bonus for citations
     const citationBonus = Math.min(citations.length * 2, 10);
 
     confidence = confidence + countBonus + hybridBonus + citationBonus;
     confidence = Math.min(Math.max(confidence, 0), 100);
     const roundedConfidence = Math.round(confidence);
 
-    // Lower threshold for returning answer
     if (roundedConfidence < 40 || bestScore < 0.2) {
       return {
         answer: 'While I found some potentially related information, the relevance is too low to provide a confident answer. Please try rephrasing your question or check if the relevant documents have been uploaded.',
@@ -556,12 +479,72 @@ Answer (be specific and cite sources):`;
     };
   }
 
-  // IMPROVED: Main query processing with better debugging
+  // IMPROVED: Main query processing with version detection
   async processQuery(query: string, debug: boolean = true): Promise<QueryResult> {
     console.log('\n🔍 Starting query processing:', query);
 
-    // Step 1: Search for relevant chunks
-    const results = await this.search(query, 30); // Get more candidates (already set to 30)
+    // Check if this is a version comparison query
+    const versionQuery = this.detectVersionQuery(query);
+
+    if (versionQuery.isVersionQuery) {
+      console.log('🔄 Detected version comparison query');
+      try {
+        const comparison = await this.documentService.compareVersionsDetailed(
+          versionQuery.documentName!,
+          versionQuery.version1!,
+          versionQuery.version2!
+        );
+
+        const answer = `# Version Comparison: ${comparison.document_name}
+
+## Overview
+📄 **Version ${comparison.version1.version}** → **Version ${comparison.version2.version}**  
+📅 ${new Date(comparison.version1.upload_date).toLocaleDateString()} → ${new Date(comparison.version2.upload_date).toLocaleDateString()}
+
+## Change Summary
+${comparison.statistics.chunks_added > 0 ? `✅ **${comparison.statistics.chunks_added} sections added**` : ''}
+${comparison.statistics.chunks_removed > 0 ? `\n❌ **${comparison.statistics.chunks_removed} sections removed**` : ''}
+${comparison.statistics.chunks_modified > 0 ? `\n✏️ **${comparison.statistics.chunks_modified} sections modified**` : ''}
+${comparison.statistics.chunks_unchanged > 0 ? `\n✓ ${comparison.statistics.chunks_unchanged} sections unchanged` : ''}
+
+**Overall Change Rate:** ${comparison.statistics.change_percentage.toFixed(0)}%
+
+---
+
+## Key Changes
+
+${comparison.summary}
+
+---
+
+## Impact Analysis
+
+${comparison.impact_analysis?.high_impact_changes && comparison.impact_analysis.high_impact_changes.length > 0 ? `### ⚠️ High Impact Changes
+${comparison.impact_analysis.high_impact_changes.slice(0, 5).map(c => `- ${c}`).join('\n')}` : ''}
+
+${comparison.impact_analysis?.medium_impact_changes && comparison.impact_analysis.medium_impact_changes.length > 0 ? `\n### 🔶 Medium Impact Changes
+${comparison.impact_analysis.medium_impact_changes.slice(0, 3).map(c => `- ${c}`).join('\n')}` : ''}
+
+${comparison.impact_analysis?.low_impact_changes && comparison.impact_analysis.low_impact_changes.length > 0 ? `\n### 🔷 Low Impact Changes  
+${comparison.impact_analysis.low_impact_changes.slice(0, 2).map(c => `- ${c}`).join('\n')}` : ''}`;
+
+        return {
+          answer,
+          citations: [],
+          confidence: 100
+        };
+      } catch (error: any) {
+        console.error('Version comparison error:', error);
+        return {
+          answer: `❌ **Failed to compare versions**\n\n${error.message}\n\nPlease ensure both versions exist in the system.`,
+          citations: [],
+          confidence: 0
+        };
+      }
+    }
+
+    // Rest of existing processQuery code...
+    const results = await this.search(query, 30);
 
     if (debug) {
       console.log('\n[DEBUG] Retrieved Chunks (after hybrid search):', results.length);
@@ -586,21 +569,18 @@ Answer (be specific and cite sources):`;
       };
     }
 
-    // Step 2: Remove duplicates
     const deduplicated = this.removeDuplicates(results);
     if (debug) {
       console.log('\n[DEBUG] After deduplication:', deduplicated.length);
     }
 
-    // Step 3: Rerank using cross-encoder
     let reranked: RetrievedChunk[] = [];
     try {
-      // CRITICAL FIX: Much lower threshold and get more results
       reranked = await this.reranker.rerankWithThreshold(
         query,
         deduplicated,
-        15, // Get top 15
-        0.01 // Very low threshold - let the answer generation handle filtering
+        15,
+        0.01
       );
 
       if (debug) {
@@ -621,7 +601,6 @@ Answer (be specific and cite sources):`;
       console.error('Reranking error:', error);
     }
 
-    // Step 4: Fallback to original if reranking fails or returns nothing
     const finalChunks = (reranked.length > 0) ? reranked : deduplicated.slice(0, 15);
 
     if (debug) {
@@ -629,13 +608,11 @@ Answer (be specific and cite sources):`;
       console.log('Using:', reranked.length > 0 ? 'reranked results' : 'original results (reranking failed/empty)');
     }
 
-    // Step 5: Compress to fit context window
-    const compressed = this.compress(finalChunks, 4000); // Increased token limit
+    const compressed = this.compress(finalChunks, 4000);
     if (debug) {
       console.log('[DEBUG] After compression:', compressed.length);
     }
 
-    // Step 6: Generate answer
     const result = await this.generateAnswer(query, compressed);
 
     if (debug) {

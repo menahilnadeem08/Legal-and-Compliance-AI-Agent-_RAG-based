@@ -53,6 +53,9 @@ export const checkForNewerVersion = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /documents/compare?name=...&version1=...&version2=...
+ */
 export const compareVersions = async (req: Request, res: Response) => {
   try {
     const { name, version1, version2 } = req.query;
@@ -72,6 +75,33 @@ export const compareVersions = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Compare versions error:', error);
     return res.status(500).json({ error: 'Failed to compare versions' });
+  }
+};
+
+/**
+ * NEW: Detailed version comparison with actual content changes
+ * GET /documents/compare/detailed?name=...&version1=...&version2=...
+ */
+export const compareVersionsDetailed = async (req: Request, res: Response) => {
+  try {
+    const { name, version1, version2 } = req.query;
+    
+    if (!name || !version1 || !version2 || Array.isArray(name) || Array.isArray(version1) || Array.isArray(version2)) {
+      return res.status(400).json({ 
+        error: 'name, version1, and version2 query parameters are required and must be single values' 
+      });
+    }
+    
+    const comparison = await documentService.compareVersionsDetailed(
+      name as string,
+      version1 as string,
+      version2 as string
+    );
+    
+    return res.json(comparison);
+  } catch (error) {
+    console.error('Compare versions detailed error:', error);
+    return res.status(500).json({ error: 'Failed to compare versions in detail' });
   }
 };
 
