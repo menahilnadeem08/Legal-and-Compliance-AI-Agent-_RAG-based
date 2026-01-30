@@ -3,7 +3,8 @@ import { llm } from '../config/openai';
 import { QueryRewriter } from '../utils/queryRewriter';
 import { Reranker } from '../utils/reranker';
 import { embeddings } from '../config/openai';
-import { DocumentService } from './documentService'; 
+import { DocumentService } from './documentService';
+import { VersionComparisonService } from './versionComparisonService';
 
 // Types
 export interface QueryResult {
@@ -76,8 +77,7 @@ class BM25Scorer {
     const queryTerms = this.tokenize(query);
     if (queryTerms.length === 0) return [];
 
-    // Improved: Use partial matching with OR condition for better recall
-    const tsQuery = queryTerms.join(' | '); // OR instead of AND
+    const tsQuery = queryTerms.join(' | ');
 
     const candidates = await pool.query(
       `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
@@ -150,50 +150,36 @@ export class QueryService {
   private queryRewriter: QueryRewriter;
   private bm25Scorer: BM25Scorer;
   private reranker: Reranker;
-  private documentService: DocumentService; 
+  private documentService: DocumentService;
+  private versionComparisonService: VersionComparisonService;
 
   constructor(bm25Params?: BM25Params, cohereApiKey?: string) {
     this.queryRewriter = new QueryRewriter();
     this.bm25Scorer = new BM25Scorer(bm25Params);
     this.reranker = new Reranker(cohereApiKey);
-    this.documentService = new DocumentService(); 
+    this.documentService = new DocumentService();
+    this.versionComparisonService = new VersionComparisonService();
   }
 
-  private detectVersionQuery(query: string): {
-    isVersionQuery: boolean;
-    documentName?: string;
-    version1?: string;
-    version2?: string;
-  } {
-    const patterns = [
-      // More flexible patterns
-      /(?:diff|difference|compare|changes?)\s+(?:between|in)\s+(.+?)\s+versions?\s*(\d+\.?\d*)\s+(?:and|vs|versus)\s+(\d+\.?\d*)/i,
-      /(?:what|show).*?(?:changed?|updates?)\s+(?:in|for)\s+(.+?)\s+(?:from|between)\s+v?(\d+\.?\d*)\s+(?:to|and)\s+v?(\d+\.?\d*)/i,
-      // Match "test.pdf version1 and 2" (no space after version)
-      /(?:diff|difference|compare)\s+(?:between|in)?\s*(.+?)\s+version\s*(\d+\.?\d*)\s+(?:and|vs)\s+(\d+\.?\d*)/i,
+  /**
+   * ENHANCED: Detect if query is about version comparison
+   * Checks for keywords like: compare, difference, changes, versions, etc.
+   */
+  private isVersionComparisonQuery(query: string): boolean {
+    const keywords = [
+      'compare', 'comparison', 'difference', 'diff', 'changes', 'changed',
+      'version', 'versions', 'between', 'vs', 'versus', 'update', 'updated',
+      'latest', 'previous', 'old', 'new'
     ];
 
-    for (const pattern of patterns) {
-      const match = query.match(pattern);
-      if (match) {
-        return {
-          isVersionQuery: true,
-          documentName: match[1].trim(),
-          version1: match[2],
-          version2: match[3]
-        };
-      }
-    }
-
-    return { isVersionQuery: false };
+    const lowerQuery = query.toLowerCase();
+    return keywords.some(keyword => lowerQuery.includes(keyword));
   }
 
-  // IMPROVED: Better context compression with relevance preservation
   private compress(chunks: RetrievedChunk[], maxTokens: number = 4000): RetrievedChunk[] {
     let totalTokens = 0;
     const compressed: RetrievedChunk[] = [];
 
-    // Sort by relevance score (rerank_score > similarity)
     const sorted = [...chunks].sort((a, b) => {
       const scoreA = Math.min(a.rerank_score ?? a.similarity, 1);
       const scoreB = Math.min(b.rerank_score ?? b.similarity, 1);
@@ -214,18 +200,15 @@ export class QueryService {
     return compressed;
   }
 
-  // IMPROVED: Better deduplication with content similarity
   private removeDuplicates(chunks: RetrievedChunk[]): RetrievedChunk[] {
     const seen = new Set<string>();
     const result: RetrievedChunk[] = [];
 
     for (const chunk of chunks) {
-      // Use first 200 chars for better dedup
       const key = chunk.content.substring(0, 200).trim();
 
       if (seen.has(key)) continue;
 
-      // Check for high overlap with existing chunks
       let isDuplicate = false;
       for (const existing of result) {
         const overlap = this.calculateOverlap(chunk.content, existing.content);
@@ -244,155 +227,115 @@ export class QueryService {
     return result;
   }
 
-  // Helper: Calculate content overlap
-  private calculateOverlap(str1: string, str2: string): number {
-    const tokens1 = new Set(str1.toLowerCase().split(/\s+/));
-    const tokens2 = new Set(str2.toLowerCase().split(/\s+/));
+  private calculateOverlap(text1: string, text2: string): number {
+    const tokens1 = new Set(text1.toLowerCase().split(/\s+/));
+    const tokens2 = new Set(text2.toLowerCase().split(/\s+/));
     const intersection = new Set([...tokens1].filter(x => tokens2.has(x)));
-    const union = new Set([...tokens1, ...tokens2]);
-    return intersection.size / union.size;
+    const minSize = Math.min(tokens1.size, tokens2.size);
+    return minSize > 0 ? intersection.size / minSize : 0;
   }
 
-  // IMPROVED: Hybrid search with better scoring
-  private async hybridSearch(query: string, options: HybridSearchOptions = {}): Promise<RetrievedChunk[]> {
-    const {
-      topK = 10,
-      vectorWeight = 0.7,
-      keywordWeight = 0.3,
-      minVectorSimilarity = 0.05,
-      vectorTopK = 80,
-      keywordTopK = 50,
-      useBM25 = true,
-      bm25Params
-    } = options;
-
-    if (bm25Params) this.bm25Scorer = new BM25Scorer(bm25Params);
-
-    const queries = await this.queryRewriter.rewrite(query);
-    const vectorResults: Array<RetrievedChunk & { id?: string }> = [];
-
-    for (const q of queries) {
-      const embedding = await embeddings.embedQuery(q);
-      const result = await pool.query(
-        `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
-                d.id as document_id, d.name as document_name, d.version as document_version,
-                d.type as document_type, d.upload_date,
-                1 - (c.embedding <=> $1::vector) as similarity
-         FROM chunks c
-         JOIN documents d ON c.document_id = d.id
-         WHERE d.is_latest = true AND c.embedding IS NOT NULL
-         ORDER BY c.embedding <=> $1::vector
-         LIMIT $2`,
-        [JSON.stringify(embedding), vectorTopK]
-      );
-      vectorResults.push(...result.rows);
-    }
-
-    const vectorMap = new Map<string, RetrievedChunk>();
-    for (const r of vectorResults) {
-      if (r.similarity < minVectorSimilarity) continue;
-
-      const key = r.id || `${r.document_id}_${r.chunk_index}`;
-      if (!vectorMap.has(key) || (vectorMap.get(key)!.similarity < r.similarity)) {
-        vectorMap.set(key, {
-          ...r,
-          vector_score: r.similarity,
-          keyword_score: 0,
-          similarity: r.similarity
-        });
-      }
-    }
-
-    let keywordResults: Array<RetrievedChunk & { id: string }> = [];
-    if (useBM25) {
-      keywordResults = await this.bm25Scorer.score(query, keywordTopK);
-      this.bm25Scorer.normalizeScores(keywordResults);
-    }
-
-    for (const r of keywordResults) {
-      const key = r.id;
-      if (vectorMap.has(key)) {
-        const existing = vectorMap.get(key)!;
-        existing.keyword_score = r.similarity;
-        existing.similarity = (existing.vector_score || 0) * vectorWeight + r.similarity * keywordWeight;
-      } else {
-        vectorMap.set(key, {
-          ...r,
-          keyword_score: r.similarity,
-          vector_score: 0,
-          similarity: r.similarity * keywordWeight
-        });
-      }
-    }
-
-    const combined = Array.from(vectorMap.values());
-    return combined.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
-  }
-
-  private async search(query: string, topK: number = 20): Promise<RetrievedChunk[]> {
-    return this.hybridSearch(query, {
-      topK,
-      vectorWeight: 0.7,
-      keywordWeight: 0.3,
-      minVectorSimilarity: 0.05,
-      vectorTopK: 80,
-      keywordTopK: 50,
-      useBM25: true
-    });
-  }
-
-  private async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
-    const normalizeScore = (score: number) => Math.max(0, Math.min(score, 1));
-
-    if (chunks.length === 0) {
-      return {
-        answer: 'No relevant information found in the knowledge base.',
-        citations: [],
-        confidence: 0,
-      };
-    }
-
-    const bestScore = normalizeScore(
-      chunks[0].rerank_score ?? chunks[0].similarity
+  async vectorSearch(queryEmbedding: number[], topK: number = 20): Promise<RetrievedChunk[]> {
+    const result = await pool.query(
+      `SELECT c.content, c.section_name, c.page_number, c.chunk_index,
+              d.name as document_name, d.id as document_id, d.version as document_version,
+              d.type as document_type, d.upload_date,
+              1 - (c.embedding <=> $1::vector) as similarity
+       FROM chunks c
+       JOIN documents d ON c.document_id = d.id
+       WHERE d.is_latest = true
+       ORDER BY c.embedding <=> $1::vector
+       LIMIT $2`,
+      [JSON.stringify(queryEmbedding), topK]
     );
 
-    const avgScore =
-      chunks.reduce(
-        (sum, c) => sum + normalizeScore(c.rerank_score ?? c.similarity),
-        0
-      ) / chunks.length;
+    return result.rows.map(row => ({
+      ...row,
+      vector_score: row.similarity
+    }));
+  }
 
-    if (bestScore < 0.15) {
-      return {
-        answer: 'The information in the knowledge base does not seem directly relevant to your query. Please try rephrasing or providing more context.',
-        citations: [],
-        confidence: Math.round(bestScore * 100),
-      };
+  async search(query: string, topK: number = 20, options?: HybridSearchOptions): Promise<RetrievedChunk[]> {
+    const opts = {
+      vectorWeight: 0.6,
+      keywordWeight: 0.4,
+      minVectorSimilarity: 0.1,
+      vectorTopK: Math.ceil(topK * 1.5),
+      keywordTopK: Math.ceil(topK * 1.5),
+      useBM25: true,
+      ...options
+    };
+
+    const [queryEmbedding, keywordResults] = await Promise.all([
+      embeddings.embedQuery(query),
+      opts.useBM25 ? this.bm25Scorer.score(query, opts.keywordTopK) : Promise.resolve([])
+    ]);
+
+    const vectorResults = await this.vectorSearch(queryEmbedding, opts.vectorTopK);
+
+    this.bm25Scorer.normalizeScores(keywordResults);
+
+    const normalizeVector = (score: number) => Math.max(0, Math.min(1, score));
+    vectorResults.forEach(r => r.similarity = normalizeVector(r.similarity));
+
+    const combined = new Map<string, RetrievedChunk>();
+
+    for (const result of vectorResults) {
+      if (result.similarity >= opts.minVectorSimilarity) {
+        const key = `${result.document_name}-${result.chunk_index}`;
+        combined.set(key, {
+          ...result,
+          similarity: result.similarity * opts.vectorWeight,
+          vector_score: result.similarity,
+          keyword_score: 0
+        });
+      }
     }
+
+    for (const result of keywordResults) {
+      const key = `${result.document_name}-${result.chunk_index}`;
+      const existing = combined.get(key);
+
+      if (existing) {
+        existing.similarity += result.similarity * opts.keywordWeight;
+        existing.keyword_score = result.similarity;
+      } else {
+        combined.set(key, {
+          ...result,
+          similarity: result.similarity * opts.keywordWeight,
+          vector_score: 0,
+          keyword_score: result.similarity
+        });
+      }
+    }
+
+    const results = Array.from(combined.values())
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, topK);
+
+    return results;
+  }
+
+  async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
+    const normalizeScore = (score: number) => Math.max(0, Math.min(1, score));
+
+    const bestScore = chunks.length > 0
+      ? Math.max(...chunks.map(c => normalizeScore(c.rerank_score ?? c.similarity)))
+      : 0;
+
+    const avgScore = chunks.length > 0
+      ? chunks.reduce((sum, c) => sum + normalizeScore(c.rerank_score ?? c.similarity), 0) / chunks.length
+      : 0;
 
     const context = chunks
       .map((chunk, idx) => {
-        const score = normalizeScore(
-          chunk.rerank_score ?? chunk.similarity
-        );
-        let qualityNote = `[Relevance: ${(score * 100).toFixed(0)}%]`;
+        const score = normalizeScore(chunk.rerank_score ?? chunk.similarity);
+        const confidence = score > 0.7 ? 'High Confidence' : score > 0.4 ? 'Medium Confidence' : 'Low Confidence';
 
-        if (chunk.vector_score && chunk.keyword_score) {
-          if (chunk.vector_score > 0.1 && chunk.keyword_score > 0.1) {
-            qualityNote += ' [High Confidence: Semantic + Keyword Match]';
-          } else if (chunk.vector_score > 0.1) {
-            qualityNote += ' [Semantic Match]';
-          } else {
-            qualityNote += ' [Keyword Match]';
-          }
-        }
-
-        let versionInfo = '';
-        if (chunk.document_version) {
-          versionInfo = ` (v${chunk.document_version})`;
-        }
-
-        return `[${idx + 1}] ${chunk.content}\n📄 Source: ${chunk.document_name}${versionInfo} ${qualityNote}`;
+        return `[${idx + 1}] ${confidence} (Score: ${score.toFixed(2)})
+Document: ${chunk.document_name} (v${chunk.document_version || 'N/A'})
+Section: ${chunk.section_name || 'N/A'} | Page: ${chunk.page_number || 'N/A'}
+Content: ${chunk.content}`;
       })
       .join('\n\n---\n\n');
 
@@ -479,21 +422,20 @@ Answer (be specific and cite sources):`;
     };
   }
 
-  // IMPROVED: Main query processing with version detection
+  /**
+   * ENHANCED: Main query processing with intelligent version comparison
+   */
   async processQuery(query: string, debug: boolean = true): Promise<QueryResult> {
     console.log('\n🔍 Starting query processing:', query);
 
-    // Check if this is a version comparison query
-    const versionQuery = this.detectVersionQuery(query);
+    // Check if this might be a version comparison query
+    if (this.isVersionComparisonQuery(query)) {
+      console.log('🔄 Potential version comparison detected, attempting intelligent parsing...');
 
-    if (versionQuery.isVersionQuery) {
-      console.log('🔄 Detected version comparison query');
-      try {
-        const comparison = await this.documentService.compareVersionsDetailed(
-          versionQuery.documentName!,
-          versionQuery.version1!,
-          versionQuery.version2!
-        );
+      const result = await this.versionComparisonService.processComparison(query);
+
+      if (result.success) {
+        const comparison = result.comparison;
 
         const answer = `# Version Comparison: ${comparison.document_name}
 
@@ -520,30 +462,25 @@ ${comparison.summary}
 ## Impact Analysis
 
 ${comparison.impact_analysis?.high_impact_changes && comparison.impact_analysis.high_impact_changes.length > 0 ? `### ⚠️ High Impact Changes
-${comparison.impact_analysis.high_impact_changes.slice(0, 5).map(c => `- ${c}`).join('\n')}` : ''}
+${comparison.impact_analysis.high_impact_changes.slice(0, 5).map((c: string) => `- ${c}`).join('\n')}` : ''}
 
 ${comparison.impact_analysis?.medium_impact_changes && comparison.impact_analysis.medium_impact_changes.length > 0 ? `\n### 🔶 Medium Impact Changes
-${comparison.impact_analysis.medium_impact_changes.slice(0, 3).map(c => `- ${c}`).join('\n')}` : ''}
+${comparison.impact_analysis.medium_impact_changes.slice(0, 3).map((c: string) => `- ${c}`).join('\n')}` : ''}
 
 ${comparison.impact_analysis?.low_impact_changes && comparison.impact_analysis.low_impact_changes.length > 0 ? `\n### 🔷 Low Impact Changes  
-${comparison.impact_analysis.low_impact_changes.slice(0, 2).map(c => `- ${c}`).join('\n')}` : ''}`;
-
+${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `- ${c}`).join('\n')}` : ''}`;
         return {
           answer,
           citations: [],
           confidence: 100
         };
-      } catch (error: any) {
-        console.error('Version comparison error:', error);
-        return {
-          answer: `❌ **Failed to compare versions**\n\n${error.message}\n\nPlease ensure both versions exist in the system.`,
-          citations: [],
-          confidence: 0
-        };
+      } else if (result.error) {
+        // If it looked like a comparison but failed, fall through to regular RAG
+        console.log('⚠️ Version comparison parsing failed, falling back to RAG:', result.error);
       }
     }
 
-    // Rest of existing processQuery code...
+    // Regular RAG query processing
     const results = await this.search(query, 30);
 
     if (debug) {

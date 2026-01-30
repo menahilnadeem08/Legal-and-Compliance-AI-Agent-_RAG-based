@@ -61,6 +61,122 @@ export interface VersionComparisonDetailed {
 }
 
 export class DocumentService {
+  /**
+   * FUZZY DOCUMENT NAME MATCHING
+   * Finds document by partial or approximate name
+   */
+  async findDocumentByName(userInput: string): Promise<string | null> {
+    // Try exact match first (case-insensitive)
+    const exact = await pool.query(
+      'SELECT DISTINCT name FROM documents WHERE LOWER(name) = LOWER($1) LIMIT 1',
+      [userInput]
+    );
+    if (exact.rows.length > 0) return exact.rows[0].name;
+
+    // Try partial match (contains)
+    const partial = await pool.query(
+      'SELECT DISTINCT name FROM documents WHERE LOWER(name) LIKE LOWER($1) LIMIT 1',
+      [`%${userInput}%`]
+    );
+    if (partial.rows.length > 0) return partial.rows[0].name;
+
+    // Try fuzzy match using similarity (requires pg_trgm extension)
+    try {
+      const fuzzy = await pool.query(
+        `SELECT name, similarity(LOWER(name), LOWER($1)) as score 
+         FROM documents 
+         WHERE similarity(LOWER(name), LOWER($1)) > 0.3
+         ORDER BY score DESC 
+         LIMIT 1`,
+        [userInput]
+      );
+      
+      if (fuzzy.rows.length > 0) return fuzzy.rows[0].name;
+    } catch (error) {
+      console.warn('Similarity search failed (pg_trgm not enabled?):', error);
+    }
+
+    return null;
+  }
+
+  /**
+   * GET SIMILAR DOCUMENT NAMES (for suggestions)
+   */
+  async getSimilarDocuments(userInput: string): Promise<string[]> {
+    const result = await pool.query(
+      `SELECT DISTINCT name FROM documents 
+       WHERE LOWER(name) LIKE LOWER($1) 
+       ORDER BY name LIMIT 5`,
+      [`%${userInput}%`]
+    );
+    return result.rows.map(r => r.name);
+  }
+
+  /**
+   * INTELLIGENT VERSION RESOLUTION
+   * Supports: exact versions, "latest", "previous", partial versions (e.g., "2" matches "2.4")
+   */
+  async resolveVersion(documentName: string, versionInput: string): Promise<string | null> {
+    // First find the actual document name
+    const actualName = await this.findDocumentByName(documentName);
+    if (!actualName) return null;
+
+    const normalizedVersion = versionInput.toLowerCase().trim();
+
+    // Handle "latest" keyword
+    if (normalizedVersion === 'latest' || normalizedVersion === 'current') {
+      const result = await pool.query(
+        'SELECT version FROM documents WHERE name = $1 AND is_latest = true',
+        [actualName]
+      );
+      return result.rows[0]?.version || null;
+    }
+
+    // Handle "previous" or "old" keyword
+    if (normalizedVersion === 'previous' || normalizedVersion === 'old' || normalizedVersion === 'older') {
+      const result = await pool.query(
+        `SELECT version FROM documents 
+         WHERE name = $1 AND is_latest = false 
+         ORDER BY upload_date DESC LIMIT 1`,
+        [actualName]
+      );
+      return result.rows[0]?.version || null;
+    }
+
+    // Try exact version match
+    const exact = await pool.query(
+      'SELECT version FROM documents WHERE name = $1 AND version = $2',
+      [actualName, versionInput]
+    );
+    if (exact.rows.length > 0) return exact.rows[0].version;
+
+    // Try partial version matching (e.g., "2" matches "2.4")
+    const partial = await pool.query(
+      `SELECT version FROM documents 
+       WHERE name = $1 AND version LIKE $2 
+       ORDER BY version DESC LIMIT 1`,
+      [actualName, `${versionInput}%`]
+    );
+    
+    return partial.rows[0]?.version || null;
+  }
+
+  /**
+   * GET ALL VERSIONS OF A DOCUMENT (for suggestions)
+   */
+  async getDocumentVersions(documentName: string): Promise<string[]> {
+    const actualName = await this.findDocumentByName(documentName);
+    if (!actualName) return [];
+
+    const result = await pool.query(
+      `SELECT version FROM documents 
+       WHERE name = $1 
+       ORDER BY upload_date DESC`,
+      [actualName]
+    );
+    return result.rows.map(r => r.version);
+  }
+
   async listDocuments() {
     const result = await pool.query(
       `SELECT id, name, type, version, upload_date, is_latest 
@@ -254,22 +370,24 @@ export class DocumentService {
   }
 
   /**
-   * Generate AI summary of changes between versions
+   * Generate AI-powered change summary
    */
   private async generateChangeSummary(changes: ChunkComparison[]): Promise<string> {
-    const significantChanges = changes.filter(c => c.change_type !== 'unchanged').slice(0, 10);
+    const significantChanges = changes.filter(c => 
+      c.change_type !== 'unchanged' && 
+      (c.section_name || c.page_number)
+    ).slice(0, 10);
 
     if (significantChanges.length === 0) {
       return 'No significant changes detected between versions.';
     }
 
     const changesText = significantChanges.map((change, idx) => {
-      const section = change.section_name ? `Section: ${change.section_name}` : `Page ${change.page_number || 'N/A'}`;
-
+      const section = change.section_name || `Page ${change.page_number}`;
       if (change.change_type === 'added') {
-        return `${idx + 1}. [ADDED] ${section}\nNew content: "${change.new_content?.substring(0, 200)}..."`;
+        return `${idx + 1}. [ADDED] ${section}\n"${change.new_content?.substring(0, 150)}..."`;
       } else if (change.change_type === 'removed') {
-        return `${idx + 1}. [REMOVED] ${section}\nOld content: "${change.old_content?.substring(0, 200)}..."`;
+        return `${idx + 1}. [REMOVED] ${section}\n"${change.old_content?.substring(0, 150)}..."`;
       } else if (change.change_type === 'modified') {
         return `${idx + 1}. [MODIFIED] ${section}\nOld: "${change.old_content?.substring(0, 150)}..."\nNew: "${change.new_content?.substring(0, 150)}..."`;
       }
