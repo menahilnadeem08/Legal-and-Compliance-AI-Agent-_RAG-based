@@ -12,9 +12,10 @@ import {
 } from '../controllers/documentController';
 
 const router = express.Router();
+import { agentQuery } from '../controllers/agentController';
 
 // Query endpoint
-router.post('/query', queryController);
+router.post('/query', agentQuery);
 
 // Upload endpoint
 router.post('/upload', uploadMiddleware, uploadController);
