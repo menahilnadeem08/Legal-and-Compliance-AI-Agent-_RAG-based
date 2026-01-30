@@ -33,6 +33,158 @@ export class LegalComplianceAgent {
   }
 
   /**
+   * UNIVERSAL CITATION EXTRACTION
+   * Extracts citations from any tool result
+   */
+  private extractUniversalCitations(toolName: string, result: any): any[] {
+    const citations: any[] = [];
+
+    switch (toolName) {
+      case "search_documents":
+        // RAG search already has citations
+        return result.citations || [];
+
+      case "compare_document_versions":
+        return this.extractVersionCitations(result);
+
+      case "detect_policy_conflicts":
+        return this.extractConflictCitations(result);
+
+      case "list_available_documents":
+        return this.extractDocumentListCitations(result);
+
+      case "get_document_versions":
+        return this.extractVersionListCitations(result);
+
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Extract citations from version comparison results
+   */
+  private extractVersionCitations(comparison: any): any[] {
+    if (!comparison.changes || comparison.changes.length === 0) {
+      return [];
+    }
+
+    const citations: any[] = [];
+    const significantChanges = comparison.changes.filter(
+      (c: any) => c.change_type !== 'unchanged'
+    ).slice(0, 10); // Top 10 changes
+
+    for (const change of significantChanges) {
+      if (change.change_type === 'added' && change.new_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: comparison.version2.version,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'ADDED',
+          content: change.new_content.substring(0, 200) + '...',
+          relevance_score: 1.0
+        });
+      }
+
+      if (change.change_type === 'removed' && change.old_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: comparison.version1.version,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'REMOVED',
+          content: change.old_content.substring(0, 200) + '...',
+          relevance_score: 1.0
+        });
+      }
+
+      if (change.change_type === 'modified' && change.old_content && change.new_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: `${comparison.version1.version} → ${comparison.version2.version}`,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'MODIFIED',
+          content: `OLD: ${change.old_content.substring(0, 100)}... | NEW: ${change.new_content.substring(0, 100)}...`,
+          relevance_score: 1.0
+        });
+      }
+    }
+
+    return citations;
+  }
+
+  /**
+   * Extract citations from conflict detection results
+   */
+  private extractConflictCitations(conflictResult: any): any[] {
+    if (!conflictResult.conflicts || conflictResult.conflicts.length === 0) {
+      return [];
+    }
+
+    const citations: any[] = [];
+
+    for (const conflict of conflictResult.conflicts) {
+      // Citation for document A
+      citations.push({
+        document_name: conflict.document_a.name,
+        version: conflict.document_a.version,
+        section: conflict.document_a.section || 'N/A',
+        page: conflict.document_a.page || null,
+        conflict_type: conflict.conflict_type,
+        severity: conflict.severity,
+        content: conflict.document_a.excerpt,
+        relevance_score: conflict.severity === 'high' ? 1.0 : conflict.severity === 'medium' ? 0.7 : 0.4
+      });
+
+      // Citation for document B
+      citations.push({
+        document_name: conflict.document_b.name,
+        version: conflict.document_b.version,
+        section: conflict.document_b.section || 'N/A',
+        page: conflict.document_b.page || null,
+        conflict_type: conflict.conflict_type,
+        severity: conflict.severity,
+        content: conflict.document_b.excerpt,
+        relevance_score: conflict.severity === 'high' ? 1.0 : conflict.severity === 'medium' ? 0.7 : 0.4
+      });
+    }
+
+    return citations;
+  }
+
+  /**
+   * Extract citations from document list
+   */
+  private extractDocumentListCitations(documentList: any[]): any[] {
+    return documentList.slice(0, 10).map((doc: any) => ({
+      document_name: doc.name,
+      version: doc.latest_version,
+      type: doc.type,
+      available_versions: doc.versions.join(', '),
+      content: `Document: ${doc.name} | Type: ${doc.type} | Latest: v${doc.latest_version}`,
+      relevance_score: 0.9
+    }));
+  }
+
+  /**
+   * Extract citations from version list
+   */
+  private extractVersionListCitations(versionResult: any): any[] {
+    if (!versionResult.versions || versionResult.versions.length === 0) {
+      return [];
+    }
+
+    return [{
+      document_name: versionResult.document_name,
+      available_versions: versionResult.versions.join(', '),
+      content: `Available versions of ${versionResult.document_name}: ${versionResult.versions.join(', ')}`,
+      relevance_score: 0.9
+    }];
+  }
+
+  /**
    * Define available tools for the agent
    */
   private getTools() {
@@ -214,7 +366,7 @@ export class LegalComplianceAgent {
     }
 
     // Store full result for later citation extraction
-    this.toolResultsMetadata.set(toolCallId, result);
+    this.toolResultsMetadata.set(toolCallId, { toolName, result });
 
     switch (toolName) {
       case "search_documents":
@@ -230,7 +382,8 @@ Document: ${result.document_name}
 Versions: ${result.version1.version} → ${result.version2.version}
 Changes: ${result.statistics.chunks_added} added, ${result.statistics.chunks_removed} removed, ${result.statistics.chunks_modified} modified
 Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
-Summary: ${result.summary}`
+Summary: ${result.summary}`,
+          citations: this.extractVersionCitations(result)
         };
 
       case "detect_policy_conflicts":
@@ -242,19 +395,22 @@ Summary: ${result.summary}
 ${result.conflicts.map((c: any, i: number) => 
   `\nConflict ${i+1} [${c.severity}]: ${c.description}`
 ).join('')}`,
-          conflicts: result.conflicts
+          conflicts: result.conflicts,
+          citations: this.extractConflictCitations(result)
         };
 
       case "list_available_documents":
         return {
           text: `Available Documents:\n${result.map((d: any) => 
             `- ${d.name} (${d.type}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
-          ).join('\n')}`
+          ).join('\n')}`,
+          citations: this.extractDocumentListCitations(result)
         };
 
       case "get_document_versions":
         return {
-          text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`
+          text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`,
+          citations: this.extractVersionListCitations(result)
         };
 
       default:
@@ -265,7 +421,7 @@ ${result.conflicts.map((c: any, i: number) =>
   }
 
   /**
-   * Main agent processing with function calling and citation tracking
+   * Main agent processing with function calling and UNIVERSAL citation tracking
    */
   async processQuery(userQuery: string, maxIterations: number = 5): Promise<AgentResult> {
     console.log('\n🤖 Legal Compliance Agent starting...');
@@ -347,8 +503,9 @@ When citing sources from search results:
           const result = await this.executeTool(toolName, toolArgs);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
-          // Collect citations and conflicts
+          // UNIVERSAL CITATION COLLECTION
           if (formattedResult.citations) {
+            console.log(`  ✓ Collected ${formattedResult.citations.length} citations from ${toolName}`);
             allCitations.push(...formattedResult.citations);
           }
           if (formattedResult.conflicts) {
@@ -389,26 +546,30 @@ When citing sources from search results:
       new Map(allCitations.map(c => [JSON.stringify(c), c])).values()
     );
 
+    console.log(`\n📚 Total citations collected: ${uniqueCitations.length}`);
+
     // Calculate actual confidence from tool results
     let aggregatedConfidence = 0;
 
     // Extract confidence from tool results
-    for (const [toolCallId, result] of this.toolResultsMetadata.entries()) {
-      if (result.confidence !== undefined) {
-        aggregatedConfidence = Math.max(aggregatedConfidence, result.confidence);
+    for (const [toolCallId, metadata] of this.toolResultsMetadata.entries()) {
+      if (metadata.result?.confidence !== undefined) {
+        aggregatedConfidence = Math.max(aggregatedConfidence, metadata.result.confidence);
       }
     }
 
     // If no confidence found, estimate based on evidence
     if (aggregatedConfidence === 0) {
-      if (uniqueCitations.length >= 3) {
-        aggregatedConfidence = 85;  // Multiple citations = high confidence
+      if (uniqueCitations.length >= 5) {
+        aggregatedConfidence = 90;  // Many citations = high confidence
+      } else if (uniqueCitations.length >= 3) {
+        aggregatedConfidence = 80;  // Several citations = good confidence
       } else if (uniqueCitations.length >= 1) {
         aggregatedConfidence = 70;  // Some citations = medium confidence
       } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
         aggregatedConfidence = 95; // Listing operations are always accurate
       } else {
-        aggregatedConfidence = 50; // Default uncertain
+        aggregatedConfidence = 60; // Default moderate confidence
       }
     }
 

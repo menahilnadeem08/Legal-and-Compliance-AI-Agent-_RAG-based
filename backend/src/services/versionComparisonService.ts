@@ -15,6 +15,64 @@ export class VersionComparisonService {
   }
 
   /**
+   * Extract citations from version comparison changes
+   */
+  private extractCitations(comparison: any): any[] {
+    if (!comparison.changes || comparison.changes.length === 0) {
+      return [];
+    }
+
+    const citations: any[] = [];
+    const significantChanges = comparison.changes.filter(
+      (c: any) => c.change_type !== 'unchanged'
+    );
+
+    // Get top 10 most significant changes for citations
+    const topChanges = significantChanges.slice(0, 10);
+
+    for (const change of topChanges) {
+      // Create citation for added content
+      if (change.change_type === 'added' && change.new_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: comparison.version2.version,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'ADDED',
+          content: change.new_content.substring(0, 200) + '...'
+        });
+      }
+
+      // Create citation for removed content
+      if (change.change_type === 'removed' && change.old_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: comparison.version1.version,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'REMOVED',
+          content: change.old_content.substring(0, 200) + '...'
+        });
+      }
+
+      // Create citation for modified content (show both versions)
+      if (change.change_type === 'modified' && change.old_content && change.new_content) {
+        citations.push({
+          document_name: comparison.document_name,
+          version: `${comparison.version1.version} → ${comparison.version2.version}`,
+          section: change.section_name || 'N/A',
+          page: change.page_number || null,
+          change_type: 'MODIFIED',
+          old_content: change.old_content.substring(0, 150) + '...',
+          new_content: change.new_content.substring(0, 150) + '...'
+        });
+      }
+    }
+
+    return citations;
+  }
+
+  /**
    * Parse natural language version comparison requests
    * Examples:
    * - "compare privacy policy version 2.4 and 1.4"
@@ -68,7 +126,7 @@ Return ONLY the JSON object or null, nothing else.`;
   }
 
   /**
-   * Process intelligent version comparison with fuzzy matching
+   * Process intelligent version comparison with fuzzy matching and citations
    */
   async processComparison(userQuery: string): Promise<any> {
     // Parse the user query
@@ -116,9 +174,15 @@ Return ONLY the JSON object or null, nothing else.`;
         resolvedV2
       );
       
+      // Extract citations from changes
+      const citations = this.extractCitations(comparison);
+      
       return {
         success: true,
-        comparison
+        comparison: {
+          ...comparison,
+          citations // Add citations to the comparison result
+        }
       };
     } catch (error: any) {
       return {
