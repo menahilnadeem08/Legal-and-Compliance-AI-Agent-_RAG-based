@@ -1,5 +1,4 @@
 import express from 'express';
-import { queryController } from '../controllers/queryController';
 import { uploadController, uploadMiddleware } from '../controllers/uploadController';
 import { 
   listDocuments, 
