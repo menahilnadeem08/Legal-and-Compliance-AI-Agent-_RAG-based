@@ -316,6 +316,44 @@ export class QueryService {
     return results;
   }
 
+  private async validateAnswer(
+    answer: string,
+    chunks: RetrievedChunk[]
+  ): Promise<{ valid: boolean; reason?: string }> {
+    // 1. Must have citations
+    if (!/\[\d+\]/.test(answer)) {
+      return { valid: false, reason: "Answer lacks source citations" };
+    }
+
+    // 2. Check for speculative language (not allowed in legal)
+    const speculative = [
+      'might', 'could', 'possibly', 'perhaps', 'maybe',
+      'likely', 'probably', 'seems', 'appears to', 'suggests'
+    ];
+    
+    const lowerAnswer = answer.toLowerCase();
+    for (const word of speculative) {
+      if (lowerAnswer.includes(word)) {
+        return { 
+          valid: false, 
+          reason: `Contains speculative language: "${word}" - legal answers must be definitive` 
+        };
+      }
+    }
+
+    // 3. Check if answer explicitly says "I don't know" - these are valid
+    const uncertainPhrases = [
+      'i cannot find', 'i don\'t know', 'not available',
+      'insufficient information', 'no information', 'based on the available documents'
+    ];
+    
+    if (uncertainPhrases.some(phrase => lowerAnswer.includes(phrase))) {
+      return { valid: true }; // Valid "I don't know" responses
+    }
+
+    return { valid: true };
+  }
+
   async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
     const normalizeScore = (score: number) => Math.max(0, Math.min(1, score));
 
@@ -362,6 +400,16 @@ Answer (be specific and cite sources):`;
     const response = await llm.invoke(prompt);
     const answer = response.content.toString();
 
+    // Validate answer before processing citations
+    const validation = await this.validateAnswer(answer, chunks);
+    if (!validation.valid) {
+      return {
+        answer: `I cannot provide a confident answer based on the available documents. ${validation.reason || ''}`,
+        citations: [],
+        confidence: 0
+      };
+    }
+
     const citedIndices = new Set<number>();
     const citationMatches = answer.matchAll(/\[(\d+)\]/g);
     for (const match of citationMatches) {
@@ -387,24 +435,30 @@ Answer (be specific and cite sources):`;
     }
 
     const topScore = normalizeScore(bestScore);
-    const avgChunkScore = normalizeScore(avgScore);
 
-    let confidence = (topScore * 0.6 + avgChunkScore * 0.4) * 100;
+    // Use topScore as primary indicator (most relevant chunk quality)
+    let confidence = topScore * 100;
 
+    // Small bonuses for supporting signals
     const relevantCount = chunks.filter(
       c => normalizeScore(c.rerank_score ?? c.similarity) > 0.3
     ).length;
-    const countBonus = Math.min(relevantCount * 3, 15);
+    if (relevantCount >= 3) confidence += 5;  // Multiple good sources
 
     const hybridCount = chunks.filter(c =>
       (c.vector_score || 0) > 0.1 && (c.keyword_score || 0) > 0.1
     ).length;
-    const hybridBonus = Math.min(hybridCount * 5, 15);
+    if (hybridCount >= 2) confidence += 5;  // Vector + keyword agree
 
-    const citationBonus = Math.min(citations.length * 2, 10);
+    if (citations.length >= 2) confidence += 5;  // Well-cited answer
 
-    confidence = confidence + countBonus + hybridBonus + citationBonus;
-    confidence = Math.min(Math.max(confidence, 0), 100);
+    // Penalties for quality issues
+    if (citations.length === 0) {
+      confidence *= 0.5;  // No citations = major confidence drop
+    }
+
+    // Never claim perfect confidence (cap at 95)
+    confidence = Math.min(Math.max(confidence, 0), 95);
     const roundedConfidence = Math.round(confidence);
 
     if (roundedConfidence < 40 || bestScore < 0.2) {
