@@ -12,11 +12,18 @@ export interface AgentResult {
   reasoning?: string;
 }
 
+interface ToolResultWithMetadata {
+  text: string;
+  citations?: any[];
+  conflicts?: any[];
+}
+
 export class LegalComplianceAgent {
   private queryService: QueryService;
   private versionService: VersionComparisonService;
   private conflictService: ConflictDetectionService;
   private documentService: DocumentService;
+  private toolResultsMetadata: Map<string, any> = new Map();
 
   constructor(cohereApiKey?: string) {
     this.queryService = new QueryService(undefined, cohereApiKey);
@@ -197,56 +204,81 @@ export class LegalComplianceAgent {
   }
 
   /**
-   * Format tool results for the LLM
+   * Format tool results for the LLM - now returns structured data
    */
-  private formatToolResult(toolName: string, result: any): string {
+  private formatToolResult(toolName: string, result: any, toolCallId: string): ToolResultWithMetadata {
     if (result.error) {
-      return `Error executing ${toolName}: ${result.message}`;
+      return {
+        text: `Error executing ${toolName}: ${result.message}`
+      };
     }
+
+    // Store full result for later citation extraction
+    this.toolResultsMetadata.set(toolCallId, result);
 
     switch (toolName) {
       case "search_documents":
-        return `Search Results:\nAnswer: ${result.answer}\nConfidence: ${result.confidence}%\nCitations: ${result.citations?.length || 0}`;
+        return {
+          text: `Search Results:\nAnswer: ${result.answer}\nConfidence: ${result.confidence}%\nCitations: ${result.citations?.length || 0}`,
+          citations: result.citations
+        };
 
       case "compare_document_versions":
-        return `Version Comparison Results:
+        return {
+          text: `Version Comparison Results:
 Document: ${result.document_name}
 Versions: ${result.version1.version} → ${result.version2.version}
 Changes: ${result.statistics.chunks_added} added, ${result.statistics.chunks_removed} removed, ${result.statistics.chunks_modified} modified
 Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
-Summary: ${result.summary}`;
+Summary: ${result.summary}`
+        };
 
       case "detect_policy_conflicts":
-        return `Conflict Detection Results:
+        return {
+          text: `Conflict Detection Results:
 Documents: ${result.documents_analyzed.join(', ')}
 Conflicts Found: ${result.conflicts_found}
 Summary: ${result.summary}
 ${result.conflicts.map((c: any, i: number) => 
   `\nConflict ${i+1} [${c.severity}]: ${c.description}`
-).join('')}`;
+).join('')}`,
+          conflicts: result.conflicts
+        };
 
       case "list_available_documents":
-        return `Available Documents:\n${result.map((d: any) => 
-          `- ${d.name} (${d.type}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
-        ).join('\n')}`;
+        return {
+          text: `Available Documents:\n${result.map((d: any) => 
+            `- ${d.name} (${d.type}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
+          ).join('\n')}`
+        };
 
       case "get_document_versions":
-        return `Versions of ${result.document_name}:\n${result.versions.join(', ')}`;
+        return {
+          text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`
+        };
 
       default:
-        return JSON.stringify(result);
+        return {
+          text: JSON.stringify(result)
+        };
     }
   }
 
   /**
-   * Main agent processing with function calling
+   * Main agent processing with function calling and citation tracking
    */
   async processQuery(userQuery: string, maxIterations: number = 5): Promise<AgentResult> {
     console.log('\n🤖 Legal Compliance Agent starting...');
     console.log('📝 Query:', userQuery);
 
+    // Reset metadata storage
+    this.toolResultsMetadata.clear();
+
     const tools = this.getTools();
     const toolCalls: string[] = [];
+    const allCitations: any[] = [];
+    const allConflicts: any[] = [];
+
     let conversationHistory: any[] = [
       {
         role: "system",
@@ -266,10 +298,16 @@ When to use tools:
 - You can call multiple tools if needed to answer comprehensively
 
 Always:
-- Be precise and cite sources
+- Be precise and cite sources when available
+- Reference specific document sections, pages, or clauses
 - Acknowledge when information is unavailable
 - Explain your reasoning
-- Focus on compliance and legal implications`
+- Focus on compliance and legal implications
+
+When citing sources from search results:
+- Use format: [Document Name, Section/Page]
+- Example: "According to the Privacy Policy, Article 5..."
+- If citations are provided by tools, incorporate them naturally`
       },
       {
         role: "user",
@@ -307,13 +345,21 @@ Always:
           console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...)`);
 
           const result = await this.executeTool(toolName, toolArgs);
-          const formattedResult = this.formatToolResult(toolName, result);
+          const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
+
+          // Collect citations and conflicts
+          if (formattedResult.citations) {
+            allCitations.push(...formattedResult.citations);
+          }
+          if (formattedResult.conflicts) {
+            allConflicts.push(...formattedResult.conflicts);
+          }
 
           toolResults.push({
             tool_call_id: toolCall.id,
             role: "tool",
             name: toolName,
-            content: formattedResult
+            content: formattedResult.text
           });
         }
 
@@ -338,10 +384,16 @@ Always:
       finalAnswer = "I apologize, but I needed more iterations than allowed to fully answer your question. Please try rephrasing or breaking down your question.";
     }
 
+    // Deduplicate citations
+    const uniqueCitations = Array.from(
+      new Map(allCitations.map(c => [JSON.stringify(c), c])).values()
+    );
+
     return {
       answer: finalAnswer,
       tool_calls: toolCalls,
-      confidence: 90, // Could calculate based on tool results
+      citations: uniqueCitations.length > 0 ? uniqueCitations : undefined,
+      confidence: 90,
       reasoning: `Used ${toolCalls.length} tool(s): ${toolCalls.join(', ')}`
     };
   }
