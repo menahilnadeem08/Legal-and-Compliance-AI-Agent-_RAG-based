@@ -389,11 +389,34 @@ When citing sources from search results:
       new Map(allCitations.map(c => [JSON.stringify(c), c])).values()
     );
 
+    // Calculate actual confidence from tool results
+    let aggregatedConfidence = 0;
+
+    // Extract confidence from tool results
+    for (const [toolCallId, result] of this.toolResultsMetadata.entries()) {
+      if (result.confidence !== undefined) {
+        aggregatedConfidence = Math.max(aggregatedConfidence, result.confidence);
+      }
+    }
+
+    // If no confidence found, estimate based on evidence
+    if (aggregatedConfidence === 0) {
+      if (uniqueCitations.length >= 3) {
+        aggregatedConfidence = 85;  // Multiple citations = high confidence
+      } else if (uniqueCitations.length >= 1) {
+        aggregatedConfidence = 70;  // Some citations = medium confidence
+      } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
+        aggregatedConfidence = 95; // Listing operations are always accurate
+      } else {
+        aggregatedConfidence = 50; // Default uncertain
+      }
+    }
+
     return {
       answer: finalAnswer,
       tool_calls: toolCalls,
       citations: uniqueCitations.length > 0 ? uniqueCitations : undefined,
-      confidence: 90,
+      confidence: aggregatedConfidence,
       reasoning: `Used ${toolCalls.length} tool(s): ${toolCalls.join(', ')}`
     };
   }
