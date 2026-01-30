@@ -1,14 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 
-export default function FileUpload() {
+export default function FileUpload({ onUploadSuccess }: { onUploadSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [version, setVersion] = useState('1.0');
   const [type, setType] = useState('policy');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    // Reset the file input element
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    
+    // Reset all state
+    setFile(null);
+    setVersion('1.0');
+    setType('policy');
+  };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,11 +36,19 @@ export default function FileUpload() {
     setMessage('');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/upload', formData, {
+      await axios.post('http://localhost:5000/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      
       setMessage('Document uploaded successfully!');
-      setFile(null);
+      
+      // Reset the form
+      resetForm();
+      
+      // Trigger document list refresh
+      if (onUploadSuccess) {
+        onUploadSuccess();
+      }
     } catch (error) {
       setMessage('Upload failed. Check console for errors.');
       console.error(error);
@@ -42,6 +63,7 @@ export default function FileUpload() {
       <form onSubmit={handleUpload} className="space-y-4">
         <div>
           <input
+            ref={fileInputRef}
             type="file"
             id="file-upload"
             accept=".pdf,.docx"
