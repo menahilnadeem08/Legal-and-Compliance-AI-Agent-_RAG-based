@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadController, uploadMiddleware } from '../controllers/uploadController';
+import { uploadController, uploadMiddleware, uploadErrorCleanup } from '../controllers/uploadController';
 import { 
   listDocuments, 
   deleteDocument,
@@ -7,29 +7,76 @@ import {
   getOutdatedDocuments,
   checkForNewerVersion,
   compareVersions,
-  compareVersionsDetailed 
+  compareVersionsDetailed,
+  getSuggestions 
 } from '../controllers/documentController';
+import { agentQuery } from '../controllers/agentController';
+import { handleValidationErrors } from '../middleware/validation';
+import {
+  validateAgentQuery,
+  validateDocumentUpload,
+  validateGetVersionHistory,
+  validateCheckNewerVersion,
+  validateCompareVersions,
+  validateCompareVersionsDetailed,
+  validateDeleteDocument
+} from '../middleware/validationSchemas';
 
 const router = express.Router();
-import { agentQuery } from '../controllers/agentController';
 
-// Query endpoint
-router.post('/query', agentQuery);
+// ===== Agent/Query Endpoint =====
+router.post('/query', 
+  validateAgentQuery,
+  handleValidationErrors,
+  agentQuery
+);
 
-// Upload endpoint
-router.post('/upload', uploadMiddleware, uploadController);
+// ===== Document Upload =====
+router.post('/upload', 
+  uploadMiddleware,
+  validateDocumentUpload,
+  handleValidationErrors,
+  uploadController,
+  uploadErrorCleanup  // Error cleanup middleware
+);
 
-// Document management
+// ===== Document Management =====
 router.get('/documents', listDocuments);
 router.get('/documents/outdated', getOutdatedDocuments);
-router.get('/documents/versions/:name', getDocumentVersionHistory);
-router.get('/documents/:id/newer', checkForNewerVersion);
+router.get('/documents/suggestions', getSuggestions);
 
-// Version comparison
-router.get('/documents/compare', compareVersions);  
-router.get('/documents/compare/detailed', compareVersionsDetailed);  
+// Version history endpoint (must come before other :name routes)
+router.get('/documents/versions/:name',
+  validateGetVersionHistory,
+  handleValidationErrors,
+  getDocumentVersionHistory
+);
+
+// Version comparison endpoints
+router.get('/documents/compare/detailed',
+  validateCompareVersionsDetailed,
+  handleValidationErrors,
+  compareVersionsDetailed
+);
+
+router.get('/documents/compare',
+  validateCompareVersions,
+  handleValidationErrors,
+  compareVersions
+);
+
+// Check for newer version
+router.get('/documents/:id/newer',
+  validateCheckNewerVersion,
+  handleValidationErrors,
+  checkForNewerVersion
+);
 
 // Delete document
-router.delete('/documents/:id', deleteDocument);
+router.delete('/documents/:id',
+  validateDeleteDocument,
+  handleValidationErrors,
+  deleteDocument
+);
 
 export default router;
