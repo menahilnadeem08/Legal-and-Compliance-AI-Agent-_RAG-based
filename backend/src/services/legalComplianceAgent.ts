@@ -304,17 +304,21 @@ export class LegalComplianceAgent {
    * Execute tool functions
    */
   private async executeTool(toolName: string, args: any): Promise<any> {
-    console.log(`🔧 Executing tool: ${toolName}`, args);
+    const startTime = Date.now();
+    console.log(`🔧 [START] ${toolName} (args: ${JSON.stringify(args).substring(0, 60)}...)`);
 
     try {
       switch (toolName) {
         case "search_documents":
-          return await this.queryService.processQuery(args.query, false);
+          const searchResult = await this.queryService.processQuery(args.query, false);
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return searchResult;
 
         case "compare_document_versions":
           const versionResult = await this.versionService.processComparison(
             `compare ${args.document_name} version ${args.version1} and ${args.version2}`
           );
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           if (versionResult.success) {
             return versionResult.comparison;
           }
@@ -324,10 +328,13 @@ export class LegalComplianceAgent {
           const query = args.topic
             ? `Check conflicts between ${args.document1} and ${args.document2} regarding ${args.topic}`
             : `Check conflicts between ${args.document1} and ${args.document2}`;
-          return await this.conflictService.detectConflicts(query);
+          const conflictResult = await this.conflictService.detectConflicts(query);
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return conflictResult;
 
         case "list_available_documents":
           const docs = await this.documentService.listDocuments();
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           // Group by document name
           const grouped = docs.reduce((acc: any, doc: any) => {
             if (!acc[doc.name]) {
@@ -349,6 +356,7 @@ export class LegalComplianceAgent {
         case "get_document_versions":
           const versions = await this.documentService.getDocumentVersions(args.document_name);
           const resolvedName = await this.documentService.findDocumentByName(args.document_name);
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           return {
             document_name: resolvedName || args.document_name,
             versions: versions
@@ -519,19 +527,36 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       if (message.additional_kwargs?.tool_calls && message.additional_kwargs.tool_calls.length > 0) {
         console.log(`📞 LLM requesting ${message.additional_kwargs.tool_calls.length} tool call(s)`);
 
-        // Execute all requested tools
+        // Execute all requested tools IN PARALLEL for better performance
         const toolResults: any[] = [];
         
-        for (const toolCall of message.additional_kwargs.tool_calls) {
+        // Prepare all tool calls
+        const toolPromises = message.additional_kwargs.tool_calls.map(async (toolCall: any) => {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
           
           toolCalls.push(toolName);
-          console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...)`);
+          console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...) [PARALLEL]`);
 
+          // Execute in parallel
           const result = await this.executeTool(toolName, toolArgs);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
+          return {
+            toolCall,
+            toolName,
+            formattedResult
+          };
+        });
+
+        // Wait for all tools to complete
+        const startTime = Date.now();
+        const parallelResults = await Promise.all(toolPromises);
+        const elapsed = Date.now() - startTime;
+        console.log(`⚡ Parallel execution completed in ${elapsed}ms`);
+
+        // Collect results and citations
+        for (const { toolCall, toolName, formattedResult } of parallelResults) {
           // UNIVERSAL CITATION COLLECTION
           if (formattedResult.citations) {
             console.log(`  ✓ Collected ${formattedResult.citations.length} citations from ${toolName}`);
