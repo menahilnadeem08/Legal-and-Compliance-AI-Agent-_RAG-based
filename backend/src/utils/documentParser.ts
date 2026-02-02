@@ -30,17 +30,20 @@ export class DocumentParser {
     const trimmed = line.trim();
     if (!trimmed || trimmed.length < 3 || trimmed.length > 150) return false;
 
-    // Pattern 1: Article/Section/Chapter/Clause + number
-    if (/^(Article|Section|Chapter|Clause|Part)\s+[\dIVXivx]+/i.test(trimmed)) return true;
+    // Pattern 1: Article/Section/Chapter/Clause/Part + number
+    if (/^(Article|Section|Chapter|Clause|Part|Introduction|Conclusion|Abstract|Overview|Summary)\s+[\dIVXivx]+/i.test(trimmed)) return true;
     
-    // Pattern 2: Numbered headings (1., 2.1, etc)
-    if (/^\d+(\.\d+)*[\.\)]\s+[A-Z]/.test(trimmed)) return true;
+    // Pattern 2: Numbered/lettered headings (1., 2.1, A., B., etc)
+    if (/^[A-Z0-9][\.\)\-]\s+[A-Z]/.test(trimmed)) return true;
     
     // Pattern 3: ALL CAPS (15+ chars, 3+ words, not a sentence)
     if (trimmed === trimmed.toUpperCase() && 
         trimmed.length >= 15 && 
         trimmed.split(/\s+/).length >= 3 &&
         !/[.!?]$/.test(trimmed)) return true;
+    
+    // Pattern 4: Title Case with trailing colon and short (likely a heading)
+    if (/^[A-Z][A-Za-z\s]+:\s*$/.test(trimmed)) return true;
     
     return false;
   }
@@ -184,15 +187,36 @@ export class DocumentParser {
     console.log(result.value.substring(0, 300));
     console.log(`${'='.repeat(60)}\n`);
     
-    const chunks = this.sectionBasedChunk(result.value);
+    // Estimate pages based on content length (~3000 chars per page average)
+    // This is a heuristic for DOCX files which don't have explicit page breaks
+    const charsPerPage = 3000;
+    const estimatedPageCount = Math.ceil(result.value.length / charsPerPage);
+    
+    // Split content into estimated pages and chunk each
+    const allChunks: ChunkWithMetadata[] = [];
+    let currentCharIndex = 0;
+    
+    for (let pageNum = 1; pageNum <= estimatedPageCount; pageNum++) {
+      const pageStart = (pageNum - 1) * charsPerPage;
+      const pageEnd = pageNum * charsPerPage;
+      const pageText = result.value.substring(pageStart, pageEnd);
+      
+      if (pageText.trim().length > 0) {
+        const pageChunks = this.sectionBasedChunk(pageText, pageNum);
+        allChunks.push(...pageChunks);
+      }
+    }
 
-    const sectionsDetected = chunks.filter(c => c.section_name).length;
-    console.log(`\n✨ DOCX Processing Complete: ${chunks.length} total chunks, ${sectionsDetected} with sections\n`);
+    const sectionsDetected = allChunks.filter(c => c.section_name).length;
+    console.log(`\n✨ DOCX Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections`);
+    console.log(`📄 Estimated pages: ${estimatedPageCount} (based on ~${charsPerPage} chars/page)\n`);
+
+    const fullText = allChunks.map(c => c.content).join('\n\n');
 
     return {
-      text: result.value,
-      chunks,
-      metadata: {},
+      text: fullText,
+      chunks: allChunks,
+      metadata: { pageCount: estimatedPageCount },
     };
   }
 
