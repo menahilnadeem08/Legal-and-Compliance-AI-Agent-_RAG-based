@@ -66,7 +66,16 @@ class BM25Scorer {
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
       .filter(t => t.length > 2)
-      .map(t => t.replace(/(ing|ed|s|es|d)$/, '')); // Basic stemming
+      .map(t => {
+        // Better stemming: only remove common plurals/verb endings
+        // Avoid removing important letters like 'e' in 'leave'
+        return t
+          .replace(/ies$/, 'i')  // policies -> polici
+          .replace(/es$/, 'e')   // leaves -> leave (not lev!)
+          .replace(/s$/, '')     // days -> day
+          .replace(/ing$/, '')   // processing -> process
+          .replace(/ed$/, '');   // terminated -> terminat
+      });
   }
 
   private getTermFrequency(term: string, tokens: string[]): number {
@@ -461,7 +470,9 @@ Answer (be specific and cite sources):`;
     confidence = Math.min(Math.max(confidence, 0), 95);
     const roundedConfidence = Math.round(confidence);
 
-    if (roundedConfidence < 40 || bestScore < 0.2) {
+    // Lower threshold since pg_trgm is available for better fuzzy matching
+    // Threshold: 30% for relevant results, 0.12 for semantic similarity
+    if (roundedConfidence < 30 || bestScore < 0.12) {
       return {
         answer: 'While I found some potentially related information, the relevance is too low to provide a confident answer. Please try rephrasing your question or check if the relevant documents have been uploaded.',
         citations: [],

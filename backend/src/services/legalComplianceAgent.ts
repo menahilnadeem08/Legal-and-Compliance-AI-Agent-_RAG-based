@@ -155,17 +155,29 @@ export class LegalComplianceAgent {
   }
 
   /**
-   * Extract citations from document list
+   * Extract citations from document list - ONLY if relevant to query
+   * Don't cite all documents - only cite those relevant to the answer
    */
-  private extractDocumentListCitations(documentList: any[]): any[] {
-    return documentList.slice(0, 10).map((doc: any) => ({
-      document_name: doc.name,
-      version: doc.latest_version,
-      type: doc.type,
-      available_versions: doc.versions.join(', '),
-      content: `Document: ${doc.name} | Type: ${doc.type} | Latest: v${doc.latest_version}`,
-      relevance_score: 0.9
-    }));
+  private extractDocumentListCitations(documentList: any[], answerContext?: string): any[] {
+    // If there's answer context, only cite documents mentioned in it
+    if (answerContext) {
+      const lowerAnswer = answerContext.toLowerCase();
+      return documentList
+        .filter(doc => lowerAnswer.includes(doc.name.toLowerCase()))
+        .slice(0, 5)
+        .map((doc: any) => ({
+          document_name: doc.name,
+          version: doc.latest_version,
+          type: doc.type,
+          available_versions: doc.versions.join(', '),
+          content: `Document: ${doc.name} | Type: ${doc.type} | Latest: v${doc.latest_version}`,
+          relevance_score: 0.9
+        }));
+    }
+    
+    // If no context, don't cite documents from listing
+    // (they're just informational, not evidence)
+    return [];
   }
 
   /**
@@ -440,30 +452,47 @@ ${result.conflicts.map((c: any, i: number) =>
         role: "system",
         content: `You are a Legal & Compliance AI Agent with access to specialized tools.
 
+⚠️ CRITICAL: HALLUCINATION PREVENTION RULES
+- NEVER generate, assume, or infer information not in retrieved documents
+- REFUSE to answer if documents don't contain sufficient evidence
+- Say "I cannot find this information in the available documents" rather than guessing
+- Do NOT use speculative language: "might", "could", "possibly", "perhaps", "likely", "probably"
+- Every factual claim MUST be directly supported by tool results
+- If unsure about any aspect, explicitly state the limitation
+
 Your role:
 - Answer questions about legal documents, policies, and regulations
 - Compare document versions to track changes
 - Detect conflicts between different policies
 - Provide accurate, well-cited compliance information
 
-When to use tools:
+CONSISTENCY & ACCURACY REQUIREMENTS:
+- For similar queries, provide consistent answers using the same sources
+- Focus on EXACT AND PRECISE information from retrieved documents
+- Avoid generating different phrasings of the same answer
+- If the same document is retrieved again, maintain the same answer structure
+- Prioritize factual accuracy over variation in wording
+- Never claim certainty beyond what evidence supports
+
+Tool Selection Guidelines:
 - Use search_documents for general questions about document content
-- Use compare_document_versions when asked about changes between versions
+- Use compare_document_versions when asked about version differences or changes
 - Use detect_policy_conflicts when asked if documents conflict or contradict
 - Use list_available_documents when user asks what documents exist
-- You can call multiple tools if needed to answer comprehensively
+- Call multiple tools if needed for comprehensive, well-sourced answers
 
-Always:
-- Be precise and cite sources when available
+Response Requirements:
+- Be precise and cite sources when available [Document Name, Section/Page]
 - Reference specific document sections, pages, or clauses
-- Acknowledge when information is unavailable
-- Explain your reasoning
+- Acknowledge when information is unavailable or unclear
+- Explain your reasoning based on evidence
 - Focus on compliance and legal implications
+- Use consistent citation format: [Document Name, Section/Page]
+- Example: "According to Remote Work Policy, Section 1.1..."
+- If tool finds NO relevant information, say so clearly rather than fabricating
 
-When citing sources from search results:
-- Use format: [Document Name, Section/Page]
-- Example: "According to the Privacy Policy, Article 5..."
-- If citations are provided by tools, incorporate them naturally`
+Example GOOD answer: "According to the Remote Work Policy v1.0, Section 3.2, the probation period is 90 days."
+Example BAD answer: "I believe the probation period is probably around 90 days." ❌`
       },
       {
         role: "user",
@@ -546,7 +575,23 @@ When citing sources from search results:
       new Map(allCitations.map(c => [JSON.stringify(c), c])).values()
     );
 
-    console.log(`\n📚 Total citations collected: ${uniqueCitations.length}`);
+    // FILTER: Only keep citations that are mentioned in the final answer
+    const answerLower = finalAnswer.toLowerCase();
+    const relevantCitations = uniqueCitations.filter(citation => {
+      const docNameLower = (citation.document_name || '').toLowerCase();
+      const sectionLower = (citation.section || '').toLowerCase();
+      
+      // Keep citation if document or section is mentioned in answer
+      return answerLower.includes(docNameLower) || 
+             (sectionLower !== 'n/a' && answerLower.includes(sectionLower));
+    });
+
+    // If no citations passed the filter but we have some, keep the highest-scored ones
+    const finalCitations = relevantCitations.length > 0 
+      ? relevantCitations 
+      : uniqueCitations.slice(0, 5); // Fallback: keep top 5
+
+    console.log(`\n📚 Total citations collected: ${uniqueCitations.length} → Relevant: ${finalCitations.length}`);
 
     // Calculate actual confidence from tool results
     let aggregatedConfidence = 0;
@@ -560,11 +605,11 @@ When citing sources from search results:
 
     // If no confidence found, estimate based on evidence
     if (aggregatedConfidence === 0) {
-      if (uniqueCitations.length >= 5) {
+      if (finalCitations.length >= 5) {
         aggregatedConfidence = 90;  // Many citations = high confidence
-      } else if (uniqueCitations.length >= 3) {
+      } else if (finalCitations.length >= 3) {
         aggregatedConfidence = 80;  // Several citations = good confidence
-      } else if (uniqueCitations.length >= 1) {
+      } else if (finalCitations.length >= 1) {
         aggregatedConfidence = 70;  // Some citations = medium confidence
       } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
         aggregatedConfidence = 95; // Listing operations are always accurate
@@ -576,7 +621,7 @@ When citing sources from search results:
     return {
       answer: finalAnswer,
       tool_calls: toolCalls,
-      citations: uniqueCitations.length > 0 ? uniqueCitations : undefined,
+      citations: finalCitations.length > 0 ? finalCitations : undefined,
       confidence: aggregatedConfidence,
       reasoning: `Used ${toolCalls.length} tool(s): ${toolCalls.join(', ')}`
     };
