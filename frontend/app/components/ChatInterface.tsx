@@ -43,7 +43,7 @@ export default function ChatInterface() {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:5000/api/query', {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/query`, {
         query: input,
       });
 
