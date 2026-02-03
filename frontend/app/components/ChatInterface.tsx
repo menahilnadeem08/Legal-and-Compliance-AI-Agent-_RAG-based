@@ -2,12 +2,17 @@
 
 import { useState } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 
 interface Citation {
   document_name: string;
-  section: string;
+  document_version?: string;
+  section?: string;
+  section_id?: string;
   page?: number;
   content: string;
+  relevance_score?: number;
+  search_method?: string;
 }
 
 interface Message {
@@ -15,25 +20,18 @@ interface Message {
   content: string;
   citations?: Citation[];
   confidence?: number;
+  version_warnings?: string[];
+  sources_used?: {
+    total_documents: number;
+    versions: string[];
+    has_outdated: boolean;
+  };
 }
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Function to group citations by document name
-  const groupCitations = (citations: Citation[]) => {
-    const grouped = citations.reduce((acc, cite) => {
-      if (!acc[cite.document_name]) {
-        acc[cite.document_name] = [];
-      }
-      acc[cite.document_name].push(cite);
-      return acc;
-    }, {} as Record<string, Citation[]>);
-    
-    return Object.entries(grouped);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +52,8 @@ export default function ChatInterface() {
         content: response.data.answer,
         citations: response.data.citations,
         confidence: response.data.confidence,
+        version_warnings: response.data.version_warnings,
+        sources_used: response.data.sources_used,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -69,37 +69,48 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <h1 className="text-2xl font-bold mb-4 text-white">Legal Compliance Assistant</h1>
+    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Legal Compliance Assistant</h1>
       
-      <div className="flex-1 overflow-y-auto mb-4 space-y-4 pr-2">
+      <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {messages.map((msg, idx) => (
-          <div 
-            key={idx} 
-            className={`p-4 rounded-lg ${
-              msg.role === 'user' 
-                ? 'bg-teal-900 bg-opacity-50 border border-teal-700' 
-                : 'bg-gray-800 bg-opacity-50 border border-gray-700'
-            }`}
-          >
-            <p className="font-semibold text-white mb-2">
-              {msg.role === 'user' ? 'You' : 'Assistant'}
-            </p>
-            <p className="text-gray-200 whitespace-pre-wrap">{msg.content}</p>
+          <div key={idx} className={`p-4 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+            <p className="font-semibold">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
+            
+            {/* Use ReactMarkdown for assistant messages */}
+            {msg.role === 'assistant' ? (
+              <div className="mt-2 prose prose-sm max-w-none">
+                <ReactMarkdown
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-3 mb-2" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-2 mb-1" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-5 my-2" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal ml-5 my-2" {...props} />,
+                    li: ({node, ...props}) => <li className="my-1" {...props} />,
+                    p: ({node, ...props}) => <p className="my-2" {...props} />,
+                    hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <p className="mt-2">{msg.content}</p>
+            )}
             
             {msg.citations && msg.citations.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-600">
-                <p className="text-sm font-semibold text-white mb-2">Citations:</p>
-                {groupCitations(msg.citations).map(([docName, cites], i) => (
-                  <div key={i} className="text-sm mt-2 text-gray-300">
-                    <p className="font-medium text-white">
-                      [{i + 1}] {docName}
-                    </p>
-
-                    {cites.length > 1 && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        ({cites.length} relevant sections found)
-                      </p>
+              <div className="mt-4 border-t pt-2">
+                <p className="text-sm font-semibold">Citations:</p>
+                {msg.citations.map((cite, i) => (
+                  <div key={i} className="text-sm mt-2">
+                    <p className="font-medium">[{i + 1}] {cite.document_name}</p>
+                    {cite.section && (
+                      <p className="text-gray-600">Section: {cite.section}</p>
+                    )}
+                    {cite.content && (
+                      <p className="text-gray-700 mt-1">{cite.content}</p>
                     )}
                   </div>
                 ))}
@@ -107,33 +118,26 @@ export default function ChatInterface() {
             )}
             
             {msg.confidence !== undefined && (
-              <p className="text-sm text-gray-400 mt-2">
-                Confidence: {msg.confidence}%
-              </p>
+              <p className="text-sm text-gray-600 mt-2">Confidence: {msg.confidence}%</p>
             )}
           </div>
         ))}
-        {loading && (
-          <div className="flex items-center gap-2 text-gray-400">
-            <div className="animate-pulse">●</div>
-            <p>Thinking...</p>
-          </div>
-        )}
+        {loading && <p className="text-gray-500">Thinking...</p>}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 mt-auto">
+      <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a legal or compliance question..."
-          className="flex-1 p-3 border border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          className="flex-1 p-2 border rounded"
           disabled={loading}
         />
         <button
           type="submit"
           disabled={loading}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg disabled:bg-gray-600 hover:bg-blue-700 transition-colors font-medium"
+          className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-400"
         >
           Send
         </button>
