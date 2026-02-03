@@ -1,16 +1,34 @@
-name: Test SSH
+name: Deploy to EC2
 
-on: [push]
+on:
+  push:
+    branches:
+      - main   # Or your default branch
 
 jobs:
-  test-ssh:
+  deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Test SSH to EC2
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
           script: |
-            echo "SSH works! Current user: $(whoami)"
+            cd ~/Legal-and-Compliance-AI-Agent
+            git pull origin main
+            # Restart backend
+            pm2 stop all || true
+            pm2 start backend/index.js --name backend
+            # Restart frontend
+            cd frontend
+            npm install
+            npm run build
+            pm2 stop frontend || true
+            pm2 start npm --name frontend -- start
