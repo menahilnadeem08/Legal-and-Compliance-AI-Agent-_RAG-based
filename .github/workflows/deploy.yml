@@ -1,19 +1,40 @@
-name: Deploy to EC2
+# .github/workflows/deploy.yml
+name: CI/CD Deployment to EC2
 
 on:
   push:
     branches:
-      - master   # Or your default branch
+      - master  # Trigger on push to main branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Deploy via SSH
+      # 2️⃣ Set up Node.js (if your app is Node.js)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # 4️⃣ Run tests (optional)
+      - name: Run tests
+        run: npm test
+
+      # 5️⃣ Build project (optional if using build step)
+      - name: Build project
+        run: npm run build
+
+      # 6️⃣ Copy files to EC2 using SSH
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -21,14 +42,13 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            cd ~/Legal-and-Compliance-AI-Agent
+            cd /home/${{ secrets.EC2_USER }}/app
             git pull origin main
-            # Restart backend
-            pm2 stop all || true
-            pm2 start backend/index.js --name backend
-            # Restart frontend
-            cd frontend
-            npm install
-            npm run build
-            pm2 stop frontend || true
-            pm2 start npm --name frontend -- start
+            npm install --production
+            # Run migrations if you use them
+            # npx prisma migrate deploy
+            pm2 restart all || pm2 start npm --name "app" -- start
+
+      # 7️⃣ Notify on success (optional)
+      - name: Deployment complete
+        run: echo "Deployment to EC2 successful!"
