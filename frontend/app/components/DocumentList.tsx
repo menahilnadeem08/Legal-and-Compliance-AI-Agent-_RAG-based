@@ -18,7 +18,7 @@ export default function DocumentList() {
 
   const fetchDocuments = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/documents');
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/documents`);
       setDocuments(response.data);
     } catch (error) {
       console.error('Error fetching documents:', error);
@@ -30,7 +30,7 @@ export default function DocumentList() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this document?')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/documents/${id}`);
+      await axios.delete(`NEXT_PUBLIC_API_URL /api/documents/${id}`);
       fetchDocuments();
     } catch (error) {
       console.error('Delete error:', error);
