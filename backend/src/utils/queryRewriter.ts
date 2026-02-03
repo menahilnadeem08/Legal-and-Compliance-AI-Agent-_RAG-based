@@ -2,7 +2,7 @@ import { llm } from '../config/openai';
 
 export class QueryRewriter {
   async rewrite(query: string): Promise<string[]> {
-    const prompt = `You are a legal query expansion expert. Given a user query, generate 2-3 alternative phrasings that capture the same legal intent using different terminology.
+    const prompt = `You are a legal query expansion expert. Given a user query, generate 2-3 alternative phrasings that capture the same legal intent using different terminology and keep the meaning same.
 
 Original query: "${query}"
 
