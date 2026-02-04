@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo locally (optional, for workflow purposes)
+      # 1️⃣ Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Set up Node.js
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
@@ -24,9 +24,9 @@ jobs:
       - name: Install backend dependencies
         run: cd backend && npm install
 
-      # 4️⃣ Build backend (if needed)
+      # 4️⃣ Build backend
       - name: Build backend
-        run: cd backend && npm run build 2>/dev/null || true
+        run: cd backend && npm run build
 
       # 5️⃣ Install frontend dependencies
       - name: Install frontend dependencies
@@ -47,10 +47,7 @@ jobs:
           script: |
             APP_DIR="/home/${{ secrets.EC2_USER }}/app"
 
-            # Install TypeScript globally
-            sudo npm install -g typescript
-
-            # Create app directory if it doesn't exist
+            # Create app directory if not exists
             mkdir -p $APP_DIR
             cd $APP_DIR
 
@@ -63,35 +60,37 @@ jobs:
               git clone -b master https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
             fi
 
+            # ---------- Backend ----------
+            cd $APP_DIR/backend
+            npm install --production
+            npm run build
+
             # Backend .env
-            mkdir -p backend
-            cat > backend/.env << 'ENVFILE'
+            cat > .env << 'ENVFILE'
             PORT=3001
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            Cohere_API_Key=${{ secrets.COHERE_API_KEY }}
+            COHERE_API_KEY=${{ secrets.COHERE_API_KEY }}
             ENVFILE
 
-            # Deploy backend
-            cd $APP_DIR/backend
-            npm install --production
-            npm run build || true
+            # Start backend with PM2
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
 
-            # Frontend .env.local
-            cd $APP_DIR
-            mkdir -p frontend
-            cat > frontend/.env.local << 'ENVFILE'
-            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-            ENVFILE
-
-            # Deploy frontend on port 3000
+            # ---------- Frontend ----------
             cd $APP_DIR/frontend
             npm install --production
             npm run build
+
+            # Frontend .env.local
+            cat > .env.local << 'ENVFILE'
+            PORT=3000
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            ENVFILE
+
+            # Start frontend with PM2
             pm2 delete frontend 2>/dev/null || true
-            pm2 start npm --name "frontend" -- start -- PORT=3000
+            pm2 start npm --name "frontend" -- start
 
             # Save PM2 process list and setup startup
             pm2 save
