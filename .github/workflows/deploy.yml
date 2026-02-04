@@ -3,41 +3,37 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - backend  # Trigger only on backend branch
+      - backend  # trigger only on backend branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # 3️⃣ Install backend dependencies
-      - name: Install backend dependencies
+      # ---------- Backend ----------
+      - name: Install backend deps
         run: cd backend && npm install
 
-      # 4️⃣ Build backend
       - name: Build backend
         run: cd backend && npm run build
 
-      # 5️⃣ Install frontend dependencies
-      - name: Install frontend dependencies
+      # ---------- Frontend ----------
+      - name: Install frontend deps
         run: cd frontend && npm install
 
-      # 6️⃣ Build frontend
       - name: Build frontend
         run: cd frontend && npm run build
 
-      # 7️⃣ Deploy to EC2
-      - name: Deploy to EC2
+      # ---------- Deploy to EC2 ----------
+      - name: Deploy compiled apps to EC2
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -47,55 +43,41 @@ jobs:
           script: |
             APP_DIR="/home/${{ secrets.EC2_USER }}/app"
 
-            # Create app directory if not exists
-            mkdir -p $APP_DIR
-            cd $APP_DIR
+            mkdir -p $APP_DIR/backend
+            mkdir -p $APP_DIR/frontend
 
-            # Clone or pull master branch
-            if [ -d ".git" ]; then
-              git fetch origin master
-              git checkout master
-              git pull origin master
-            else
-              git clone -b master https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
-            fi
-
-            # ---------- Backend ----------
-            cd $APP_DIR/backend
-            npm install --production
-            npm run build
+            # Copy backend build
+            rsync -av --delete ./backend/dist/ $APP_DIR/backend/dist/
+            rsync -av --delete ./backend/package.json $APP_DIR/backend/
+            rsync -av --delete ./backend/node_modules/ $APP_DIR/backend/node_modules/
 
             # Backend .env
-            cat > .env << 'ENVFILE'
+            cat > $APP_DIR/backend/.env << 'ENVFILE'
             PORT=3001
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             COHERE_API_KEY=${{ secrets.COHERE_API_KEY }}
             ENVFILE
 
-            # Start backend with PM2
+            # Start backend
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
 
-            # ---------- Frontend ----------
-            cd $APP_DIR/frontend
-            npm install --production
-            npm run build
+            # Copy frontend build
+            rsync -av --delete ./frontend/.next/ $APP_DIR/frontend/.next/
+            rsync -av --delete ./frontend/public/ $APP_DIR/frontend/public/
+            rsync -av --delete ./frontend/package.json $APP_DIR/frontend/
+            rsync -av --delete ./frontend/node_modules/ $APP_DIR/frontend/node_modules/
 
             # Frontend .env.local
-            cat > .env.local << 'ENVFILE'
+            cat > $APP_DIR/frontend/.env.local << 'ENVFILE'
             PORT=3000
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
             ENVFILE
 
-            # Start frontend with PM2
+            # Start frontend
             pm2 delete frontend 2>/dev/null || true
-            pm2 start npm --name "frontend" -- start
+            pm2 start npm --name "frontend" -- start -- PORT=3000
 
-            # Save PM2 process list and setup startup
             pm2 save
             pm2 startup || true
-
-      # 8️⃣ Notify on success
-      - name: Deployment complete
-        run: echo "✅ Deployment to EC2 successful!"
