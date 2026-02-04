@@ -45,9 +45,11 @@ jobs:
             # Create .env
             cat > .env << 'ENVFILE'
             PORT=3001
+            NODE_ENV=production
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             Cohere_API_Key=${{ secrets.COHERE_API_KEY }}
+            NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
             
             # Install and build
