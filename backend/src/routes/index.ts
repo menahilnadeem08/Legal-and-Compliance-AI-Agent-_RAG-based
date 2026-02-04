@@ -24,6 +24,16 @@ import {
 
 const router = express.Router();
 
+// ===== Health Check / Connection Test =====
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Backend is running and connected',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // ===== Agent/Query Endpoint =====
 router.post('/query', 
   validateAgentQuery,
