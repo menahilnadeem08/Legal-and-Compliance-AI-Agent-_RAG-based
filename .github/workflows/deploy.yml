@@ -3,7 +3,7 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - backend  # trigger only on backend branch
+      - backend
 
 jobs:
   deploy:
@@ -18,22 +18,7 @@ jobs:
         with:
           node-version: 20
 
-      # ---------- Backend ----------
-      - name: Install backend deps
-        run: cd backend && npm install
-
-      - name: Build backend
-        run: cd backend && npm run build
-
-      # ---------- Frontend ----------
-      - name: Install frontend deps
-        run: cd frontend && npm install
-
-      - name: Build frontend
-        run: cd frontend && npm run build
-
-      # ---------- Deploy to EC2 ----------
-      - name: Deploy compiled apps to EC2
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -42,42 +27,54 @@ jobs:
           port: 22
           script: |
             APP_DIR="/home/${{ secrets.EC2_USER }}/app"
-
-            mkdir -p $APP_DIR/backend
-            mkdir -p $APP_DIR/frontend
-
-            # Copy backend build
-            rsync -av --delete ./backend/dist/ $APP_DIR/backend/dist/
-            rsync -av --delete ./backend/package.json $APP_DIR/backend/
-            rsync -av --delete ./backend/node_modules/ $APP_DIR/backend/node_modules/
-
-            # Backend .env
-            cat > $APP_DIR/backend/.env << 'ENVFILE'
+            
+            # Create app directory
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+            
+            # Clone or pull repo
+            if [ -d ".git" ]; then
+              git pull origin master
+            else
+              git clone https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
+            fi
+            
+            # ========== Backend ==========
+            cd $APP_DIR/backend
+            
+            # Create .env
+            cat > .env << 'ENVFILE'
             PORT=3001
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            COHERE_API_KEY=${{ secrets.COHERE_API_KEY }}
+            Cohere_API_Key=${{ secrets.COHERE_API_KEY }}
             ENVFILE
-
+            
+            # Install and build
+            npm install --production
+            npm run build || true
+            
             # Start backend
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
-
-            # Copy frontend build
-            rsync -av --delete ./frontend/.next/ $APP_DIR/frontend/.next/
-            rsync -av --delete ./frontend/public/ $APP_DIR/frontend/public/
-            rsync -av --delete ./frontend/package.json $APP_DIR/frontend/
-            rsync -av --delete ./frontend/node_modules/ $APP_DIR/frontend/node_modules/
-
-            # Frontend .env.local
-            cat > $APP_DIR/frontend/.env.local << 'ENVFILE'
+            
+            # ========== Frontend ==========
+            cd $APP_DIR/frontend
+            
+            # Create .env.local
+            cat > .env.local << 'ENVFILE'
             PORT=3000
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
             ENVFILE
-
+            
+            # Install and build
+            npm install --production
+            npm run build
+            
             # Start frontend
             pm2 delete frontend 2>/dev/null || true
-            pm2 start npm --name "frontend" -- start -- PORT=3000
-
+            pm2 start npm --name "frontend" -- start
+            
+            # Save PM2 state
             pm2 save
             pm2 startup || true
