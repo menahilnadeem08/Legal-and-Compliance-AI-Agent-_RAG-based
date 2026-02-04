@@ -61,6 +61,9 @@ jobs:
             # ========== Frontend ==========
             cd $APP_DIR/frontend
             
+            # Remove old build
+            rm -rf .next node_modules
+            
             # Create .env.local
             cat > .env.local << 'ENVFILE'
             PORT=3000
@@ -68,8 +71,14 @@ jobs:
             ENVFILE
             
             # Install and build
-            npm install --production
+            npm install
             npm run build
+            
+            # Verify build exists
+            if [ ! -d ".next" ]; then
+              echo "Build failed - .next directory not found"
+              exit 1
+            fi
             
             # Start frontend
             pm2 delete frontend 2>/dev/null || true
