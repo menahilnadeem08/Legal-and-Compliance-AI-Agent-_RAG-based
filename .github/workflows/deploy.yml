@@ -3,14 +3,14 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - backend  # Trigger on push to backend branch
+      - backend  # Trigger only on backend branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout repo locally (optional, for workflow purposes)
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -54,13 +54,13 @@ jobs:
             mkdir -p $APP_DIR
             cd $APP_DIR
 
-            # Clone or pull backend branch
+            # Clone or pull master branch
             if [ -d ".git" ]; then
-              git fetch origin backend
-              git checkout backend
-              git pull origin backend
+              git fetch origin master
+              git checkout master
+              git pull origin master
             else
-              git clone -b backend https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
+              git clone -b master https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
             fi
 
             # Backend .env
