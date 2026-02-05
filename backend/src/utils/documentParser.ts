@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
+import { llm } from '../config/openai';
 
 export interface ParsedDocument {
   text: string;
@@ -17,6 +18,12 @@ export interface ChunkWithMetadata {
   page_number?: number;
 }
 
+interface SectionBoundary {
+  line_index: number;
+  heading: string;
+  level: number;
+}
+
 export class DocumentParser {
   private maxChunkSize: number = 1500;
   private minChunkSize: number = 200;
@@ -24,28 +31,50 @@ export class DocumentParser {
   private chunkOverlap: number = 200;
 
   /**
-   * Detect if a line is a section heading
+   * LLM-based intelligent section detection
    */
-  private isSectionHeading(line: string): boolean {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.length < 3 || trimmed.length > 150) return false;
+  private async detectSectionsWithLLM(lines: string[]): Promise<SectionBoundary[]> {
+    const sampleLines = lines.slice(0, 100);
+    const numberedSample = sampleLines.map((line, idx) => `${idx}: ${line}`).join('\n');
 
-    // Pattern 1: Article/Section/Chapter/Clause/Part + number
-    if (/^(Article|Section|Chapter|Clause|Part|Introduction|Conclusion|Abstract|Overview|Summary)\s+[\dIVXivx]+/i.test(trimmed)) return true;
-    
-    // Pattern 2: Numbered/lettered headings (1., 2.1, A., B., etc)
-    if (/^[A-Z0-9][\.\)\-]\s+[A-Z]/.test(trimmed)) return true;
-    
-    // Pattern 3: ALL CAPS (15+ chars, 3+ words, not a sentence)
-    if (trimmed === trimmed.toUpperCase() && 
-        trimmed.length >= 15 && 
-        trimmed.split(/\s+/).length >= 3 &&
-        !/[.!?]$/.test(trimmed)) return true;
-    
-    // Pattern 4: Title Case with trailing colon and short (likely a heading)
-    if (/^[A-Z][A-Za-z\s]+:\s*$/.test(trimmed)) return true;
-    
-    return false;
+    const prompt = `Analyze this legal document and identify ALL section headings with their line numbers.
+
+Document sample (line_number: content):
+${numberedSample}
+
+Return ONLY a JSON array of sections:
+[
+  {"line_index": 0, "heading": "Introduction", "level": 1},
+  {"line_index": 15, "heading": "Article 1: Definitions", "level": 1},
+  {"line_index": 23, "heading": "1.1 Key Terms", "level": 2}
+]
+
+Rules:
+- level 1 = main sections (Article, Chapter, etc)
+- level 2 = subsections (1.1, A., etc)
+- level 3 = sub-subsections
+- Include ALL headings, even subtle ones
+- Return ONLY the JSON array, nothing else`;
+
+    try {
+      const response = await llm.invoke(prompt);
+      const content = response.content.toString().trim();
+      const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      const sections = JSON.parse(cleaned);
+      
+      if (!Array.isArray(sections)) {
+        console.warn('LLM did not return array, using fallback');
+        return [];
+      }
+
+      console.log(`🎯 LLM detected ${sections.length} sections in first 100 lines`);
+      return sections.filter(s => s.line_index < lines.length);
+      
+    } catch (error) {
+      console.error('LLM section detection failed:', error);
+      return [];
+    }
   }
 
   /**
@@ -71,72 +100,65 @@ export class DocumentParser {
   }
 
   /**
-   * Split text by sections, then chunk large sections
+   * LLM-based section chunking
    */
-  private sectionBasedChunk(text: string, pageNumber?: number): ChunkWithMetadata[] {
-  // Split by double-spaces or newlines to find potential section breaks
-  const segments = text.split(/\s{2,}|\n/);
-  console.log(`\n📄 Checking ${segments.length} segments for sections...`);
-  
-  const chunks: ChunkWithMetadata[] = [];
-  let currentSection: string | undefined;
-  let currentContent: string[] = [];
-  let sectionsFound = 0;
+  private async intelligentChunk(text: string, pageNumber?: number): Promise<ChunkWithMetadata[]> {
+    const lines = text.split(/\n+/).filter(l => l.trim());
+    
+    if (lines.length < 10) {
+      return this.fallbackChunk(text, pageNumber);
+    }
 
-  const flushSection = () => {
-    if (currentContent.length === 0) return;
-    const content = currentContent.join(' ').trim();
-    if (content.length === 0) return;
+    // Detect sections using LLM
+    const sections = await this.detectSectionsWithLLM(lines);
+    
+    if (sections.length === 0) {
+      console.log('No sections detected by LLM, using fallback');
+      return this.fallbackChunk(text, pageNumber);
+    }
 
-    if (content.length <= this.maxChunkSize) {
-      chunks.push({
-        content,
-        section_name: currentSection,
-        page_number: pageNumber
-      });
-    } else {
-      const words = content.split(/\s+/);
-      const wordsPerChunk = Math.floor(this.maxChunkSize / 5);
-      const overlapWords = Math.floor(this.chunkOverlap / 5);
+    const chunks: ChunkWithMetadata[] = [];
+    
+    // Split text by sections
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const nextSection = sections[i + 1];
       
-      for (let i = 0; i < words.length; i += wordsPerChunk - overlapWords) {
-        const chunkWords = words.slice(i, i + wordsPerChunk);
+      const startIdx = section.line_index;
+      const endIdx = nextSection ? nextSection.line_index : lines.length;
+      
+      // Get section lines, excluding the heading line itself
+      const sectionLines = lines.slice(startIdx + 1, endIdx);
+      const sectionContent = sectionLines.join(' ').trim();
+      
+      if (sectionContent.length === 0) continue; // Skip empty sections
+      
+      if (sectionContent.length <= this.maxChunkSize) {
         chunks.push({
-          content: chunkWords.join(' '),
-          section_name: currentSection,
+          content: sectionContent,
+          section_name: section.heading,
           page_number: pageNumber
         });
+      } else {
+        // Split large sections
+        const words = sectionContent.split(/\s+/);
+        const wordsPerChunk = Math.floor(this.maxChunkSize / 5);
+        const overlapWords = Math.floor(this.chunkOverlap / 5);
+        
+        for (let j = 0; j < words.length; j += wordsPerChunk - overlapWords) {
+          const chunkWords = words.slice(j, j + wordsPerChunk);
+          chunks.push({
+            content: chunkWords.join(' '),
+            section_name: section.heading,
+            page_number: pageNumber
+          });
+        }
       }
     }
-    currentContent = [];
-  };
 
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i].trim();
-    if (!segment) continue;
-    
-    if (i < 10) console.log(`Segment ${i}: "${segment.substring(0, 60)}..." -> isSection: ${this.isSectionHeading(segment)}`);
-    
-    if (this.isSectionHeading(segment)) {
-      sectionsFound++;
-      console.log(`🎯 SECTION #${sectionsFound}: "${segment}"`);
-      flushSection();
-      currentSection = segment.substring(0, 255);
-    } else {
-      currentContent.push(segment);
-    }
+    console.log(`✨ Intelligent chunking: ${sections.length} sections → ${chunks.length} chunks`);
+    return chunks;
   }
-
-  flushSection();
-  
-  console.log(`📊 Found ${sectionsFound} sections, ${chunks.length} chunks`);
-  
-  if (chunks.length === 0) {
-    return this.fallbackChunk(text, pageNumber);
-  }
-  
-  return chunks;
-}
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
@@ -151,15 +173,41 @@ export class DocumentParser {
       for (let i = 1; i <= doc.numPages; i++) {
         const page = await doc.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items.map((it: any) => it.str).join(' ');
+        
+        // FIXED: Preserve line structure using Y-coordinates
+        let lastY = -1;
+        const lines: string[] = [];
+        let currentLine = '';
+        
+        content.items.forEach((item: any) => {
+          const yPos = item.transform[5];
+          
+          // New line detected (Y position changed)
+          if (lastY !== -1 && Math.abs(yPos - lastY) > 2) {
+            if (currentLine.trim()) {
+              lines.push(currentLine.trim());
+            }
+            currentLine = item.str;
+          } else {
+            currentLine += (currentLine ? ' ' : '') + item.str;
+          }
+          
+          lastY = yPos;
+        });
+        
+        // Add last line
+        if (currentLine.trim()) {
+          lines.push(currentLine.trim());
+        }
+        
+        const pageText = lines.join('\n');
         
         console.log(`\n${'='.repeat(60)}`);
-        console.log(`PAGE ${i} - First 300 chars:`);
-        console.log(`${'='.repeat(60)}`);
-        console.log(pageText.substring(0, 300));
+        console.log(`PAGE ${i} - Extracted ${lines.length} lines`);
+        console.log(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
         console.log(`${'='.repeat(60)}\n`);
         
-        const pageChunks = this.sectionBasedChunk(pageText, i);
+        const pageChunks = await this.intelligentChunk(pageText, i);
         allChunks.push(...pageChunks);
       }
       
@@ -182,19 +230,13 @@ export class DocumentParser {
     const result = await mammoth.extractRawText({ path: filePath });
     
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`DOCX - First 300 chars:`);
-    console.log(`${'='.repeat(60)}`);
-    console.log(result.value.substring(0, 300));
+    console.log(`DOCX - Using LLM for section detection`);
     console.log(`${'='.repeat(60)}\n`);
     
-    // Estimate pages based on content length (~3000 chars per page average)
-    // This is a heuristic for DOCX files which don't have explicit page breaks
     const charsPerPage = 3000;
     const estimatedPageCount = Math.ceil(result.value.length / charsPerPage);
     
-    // Split content into estimated pages and chunk each
     const allChunks: ChunkWithMetadata[] = [];
-    let currentCharIndex = 0;
     
     for (let pageNum = 1; pageNum <= estimatedPageCount; pageNum++) {
       const pageStart = (pageNum - 1) * charsPerPage;
@@ -202,7 +244,7 @@ export class DocumentParser {
       const pageText = result.value.substring(pageStart, pageEnd);
       
       if (pageText.trim().length > 0) {
-        const pageChunks = this.sectionBasedChunk(pageText, pageNum);
+        const pageChunks = await this.intelligentChunk(pageText, pageNum);
         allChunks.push(...pageChunks);
       }
     }
