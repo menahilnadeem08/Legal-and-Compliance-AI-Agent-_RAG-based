@@ -39,11 +39,11 @@ export default function DocumentList() {
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500/20 to-teal-500/20 flex items-center justify-center text-lg border border-cyan-500/40">
             📚
           </div>
-          <h2 className="text-lg font-bold text-gradient">Documents</h2>
+          <div>
+            <h2 className="text-2xl font-semibold text-white">Documents</h2>
+            <p className="text-sm text-gray-400 mt-1">{documents.length} document{documents.length !== 1 ? 's' : ''} in knowledge base</p>
+          </div>
         </div>
-        <p className="text-xs text-gray-400">
-          {documents.length} document{documents.length !== 1 ? 's' : ''} in knowledge base
-        </p>
       </div>
 
       {loading ? (
