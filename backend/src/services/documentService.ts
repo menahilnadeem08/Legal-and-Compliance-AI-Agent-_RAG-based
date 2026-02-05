@@ -295,8 +295,57 @@ export class DocumentService {
   }
 
   async deleteDocument(documentId: string) {
-    await pool.query('DELETE FROM documents WHERE id = $1', [documentId]);
-    return { message: 'Document deleted successfully' };
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get the document being deleted
+      const docResult = await client.query(
+        'SELECT name, type, is_latest FROM documents WHERE id = $1',
+        [documentId]
+      );
+
+      if (docResult.rows.length === 0) {
+        throw new Error('Document not found');
+      }
+
+      const { name, type, is_latest } = docResult.rows[0];
+
+      // Delete the document
+      await client.query('DELETE FROM documents WHERE id = $1', [documentId]);
+
+      let activatedVersionId = null;
+
+      // If the deleted document was active (is_latest = true), activate the most recent inactive version
+      if (is_latest) {
+        const inactiveVersion = await client.query(
+          `SELECT id FROM documents 
+           WHERE name = $1 AND type = $2 AND is_latest = false 
+           ORDER BY upload_date DESC 
+           LIMIT 1`,
+          [name, type]
+        );
+
+        if (inactiveVersion.rows.length > 0) {
+          await client.query(
+            'UPDATE documents SET is_latest = true WHERE id = $1',
+            [inactiveVersion.rows[0].id]
+          );
+          activatedVersionId = inactiveVersion.rows[0].id;
+        }
+      }
+
+      await client.query('COMMIT');
+      return { 
+        message: 'Document deleted successfully',
+        activated_version: activatedVersionId
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getDocumentById(documentId: string) {
