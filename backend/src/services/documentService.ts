@@ -692,4 +692,113 @@ Be specific and actionable. Focus on business/legal impact.`;
       chunk_count_difference: (v2.rows[0].chunk_count || 0) - (v1.rows[0].chunk_count || 0)
     };
   }
+
+  /**
+   * Activate a document version
+   * Only allows activation if no other document with same name and type is already active
+   */
+  async activateDocument(documentId: string) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get the document to activate
+      const docResult = await client.query(
+        'SELECT name, type, is_latest FROM documents WHERE id = $1',
+        [documentId]
+      );
+
+      if (docResult.rows.length === 0) {
+        throw new Error('Document not found');
+      }
+
+      const { name, type, is_latest } = docResult.rows[0];
+
+      // If already active, return early
+      if (is_latest) {
+        await client.query('COMMIT');
+        return { 
+          message: 'Document is already active',
+          already_active: true
+        };
+      }
+
+      // Check if another document with same name and type is already active
+      const activeDoc = await client.query(
+        `SELECT id, version FROM documents 
+         WHERE name = $1 AND type = $2 AND is_latest = true`,
+        [name, type]
+      );
+
+      if (activeDoc.rows.length > 0) {
+        await client.query('ROLLBACK');
+        throw new Error(`Cannot activate: Another version (${activeDoc.rows[0].version}) of this document is already active`);
+      }
+
+      // Activate the document
+      await client.query(
+        'UPDATE documents SET is_latest = true WHERE id = $1',
+        [documentId]
+      );
+
+      await client.query('COMMIT');
+      return { 
+        message: 'Document activated successfully',
+        already_active: false
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Deactivate a document version
+   */
+  async deactivateDocument(documentId: string) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get the document to deactivate
+      const docResult = await client.query(
+        'SELECT is_latest FROM documents WHERE id = $1',
+        [documentId]
+      );
+
+      if (docResult.rows.length === 0) {
+        throw new Error('Document not found');
+      }
+
+      const { is_latest } = docResult.rows[0];
+
+      // If already inactive, return early
+      if (!is_latest) {
+        await client.query('COMMIT');
+        return { 
+          message: 'Document is already inactive',
+          already_inactive: true
+        };
+      }
+
+      // Deactivate the document
+      await client.query(
+        'UPDATE documents SET is_latest = false WHERE id = $1',
+        [documentId]
+      );
+
+      await client.query('COMMIT');
+      return { 
+        message: 'Document deactivated successfully',
+        already_inactive: false
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }

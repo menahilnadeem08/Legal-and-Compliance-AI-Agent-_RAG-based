@@ -8,7 +8,9 @@ import {
   checkForNewerVersion,
   compareVersions,
   compareVersionsDetailed,
-  getSuggestions 
+  getSuggestions,
+  activateDocument,
+  deactivateDocument
 } from '../controllers/documentController';
 import { agentQuery } from '../controllers/agentController';
 import { handleValidationErrors } from '../middleware/validation';
@@ -81,6 +83,12 @@ router.get('/documents/:id/newer',
   handleValidationErrors,
   checkForNewerVersion
 );
+
+// Activate document
+router.put('/documents/:id/activate', activateDocument);
+
+// Deactivate document
+router.put('/documents/:id/deactivate', deactivateDocument);
 
 // Delete document
 router.delete('/documents/:id',

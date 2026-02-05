@@ -127,3 +127,23 @@ export const deleteDocument = asyncHandler(async (req: Request, res: Response) =
   const result = await documentService.deleteDocument(id as string);
   return res.json(result);
 });
+
+/**
+ * Activate a document version
+ * PUT /documents/:id/activate
+ */
+export const activateDocument = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await documentService.activateDocument(id as string);
+  return res.json(result);
+});
+
+/**
+ * Deactivate a document version
+ * PUT /documents/:id/deactivate
+ */
+export const deactivateDocument = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await documentService.deactivateDocument(id as string);
+  return res.json(result);
+});
