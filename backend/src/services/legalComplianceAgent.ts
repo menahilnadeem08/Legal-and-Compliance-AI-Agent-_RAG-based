@@ -25,10 +25,10 @@ export class LegalComplianceAgent {
   private documentService: DocumentService;
   private toolResultsMetadata: Map<string, any> = new Map();
 
-  constructor(cohereApiKey?: string) {
-    this.queryService = new QueryService(undefined, cohereApiKey);
+  constructor() {
+    this.queryService = new QueryService();
     this.versionService = new VersionComparisonService();
-    this.conflictService = new ConflictDetectionService(cohereApiKey);
+    this.conflictService = new ConflictDetectionService();
     this.documentService = new DocumentService();
   }
 

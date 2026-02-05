@@ -1,123 +1,118 @@
-import { CohereClient } from 'cohere-ai';
+/**
+ * MMR Reranker for Legal RAG
+ * --------------------------------
+ * - No external APIs
+ * - No model downloads
+ * - Deterministic & audit-friendly
+ * - Ideal for Node.js + TypeScript backends
+ */
 
 export interface RerankResult {
   content: string;
   document_name: string;
   section_name?: string;
   page_number?: number;
+  similarity: number;        // original vector similarity
+  rerank_score: number;      // MMR score
+  component_scores: {
+    relevance: number;
+    diversity: number;
+  };
+}
+
+interface VectorChunk {
+  content: string;
+  embedding: number[];
   similarity: number;
-  vector_score?: number;
-  keyword_score?: number;
-  rerank_score?: number;
+  document_name?: string;
+  section_name?: string;
+  page_number?: number;
 }
 
 export class Reranker {
-  private cohere: CohereClient | null = null;
-  private model: string = 'rerank-english-v3.0';
-  private enabled: boolean = false;
+  /**
+   * Cosine similarity between two vectors
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
 
-  constructor(apiKey?: string) {
-    // Use environment variable if no key provided
-    const key = apiKey || process.env.COHERE_API_KEY;
-    
-    if (!key) {
-      console.warn('COHERE_API_KEY not set — Cohere reranker will be disabled.');
-      this.enabled = false;
-      return;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
     }
 
-    try {
-      this.cohere = new CohereClient({
-        token: key,
-      });
-      this.enabled = true;
-    } catch (error) {
-      console.error('Failed to initialize Cohere client:', error);
-      this.enabled = false;
-    }
+    if (normA === 0 || normB === 0) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   /**
-   * Rerank chunks using Cohere's cross-encoder model
-   * @param query - User query
-   * @param chunks - Chunks to rerank
-   * @param topK - Number of top results to return after reranking
-   * @returns Reranked chunks with rerank scores
+   * MMR reranking
+   *
+   * λ (lambda):
+   * - 0.7 → relevance-focused (recommended for legal)
+   * - 0.5 → balanced
+   * - 0.3 → diversity-focused
    */
-  async rerank<T extends { content: string }>(
-    query: string,
-    chunks: T[],
-    topK: number = 10
-  ): Promise<(T & { rerank_score: number })[]> {
-    if (chunks.length === 0) {
-      return [];
-    }
-
-    // If reranker is disabled, return original chunks without reranking
-    if (!this.enabled || !this.cohere) {
-      return chunks.slice(0, topK).map(chunk => ({
-        ...chunk,
-        rerank_score: 0,
-      }));
-    }
-
-    try {
-      // Prepare documents for reranking
-      const documents = chunks.map(chunk => chunk.content);
-
-      // Call Cohere rerank API
-      const response = await this.cohere.rerank({
-        model: this.model,
-        query: query,
-        documents: documents,
-        topN: topK,
-        returnDocuments: false, // We already have the documents
-      });
-
-      // Map results back to original chunks with rerank scores
-      const rerankedChunks = response.results.map(result => ({
-        ...chunks[result.index],
-        rerank_score: result.relevanceScore,
-      }));
-
-      return rerankedChunks;
-    } catch (error) {
-      console.error('Reranking error:', error);
-      // Fallback: return original chunks without reranking
-      return chunks.slice(0, topK).map(chunk => ({
-        ...chunk,
-        rerank_score: 0,
-      }));
-    }
-  }
-
-  /**
-   * Rerank and filter chunks by minimum rerank score threshold
-   * @param query - User query
-   * @param chunks - Chunks to rerank
-   * @param topK - Number of top results to return
-   * @param minScore - Minimum rerank score threshold (0-1)
-   * @returns Filtered and reranked chunks
-   */
-  async rerankWithThreshold<T extends { content: string }>(
-    query: string,
+  rerank<T extends VectorChunk>(
     chunks: T[],
     topK: number = 10,
-    minScore: number = 0.3
-  ): Promise<(T & { rerank_score: number })[]> {
-    // If reranker is disabled, just return top chunks without filtering
-    if (!this.enabled || !this.cohere) {
-      return chunks.slice(0, topK).map(chunk => ({
-        ...chunk,
-        rerank_score: 0,
-      }));
+    lambda: number = 0.7
+  ): (T & RerankResult)[] {
+    if (chunks.length === 0) return [];
+
+    const selected: T[] = [];
+    const candidates = [...chunks];
+
+    // Always pick the most relevant first
+    candidates.sort((a, b) => b.similarity - a.similarity);
+    selected.push(candidates.shift()!);
+
+    while (selected.length < topK && candidates.length > 0) {
+      let bestIdx = 0;
+      let bestScore = -Infinity;
+
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+
+        // Relevance = vector similarity to query
+        const relevance = candidate.similarity;
+
+        // Diversity = max similarity to already selected chunks
+        let maxSimilarityToSelected = 0;
+        for (const sel of selected) {
+          const sim = this.cosineSimilarity(
+            candidate.embedding,
+            sel.embedding
+          );
+          maxSimilarityToSelected = Math.max(maxSimilarityToSelected, sim);
+        }
+
+        const mmrScore =
+          lambda * relevance -
+          (1 - lambda) * maxSimilarityToSelected;
+
+        if (mmrScore > bestScore) {
+          bestScore = mmrScore;
+          bestIdx = i;
+        }
+      }
+
+      selected.push(candidates.splice(bestIdx, 1)[0]);
     }
 
-    const reranked = await this.rerank(query, chunks, topK * 2); // Get more initially
-    
-    // Filter by minimum score and take topK
-    return reranked
-      .filter(chunk => chunk.rerank_score >= minScore)
-      .slice(0, topK);
+    return selected.map(chunk => ({
+      ...chunk,
+      content: chunk.content,
+      document_name: chunk.document_name ?? "",
+      similarity: chunk.similarity,
+      rerank_score: chunk.similarity, // relevance still dominates
+      component_scores: {
+        relevance: chunk.similarity,
+        diversity: 1 - chunk.similarity
+      }
+    }));
   }
 }

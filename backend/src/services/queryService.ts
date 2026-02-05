@@ -21,6 +21,7 @@ export interface QueryResult {
 
 export interface RetrievedChunk {
   content: string;
+  embedding?: number[];
   document_name: string;
   document_id?: string;
   document_version?: string;
@@ -33,6 +34,10 @@ export interface RetrievedChunk {
   vector_score?: number;
   keyword_score?: number;
   rerank_score?: number;
+  component_scores?: {
+    relevance: number;
+    diversity: number;
+  };
 }
 
 interface HybridSearchOptions {
@@ -162,10 +167,10 @@ export class QueryService {
   private documentService: DocumentService;
   private versionComparisonService: VersionComparisonService;
 
-  constructor(bm25Params?: BM25Params, cohereApiKey?: string) {
+  constructor(bm25Params?: BM25Params) {
     this.queryRewriter = new QueryRewriter();
     this.bm25Scorer = new BM25Scorer(bm25Params);
-    this.reranker = new Reranker(cohereApiKey);
+    this.reranker = new Reranker();
     this.documentService = new DocumentService();
     this.versionComparisonService = new VersionComparisonService();
   }
@@ -246,7 +251,7 @@ export class QueryService {
 
   async vectorSearch(queryEmbedding: number[], topK: number = 20): Promise<RetrievedChunk[]> {
     const result = await pool.query(
-      `SELECT c.content, c.section_name, c.page_number, c.chunk_index,
+      `SELECT c.content, c.embedding, c.section_name, c.page_number, c.chunk_index,
               d.name as document_name, d.id as document_id, d.version as document_version,
               d.type as document_type, d.upload_date,
               1 - (c.embedding <=> $1::vector) as similarity
@@ -260,6 +265,7 @@ export class QueryService {
 
     return result.rows.map(row => ({
       ...row,
+      embedding: typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding,
       vector_score: row.similarity
     }));
   }
@@ -576,34 +582,46 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
       console.log('\n[DEBUG] After deduplication:', deduplicated.length);
     }
 
+    // MMR reranking - synchronous, no async
     let reranked: RetrievedChunk[] = [];
     try {
-      reranked = await this.reranker.rerankWithThreshold(
-        query,
-        deduplicated,
-        15,
-        0.01
-      );
+      // Filter chunks with embeddings for reranking
+      const chunksWithEmbeddings = deduplicated.filter(c => c.embedding && c.embedding.length > 0);
+      
+      if (chunksWithEmbeddings.length > 0) {
+        reranked = this.reranker.rerank(
+          chunksWithEmbeddings as any,
+          8,     // topK - legal sweet spot
+          0.7    // lambda - relevance-focused for legal documents
+        );
 
-      if (debug) {
-        console.log('\n[DEBUG] After reranking:', reranked.length);
-        if (reranked.length > 0) {
-          console.log('Top 5 reranked:');
-          reranked.slice(0, 5).forEach((c, i) => {
-            console.log({
-              idx: i,
-              rerank_score: c.rerank_score?.toFixed(3),
-              document_name: c.document_name,
-              preview: c.content.substring(0, 80) + '...'
+        if (debug) {
+          console.log('\n[DEBUG] After MMR reranking:', reranked.length);
+          if (reranked.length > 0) {
+            console.log('Top 5 reranked:');
+            reranked.slice(0, 5).forEach((c, i) => {
+              console.log({
+                idx: i,
+                mmr_score: c.rerank_score?.toFixed(3),
+                relevance: c.component_scores?.relevance?.toFixed(3),
+                diversity: c.component_scores?.diversity?.toFixed(3),
+                document_name: c.document_name,
+                preview: c.content.substring(0, 80) + '...'
+              });
             });
-          });
+          }
         }
+      } else {
+        // Fallback if no embeddings available
+        reranked = deduplicated.slice(0, 8);
+        if (debug) console.log('⚠️ No embeddings available, using top results without reranking');
       }
     } catch (error) {
-      console.error('Reranking error:', error);
+      console.error('MMR reranking error:', error);
+      reranked = deduplicated.slice(0, 8);
     }
 
-    const finalChunks = (reranked.length > 0) ? reranked : deduplicated.slice(0, 15);
+    const finalChunks = reranked.length > 0 ? reranked : deduplicated.slice(0, 8);
 
     if (debug) {
       console.log('\n[DEBUG] Final chunks for generation:', finalChunks.length);
