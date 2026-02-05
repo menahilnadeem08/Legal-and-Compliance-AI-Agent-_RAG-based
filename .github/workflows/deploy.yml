@@ -3,7 +3,7 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - backend
+      - master
 
 jobs:
   deploy:
@@ -48,7 +48,6 @@ jobs:
             NODE_ENV=production
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            Cohere_API_Key=${{ secrets.COHERE_API_KEY }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
             
