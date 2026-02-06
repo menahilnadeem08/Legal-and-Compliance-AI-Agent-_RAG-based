@@ -18,6 +18,7 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'latest' | 'outdated'>('all');
 
   const fetchDocuments = async () => {
@@ -37,12 +38,27 @@ export default function DocumentsPage() {
     setDeleting(id);
     try {
       await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${id}`);
-      setDocuments(prev => prev.filter(doc => doc.id !== id));
+      await fetchDocuments();
     } catch (error) {
       console.error('Delete error:', error);
       alert('Failed to delete document');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleToggleActive = async (doc: Document) => {
+    setToggling(doc.id);
+    try {
+      const endpoint = doc.is_latest ? 'deactivate' : 'activate';
+      await axios.put(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${doc.id}/${endpoint}`);
+      await fetchDocuments();
+    } catch (error: any) {
+      console.error('Toggle error:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to update document status';
+      alert(errorMsg);
+    } finally {
+      setToggling(null);
     }
   };
 
@@ -92,8 +108,8 @@ export default function DocumentsPage() {
         <div className="flex gap-2 mb-4">
           {[
             { id: 'all', label: 'All Documents', icon: '📋' },
-            { id: 'latest', label: 'Latest Versions', icon: '✓' },
-            { id: 'outdated', label: 'Outdated', icon: '⏱️' },
+            { id: 'latest', label: 'Active Versions', icon: '✓' },
+            { id: 'outdated', label: 'Inactive', icon: '⏸️' },
           ].map(tab => (
             <button
               key={tab.id}
@@ -125,7 +141,7 @@ export default function DocumentsPage() {
                 <p className="text-sm font-semibold text-gray-300 mb-1">No documents found</p>
                 <p className="text-xs text-gray-500">
                   {filter !== 'all' 
-                    ? `No ${filter} documents available`
+                    ? `No ${filter === 'latest' ? 'active' : 'inactive'} documents available`
                     : 'Upload your first document from the chat'}
                 </p>
               </div>
@@ -160,36 +176,62 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
-                  {/* Badges */}
+                  {/* Version Badge */}
                   <div className="flex flex-wrap gap-2 mb-3">
                     <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-gray-700/60 text-gray-300 border border-gray-600">
                       v{doc.version}
                     </span>
-                    {doc.is_latest && (
-                      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-300 border border-green-500/50">
-                        ✓ Latest
-                      </span>
-                    )}
-                    {!doc.is_latest && (
-                      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/50">
-                        ⏱️ Outdated
-                      </span>
-                    )}
                   </div>
 
-                  {/* Date and Actions */}
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500">
-                      📅 {new Date(doc.upload_date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
+                  {/* Date */}
+                  <p className="text-xs text-gray-500 mb-3">
+                    📅 {new Date(doc.upload_date).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+
+                  {/* Toggle Switch & Delete */}
+                  <div className="flex items-center justify-between gap-3">
+                    {/* Status Toggle */}
+                    <div className="flex items-center gap-3 flex-1">
+                      <span className="text-xs text-gray-400 font-medium">Status:</span>
+                      <button
+                        onClick={() => handleToggleActive(doc)}
+                        disabled={toggling === doc.id}
+                        className={`
+                          relative inline-flex h-7 w-12 shrink-0 items-center rounded-full
+                          transition-all duration-300 ease-in-out
+                          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900
+                          ${toggling === doc.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'}
+                          ${doc.is_latest 
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-500 focus:ring-green-400 shadow-green-500/50 shadow-md' 
+                            : 'bg-gray-700 focus:ring-gray-400'
+                          }
+                        `}
+                      >
+                        <span
+                          className={`
+                            inline-block h-5 w-5 transform rounded-full 
+                            bg-white shadow-lg ring-1 ring-gray-900/10
+                            transition-all duration-300 ease-in-out
+                            ${doc.is_latest ? 'translate-x-6 scale-100' : 'translate-x-1 scale-95'}
+                          `}
+                        />
+                      </button>
+                      <span className={`text-xs font-semibold transition-colors duration-200 ${
+                        doc.is_latest ? 'text-emerald-400' : 'text-gray-500'
+                      }`}>
+                        {toggling === doc.id ? '⟳ Updating...' : doc.is_latest ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                    {/* Delete Button */}
                     <button
                       onClick={() => handleDelete(doc.id)}
                       disabled={deleting === doc.id}
-                      className="px-4 py-2 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-all disabled:opacity-50"
+                      className="px-3 py-2 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 hover:border-red-400/50 transition-all disabled:opacity-50"
                     >
                       {deleting === doc.id ? '⟳' : '🗑'}
                     </button>
@@ -204,7 +246,7 @@ export default function DocumentsPage() {
         <div className="mt-4 p-4 rounded-lg bg-gray-800/30 border border-gray-700/50 text-xs text-gray-400">
           Total: <span className="font-semibold text-gray-300">{filteredDocuments.length}</span> document{filteredDocuments.length !== 1 ? 's' : ''} 
           {filter === 'all' && documents.length > 0 && (
-            <> • <span className="text-green-400">{documents.filter(d => d.is_latest).length}</span> latest</>
+            <> • <span className="text-green-400">{documents.filter(d => d.is_latest).length}</span> active</>
           )}
         </div>
       </div>
