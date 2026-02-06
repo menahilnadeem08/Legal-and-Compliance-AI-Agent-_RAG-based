@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import { uploadController, uploadMiddleware, uploadErrorCleanup } from '../controllers/uploadController';
 import { 
   listDocuments, 
@@ -23,8 +23,15 @@ import {
   validateCompareVersionsDetailed,
   validateDeleteDocument
 } from '../middleware/validationSchemas';
+import { handleGoogleSignIn, logout, getCurrentUser } from '../controllers/authController';
+import { authenticateToken } from '../middleware/authMiddleware';
 
 const router = express.Router();
+
+// ===== Authentication Routes =====
+router.post('/auth/signin', handleGoogleSignIn as RequestHandler);
+router.post('/auth/logout', logout as RequestHandler);
+router.get('/auth/me', authenticateToken as RequestHandler, getCurrentUser as RequestHandler);
 
 // ===== Health Check / Connection Test =====
 router.get('/health', (req, res) => {
