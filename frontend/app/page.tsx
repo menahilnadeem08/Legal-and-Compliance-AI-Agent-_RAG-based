@@ -43,7 +43,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden">
+    <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
       {/* Header */}
       <div className="glass-border m-4 mb-0 py-6">
         <div className="text-center">

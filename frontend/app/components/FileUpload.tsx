@@ -1,26 +1,39 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
+import Navigation from './Navigation';
 
-export default function FileUpload({ onUploadSuccess }: { onUploadSuccess?: () => void }) {
+export default function FileUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [version, setVersion] = useState('1.0');
   const [type, setType] = useState('policy');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
 
-  const resetForm = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
     }
-    setFile(null);
-    setVersion('1.0');
-    setType('policy');
-    setMessage('');
-    setMessageType('');
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile.type === 'application/pdf' || 
+          droppedFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        setFile(droppedFile);
+      }
+    }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -36,183 +49,223 @@ export default function FileUpload({ onUploadSuccess }: { onUploadSuccess?: () =
     setMessage('');
 
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, formData, {
+      await axios.post('http://localhost:5000/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-
-      setMessage('✅ Document uploaded and processed successfully!');
-      setMessageType('success');
-      resetForm();
-
-      if (onUploadSuccess) {
-        onUploadSuccess();
-      }
-
-      setTimeout(() => {
-        setMessage('');
-        setMessageType('');
-      }, 4000);
+      setMessage('✓ Document uploaded successfully!');
+      setFile(null);
+      setVersion('1.0');
+      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
-      setMessage('❌ Upload failed. Please try again.');
-      setMessageType('error');
+      setMessage('✗ Upload failed. Please try again.');
       console.error(error);
     } finally {
       setUploading(false);
     }
   };
 
-  const getFileIcon = (type: string) => {
-    switch (type) {
-      case 'contract':
-        return '📜';
-      case 'regulation':
-        return '⚖️';
-      case 'case_law':
-        return '📚';
-      default:
-        return '📋';
-    }
-  };
-
   return (
-    <div className="glass-border h-full flex flex-col">
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-500/20 to-gray-600/20 flex items-center justify-center text-lg border border-gray-500/40">
-            📤
+    <div className="w-full bg-gradient-to-b from-slate-950 to-slate-900">
+      <div className="max-w-full mx-auto px-6">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
           </div>
-          <h2 className="text-lg font-bold text-gray-300">Upload Document</h2>
-        </div>
-        <p className="text-xs text-gray-400">Add legal documents to your knowledge base</p>
-      </div>
-
-      <form onSubmit={handleUpload} className="space-y-4 flex flex-col flex-1">
-        {/* File Upload Area */}
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            id="file-upload"
-            accept=".pdf,.docx,.doc"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="hidden"
-          />
-          <label
-            htmlFor="file-upload"
-            className="flex items-center justify-center w-full p-6 border-2 border-dashed border-gray-500/30 rounded-lg hover:border-gray-400/60 hover:bg-gray-500/5 transition-all cursor-pointer group"
-          >
-            <div className="text-center">
-              <div className="text-4xl mb-2 group-hover:animate-float">📁</div>
-              <p className="text-sm font-semibold text-foreground">Drop file or click to browse</p>
-              <p className="text-xs text-gray-400 mt-1">PDF, DOCX up to 50MB</p>
-            </div>
-          </label>
-
-          {file && (
-            <div className="mt-3 p-3 rounded-lg bg-gray-600/20 border border-gray-500/40 flex items-center gap-3 animate-fade-in">
-              <span className="text-xl">✓</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-200 truncate">{file.name}</p>
-                <p className="text-xs text-gray-400">
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFile(null);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }}
-                className="text-xs px-4 py-2 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30"
-              >
-                Remove
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Document Type */}
-        <div>
-          <label className="block text-sm font-semibold text-foreground mb-2">
-            Document Type
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { value: 'policy', label: 'Policy', icon: '📋' },
-              { value: 'contract', label: 'Contract', icon: '📜' },
-              { value: 'regulation', label: 'Regulation', icon: '⚖️' },
-              { value: 'case_law', label: 'Case Law', icon: '📚' },
-            ].map((opt) => (
-              <div
-                key={opt.value}
-                onClick={() => setType(opt.value)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    setType(opt.value);
-                  }
-                }}
-                className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${
-                  type === opt.value
-                    ? 'border-gray-400 bg-gray-500/20 text-gray-200 font-semibold'
-                    : 'border-gray-600/40 text-gray-500 hover:border-gray-500/60 hover:bg-gray-600/10'
-                }`}
-              >
-                <span className="text-lg block">{opt.icon}</span>
-                <p className="text-xs mt-1 text-center">{opt.label}</p>
-              </div>
-            ))}
+          <div>
+            <h2 className="text-2xl font-semibold text-white">Upload Document</h2>
+            <p className="text-sm text-gray-400 mt-1">Add legal documents to your knowledge base</p>
           </div>
         </div>
 
-        {/* Version */}
-        <div>
-          <label className="block text-sm font-semibold text-foreground mb-2">
-            Version
-          </label>
-          <input
-            type="text"
-            value={version}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder="e.g., 1.0"
-            className="w-full"
-          />
-          <p className="text-xs text-gray-400 mt-1">Track document versions</p>
-        </div>
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-2xl border border-slate-700/50 p-8 mx-auto" style={{ maxWidth: '1400px' }}>
+          <form onSubmit={handleUpload} className="space-y-6">
+            {/* Horizontal Stepper Progress */}
+            <div className="flex items-center justify-between mb-6">
+              {[
+                { step: 1, label: 'Document', icon: '📄', active: true },
+                { step: 2, label: 'Type', icon: '📋', active: !!file },
+                { step: 3, label: 'Version', icon: '📌', active: !!file && !!type },
+                { step: 4, label: 'Upload', icon: '✓', active: !!file && !!type && !!version },
+              ].map((item, idx) => (
+                <div key={item.step} className="flex items-center flex-1">
+                  <div className={`flex flex-col items-center ${idx < 3 ? 'flex-1' : ''}`}>
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold transition-all ${
+                      item.active
+                        ? 'bg-blue-500/20 border-2 border-blue-500 text-blue-300'
+                        : 'bg-slate-700/50 border-2 border-slate-600 text-gray-400'
+                    }`}>
+                      {item.icon}
+                    </div>
+                    <p className={`text-sm font-medium mt-3 transition-all ${
+                      item.active ? 'text-blue-300' : 'text-gray-500'
+                    }`}>
+                      {item.label}
+                    </p>
+                  </div>
+                  
+                  {idx < 3 && (
+                    <div className={`h-1 flex-1 mx-4 rounded transition-all ${
+                      item.active && idx < 3 ? 'bg-blue-500' : 'bg-slate-700'
+                    }`}></div>
+                  )}
+                </div>
+              ))}
+            </div>
 
-        {/* Upload Button */}
-        <div className="mt-auto space-y-3 pt-4 border-t border-foreground-dim/10">
-          <button
-            type="submit"
-            disabled={!file || uploading}
-            className="w-full py-4 px-4 flex items-center justify-center gap-2 font-semibold text-base rounded-lg bg-gradient-to-r from-gray-600 to-gray-700 text-gray-100 hover:from-gray-500 hover:to-gray-600 disabled:from-gray-700 disabled:to-gray-800 disabled:cursor-not-allowed shadow-lg"
-          >
-            {uploading ? (
-              <>
-                <span className="animate-pulse-glow">⟳</span> Processing...
-              </>
-            ) : (
-              <>
-                <span>📤</span> Upload Document
-              </>
-            )}
-          </button>
+            {/* Horizontal Form Layout */}
+            <div className="grid grid-cols-4 gap-6 items-start">
+              {/* Step 1: File Upload */}
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-300 mb-3">Document</label>
+                <div
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  className={`relative border-2 border-dashed rounded-xl transition-all ${
+                    dragActive 
+                      ? 'border-blue-400 bg-blue-500/5' 
+                      : file
+                      ? 'border-green-500 bg-green-500/5'
+                      : 'border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    id="file-upload"
+                    accept=".pdf,.docx"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  
+                  <label htmlFor="file-upload" className="flex flex-col items-center justify-center py-12 px-6 cursor-pointer">
+                    {file ? (
+                      <div className="text-center">
+                        <div className="text-green-400 text-4xl mb-4">✓</div>
+                        <p className="text-sm text-white font-medium truncate max-w-full">{file.name}</p>
+                        <p className="text-sm text-gray-400 mt-2">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <div className="text-slate-400 text-4xl mb-4">📎</div>
+                        <p className="text-sm text-white font-medium">Choose File</p>
+                        <p className="text-sm text-gray-500 mt-2">PDF or DOCX</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+                {file && (
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="mt-6 text-sm text-blue-400 hover:text-blue-300 w-full text-center transition-colors"
+                  >
+                    Clear file
+                  </button>
+                )}
+              </div>
 
-          {/* Status Message */}
+              {/* Step 2: Document Type */}
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-300 mb-3">Type</label>
+                <div className="space-y-4">
+                  {[
+                    { value: 'policy', label: 'Policy', icon: '📋' },
+                    { value: 'contract', label: 'Contract', icon: '📄' },
+                    { value: 'regulation', label: 'Regulation', icon: '⚖️' },
+                    { value: 'case-law', label: 'Case Law', icon: '🏛️' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setType(option.value)}
+                      disabled={!file}
+                      className={`w-full p-4 rounded-lg border text-sm font-medium transition-all ${
+                        type === option.value
+                          ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                          : file
+                          ? 'bg-slate-800/50 border-slate-700 text-gray-400 hover:border-slate-600 hover:bg-slate-800'
+                          : 'bg-slate-800/30 border-slate-700/50 text-gray-600 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="mr-2">{option.icon}</span>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 3: Version */}
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-300 mb-3">Version</label>
+                <select
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  disabled={!file || !type}
+                  className={`w-full p-4 bg-slate-800/50 border rounded-lg text-white text-sm focus:outline-none transition-all appearance-none cursor-pointer ${
+                    file && type
+                      ? 'border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                      : 'border-slate-700/50 bg-slate-800/30 text-gray-600 cursor-not-allowed'
+                  }`}
+                >
+                  {['1.0', '2.0', '3.0', '4.0', '5.0'].map((v) => (
+                    <option key={v} value={v} className="bg-slate-900">
+                      v{v}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-5 text-sm text-gray-500">Select document version</p>
+              </div>
+
+              {/* Step 4: Upload Button */}
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-300 mb-3">Action</label>
+                <button
+                  type="submit"
+                  disabled={!file || uploading}
+                  className="w-full h-[120px] bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-medium disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed hover:from-blue-500 hover:to-blue-400 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20 disabled:shadow-none flex flex-col items-center justify-center gap-2"
+                >
+                  {uploading ? (
+                    <>
+                      <svg className="animate-spin h-10 w-10" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-base">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <span className="text-base font-semibold">Upload Document</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Success/Error Message */}
           {message && (
-            <div
-              className={`p-3 rounded-lg text-sm font-medium animate-fade-in ${
-                messageType === 'success'
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
-              }`}
-            >
+            <div className={`mt-6 p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
+              message.includes('✓') 
+                ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
+                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+            }`}>
+              <span className="text-lg">{message.includes('✓') ? '✓' : '✗'}</span>
               {message}
             </div>
           )}
         </div>
-      </form>
+
+        {/* Helper Text */}
+        <div className="mt-4 text-center text-xs text-gray-500">
+          Upload documents in PDF or DOCX format
+        </div>
+      </div>
     </div>
   );
 }
