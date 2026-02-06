@@ -37,16 +37,50 @@ export async function initializeAuthTables() {
     // Create documents table with admin_id for multi-tenant support
     await client.query(`
       CREATE TABLE IF NOT EXISTS documents (
-        id SERIAL PRIMARY KEY,
+        id VARCHAR(36) PRIMARY KEY,
         admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        filename VARCHAR(255) NOT NULL,
-        filepath VARCHAR(512) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(50),
+        version VARCHAR(20),
+        filename VARCHAR(255),
+        filepath VARCHAR(512),
         content TEXT,
+        metadata JSONB,
+        is_latest BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_active BOOLEAN DEFAULT true
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add is_active column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true
+    `);
+
+    // Add missing columns (migration)
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS type VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS version VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS metadata JSONB,
+      ADD COLUMN IF NOT EXISTS is_latest BOOLEAN DEFAULT true
+    `);
+
+    // Drop old unique constraint if it exists (migration for multi-admin support)
+    await client.query(`
+      ALTER TABLE documents
+      DROP CONSTRAINT IF EXISTS documents_name_version_key
+    `);
+
+    // Add new unique constraint with admin_id
+    await client.query(`
+      ALTER TABLE documents
+      ADD CONSTRAINT documents_admin_id_name_version_key UNIQUE (admin_id, name, version)
+    `).catch(() => {
+      // Constraint might already exist, ignore error
+    });
 
     // Create indexes
     await client.query(`
