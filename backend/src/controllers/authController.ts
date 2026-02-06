@@ -1,21 +1,11 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { hashPassword, comparePassword } from '../utils/passwordUtils';
+import { AuthenticatedRequest } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRE = '7d';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    email?: string;
-    username?: string;
-    name?: string;
-    picture?: string;
-    role?: string;
-  };
-}
 
 // Employee/Local login
 export async function login(req: AuthenticatedRequest, res: Response): Promise<void> {

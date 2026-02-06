@@ -1,18 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
+import { AuthenticatedRequest } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    username?: string;
-    email?: string;
-    role?: string;
-    admin_id?: number;
-  };
-}
 
 // Authenticate user via JWT token
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {

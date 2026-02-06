@@ -1,3 +1,21 @@
+import { Request } from 'express';
+
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number;
+    email?: string;
+    username?: string;
+    name?: string;
+    picture?: string;
+    role?: string;
+    admin_id?: number;
+  };
+  document?: {
+    id: string;
+    admin_id: number;
+  };
+}
+
 export interface Document {
     id: string;
     name: string;

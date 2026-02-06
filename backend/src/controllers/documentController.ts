@@ -1,32 +1,10 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { DocumentService } from '../services/documentService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
-
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    email?: string;
-    username?: string;
-    role?: string;
-    admin_id?: number;
-  };
-}
+import { getAdminIdForUser } from '../utils/adminIdUtils';
+import { AuthenticatedRequest } from '../types';
 
 const documentService = new DocumentService();
-
-/**
- * Get admin_id for query filtering based on user role
- */
-function getAdminIdForUser(user: AuthenticatedRequest['user']): number | null {
-  if (!user) return null;
-  
-  if (user.role === 'admin') {
-    return user.id;
-  } else if (user.role === 'employee') {
-    return user.admin_id || null;
-  }
-  return null;
-}
 
 export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const adminId = getAdminIdForUser(req.user);

@@ -1,19 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import pool from '../config/database';
-
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    email?: string;
-    username?: string;
-    role?: string;
-    admin_id?: number;
-  };
-  document?: {
-    id: string;
-    admin_id: number;
-  };
-}
+import { AuthenticatedRequest } from '../types';
 
 /**
  * Middleware to verify document ownership

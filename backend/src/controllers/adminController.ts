@@ -1,16 +1,10 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import pool from '../config/database';
 import { hashPassword } from '../utils/passwordUtils';
-
-export interface AdminRequest extends Request {
-  user?: {
-    id: number;
-    role: string;
-  };
-}
+import { AuthenticatedRequest } from '../types';
 
 // Create employee user (admin only)
-export async function createEmployee(req: AdminRequest, res: Response): Promise<void> {
+export async function createEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     // Check if user is admin
     if (!req.user || req.user.role !== 'admin') {
@@ -80,7 +74,7 @@ export async function createEmployee(req: AdminRequest, res: Response): Promise<
 }
 
 // Get all employees (admin only)
-export async function getEmployees(req: AdminRequest, res: Response): Promise<void> {
+export async function getEmployees(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
       res.status(403).json({ error: 'Only admins can view employees' });
@@ -102,7 +96,7 @@ export async function getEmployees(req: AdminRequest, res: Response): Promise<vo
 }
 
 // Deactivate employee (admin only)
-export async function deactivateEmployee(req: AdminRequest, res: Response): Promise<void> {
+export async function deactivateEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
       res.status(403).json({ error: 'Only admins can deactivate employees' });
@@ -129,7 +123,7 @@ export async function deactivateEmployee(req: AdminRequest, res: Response): Prom
 }
 
 // Activate employee (admin only)
-export async function activateEmployee(req: AdminRequest, res: Response): Promise<void> {
+export async function activateEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
       res.status(403).json({ error: 'Only admins can activate employees' });
