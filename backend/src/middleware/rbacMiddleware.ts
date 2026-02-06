@@ -89,36 +89,3 @@ export function requireRole(...allowedRoles: string[]) {
     next();
   };
 }
-
-// Optional authentication (doesn't fail if no token)
-export async function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-
-    if (!token) {
-      return next();
-    }
-
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userResult = await pool.query(
-      'SELECT id, username, email, name, role, admin_id FROM users WHERE id = $1',
-      [decoded.id]
-    );
-
-    if (userResult.rows.length > 0) {
-      const user = userResult.rows[0];
-      req.user = {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        admin_id: user.admin_id
-      };
-    }
-
-    next();
-  } catch (error) {
-    // Continue without authentication
-    next();
-  }
-}

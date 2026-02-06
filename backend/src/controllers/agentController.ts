@@ -48,8 +48,3 @@ export const agentQuery = asyncHandler(async (req: AuthenticatedRequest, res: Re
   
   return res.json(result);
 });
-
-/**
- * Legacy compatibility
- */
-export const queryController = agentQuery;
