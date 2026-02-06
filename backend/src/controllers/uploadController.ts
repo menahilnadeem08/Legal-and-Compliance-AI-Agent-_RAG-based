@@ -8,6 +8,17 @@ import fs from 'fs';
 const upload = multer({ dest: 'uploads/' });
 const uploadService = new UploadService();
 
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number;
+    email?: string;
+    username?: string;
+    name?: string;
+    picture?: string;
+    role?: string;
+  };
+}
+
 export const uploadMiddleware = upload.single('file');
 
 /**
@@ -27,7 +38,17 @@ export const uploadErrorCleanup = (
   next(err);
 };
 
-export const uploadController = asyncHandler(async (req: Request, res: Response) => {
+export const uploadController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  // Check authentication
+  if (!req.user) {
+    throw new AppError('Unauthorized', 401);
+  }
+
+  // Only admins can upload documents
+  if (req.user.role !== 'admin') {
+    throw new AppError('Only admins can upload documents', 403);
+  }
+
   // Validation: Check if file exists (multer validation)
   if (!req.file) {
     throw new AppError('No file uploaded', 400);
@@ -42,13 +63,14 @@ export const uploadController = asyncHandler(async (req: Request, res: Response)
     throw new AppError('Only PDF and DOCX files are supported', 400);
   }
 
-  // Business logic: Process document
+  // Business logic: Process document with admin_id
   const documentId = await uploadService.ingestDocument(
     req.file.path,
     req.file.originalname,
     fileExt,
     version,
-    type
+    type,
+    req.user.id // Pass admin_id
   );
 
   // Clean up uploaded file on success

@@ -101,20 +101,34 @@ Return ONLY the JSON object or null if you cannot extract document information.`
   async getDocumentChunks(
     documentNames: string[],
     topic?: string,
-    chunksPerDoc: number = 10
+    chunksPerDoc: number = 10,
+    adminId?: number
   ): Promise<Map<string, ConflictChunk[]>> {
     const result = new Map<string, ConflictChunk[]>();
 
     for (const docName of documentNames) {
       // Find document (fuzzy match)
-      const docQuery = await pool.query(
-        `SELECT DISTINCT d.id, d.name, d.version
-         FROM documents d
-         WHERE d.is_latest = true 
-         AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
-         LIMIT 1`,
-        [docName, `%${docName}%`]
-      );
+      let docQuery: any;
+      if (adminId) {
+        docQuery = await pool.query(
+          `SELECT DISTINCT d.id, d.name, d.version
+           FROM documents d
+           WHERE d.is_latest = true 
+           AND d.admin_id = $3
+           AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
+           LIMIT 1`,
+          [docName, `%${docName}%`, adminId]
+        );
+      } else {
+        docQuery = await pool.query(
+          `SELECT DISTINCT d.id, d.name, d.version
+           FROM documents d
+           WHERE d.is_latest = true 
+           AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
+           LIMIT 1`,
+          [docName, `%${docName}%`]
+        );
+      }
 
       if (docQuery.rows.length === 0) {
         console.warn(`Document not found: ${docName}`);
@@ -335,7 +349,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   /**
    * Main entry point: Detect conflicts between documents
    */
-  async detectConflicts(query: string): Promise<ConflictAnalysisResult> {
+  async detectConflicts(query: string, adminId?: number): Promise<ConflictAnalysisResult> {
     console.log('\n🔍 Starting conflict detection:', query);
 
     // Parse query to extract documents
@@ -352,7 +366,8 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     const chunksMap = await this.getDocumentChunks(
       parsed.documents,
       parsed.topic,
-      15 // chunks per document
+      15, // chunks per document
+      adminId
     );
 
     if (chunksMap.size < 2) {

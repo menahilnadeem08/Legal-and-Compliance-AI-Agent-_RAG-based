@@ -22,17 +22,18 @@ export class UploadService {
     fileName: string,
     fileType: string,
     version: string = '1.0',
-    docType: string = 'policy'
+    docType: string = 'policy',
+    adminId: number
   ): Promise<string> {
     // Parse document
     const parsed = await this.parser.parse(filePath, fileType);
 
-    // Create document record
+    // Create document record with admin_id
     const documentId = uuidv4();
     await pool.query(
-      `INSERT INTO documents (id, name, type, version, is_latest, metadata) 
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [documentId, fileName, docType, version, true, JSON.stringify(parsed.metadata)]
+      `INSERT INTO documents (id, admin_id, name, type, version, is_latest, metadata) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [documentId, adminId, fileName, docType, version, true, JSON.stringify(parsed.metadata)]
     );
 
     // Mark this as the latest version (deactivates previous versions)

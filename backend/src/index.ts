@@ -4,37 +4,53 @@ import cors from 'cors';
 import routes from './routes';
 import pool from './config/database';
 import { errorHandler } from './middleware/errorHandler';
+import { initializeAuthTables } from './config/initDb';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Initialize database tables
+async function startServer() {
+  try {
+    await initializeAuthTables();
+    console.log('Database initialized');
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+  }
 
-// Routes
-app.use('/api', routes);
+  // Middleware
+  app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true
+  }));
+  app.use(express.json());
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+  // Routes
+  app.use('/api', routes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
 
-// Centralized error handling middleware (MUST be last)
-app.use(errorHandler);
+  // 404 handler
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+  });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  // Centralized error handling middleware (MUST be last)
+  app.use(errorHandler);
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await pool.end();
-  process.exit(0);
-});
+  // Start server
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    await pool.end();
+    process.exit(0);
+  });
+}
+
+startServer();

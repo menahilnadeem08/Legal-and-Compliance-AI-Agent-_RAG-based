@@ -1,28 +1,50 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { DocumentService } from '../services/documentService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
+import { getAdminIdForUser } from '../utils/adminIdUtils';
+import { AuthenticatedRequest } from '../types';
 
 const documentService = new DocumentService();
 
-export const listDocuments = asyncHandler(async (req: Request, res: Response) => {
-  const documents = await documentService.listDocuments();
+export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+  
+  const documents = await documentService.listDocuments(adminId);
   return res.json(documents);
 });
 
-export const getDocumentVersionHistory = asyncHandler(async (req: Request, res: Response) => {
+export const getDocumentVersionHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { name } = req.params;
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+  
   const decodedName = decodeURIComponent(name as string);
-  const history = await documentService.getDocumentVersionHistory(decodedName);
+  const history = await documentService.getDocumentVersionHistory(decodedName, adminId);
   return res.json(history);
 });
 
-export const getOutdatedDocuments = asyncHandler(async (req: Request, res: Response) => {
-  const outdated = await documentService.getOutdatedDocuments();
+export const getOutdatedDocuments = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+  
+  const outdated = await documentService.getOutdatedDocuments(adminId);
   return res.json(outdated);
 });
 
-export const checkForNewerVersion = asyncHandler(async (req: Request, res: Response) => {
+export const checkForNewerVersion = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+  
   const result = await documentService.checkForNewerVersion(id as string);
   return res.json(result);
 });
@@ -30,13 +52,18 @@ export const checkForNewerVersion = asyncHandler(async (req: Request, res: Respo
 /**
  * GET /documents/compare?name=...&version1=...&version2=...
  */
-export const compareVersions = asyncHandler(async (req: Request, res: Response) => {
+export const compareVersions = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { name, version1, version2 } = req.query;
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
   
   const comparison = await documentService.compareVersions(
     name as string,
     version1 as string,
-    version2 as string
+    version2 as string,
+    adminId
   );
   return res.json(comparison);
 });
@@ -46,14 +73,18 @@ export const compareVersions = asyncHandler(async (req: Request, res: Response) 
  * GET /documents/compare/detailed?name=...&version1=...&version2=...
  * Supports: fuzzy document names, partial versions, "latest", "previous" keywords
  */
-export const compareVersionsDetailed = asyncHandler(async (req: Request, res: Response) => {
+export const compareVersionsDetailed = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { name, version1, version2 } = req.query;
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
 
   // INTELLIGENT RESOLUTION
   // 1. Fuzzy match document name
-  const resolvedName = await documentService.findDocumentByName(name as string);
+  const resolvedName = await documentService.findDocumentByName(name as string, adminId);
   if (!resolvedName) {
-    const similar = await documentService.getSimilarDocuments(name as string);
+    const similar = await documentService.getSimilarDocuments(name as string, adminId);
     throw new AppError(`Document "${name}" not found`, 404, {
       suggestions: similar.length > 0 ? similar : ['No similar documents found'],
       hint: 'Try using a partial document name or check available documents'
@@ -61,11 +92,11 @@ export const compareVersionsDetailed = asyncHandler(async (req: Request, res: Re
   }
 
   // 2. Resolve versions (supports "latest", "previous", partial versions like "2" -> "2.4")
-  const resolvedV1 = await documentService.resolveVersion(resolvedName, version1 as string);
-  const resolvedV2 = await documentService.resolveVersion(resolvedName, version2 as string);
+  const resolvedV1 = await documentService.resolveVersion(resolvedName, version1 as string, adminId);
+  const resolvedV2 = await documentService.resolveVersion(resolvedName, version2 as string, adminId);
 
   if (!resolvedV1 || !resolvedV2) {
-    const availableVersions = await documentService.getDocumentVersions(resolvedName);
+    const availableVersions = await documentService.getDocumentVersions(resolvedName, adminId);
     throw new AppError('Could not resolve version(s)', 404, {
       document: resolvedName,
       requested: { version1, version2 },
@@ -78,7 +109,8 @@ export const compareVersionsDetailed = asyncHandler(async (req: Request, res: Re
   const comparison = await documentService.compareVersionsDetailed(
     resolvedName,
     resolvedV1,
-    resolvedV2
+    resolvedV2,
+    adminId
   );
   
   return res.json({
@@ -98,19 +130,23 @@ export const compareVersionsDetailed = asyncHandler(async (req: Request, res: Re
  * NEW: Get suggestions for document names and versions
  * GET /documents/suggestions?query=...&document=...
  */
-export const getSuggestions = asyncHandler(async (req: Request, res: Response) => {
+export const getSuggestions = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { query, document } = req.query;
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
 
   if (query && typeof query === 'string') {
     // Suggest documents
-    const suggestions = await documentService.getSimilarDocuments(query);
+    const suggestions = await documentService.getSimilarDocuments(query, adminId);
     return res.json({ documents: suggestions });
   }
 
   if (document && typeof document === 'string') {
     // Suggest versions for a document
-    const versions = await documentService.getDocumentVersions(document);
-    const resolvedName = await documentService.findDocumentByName(document);
+    const versions = await documentService.getDocumentVersions(document, adminId);
+    const resolvedName = await documentService.findDocumentByName(document, adminId);
     
     return res.json({ 
       document: resolvedName || document,
@@ -122,7 +158,7 @@ export const getSuggestions = asyncHandler(async (req: Request, res: Response) =
   throw new AppError('Either "query" or "document" parameter is required', 400);
 });
 
-export const deleteDocument = asyncHandler(async (req: Request, res: Response) => {
+export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const result = await documentService.deleteDocument(id as string);
   return res.json(result);
@@ -132,7 +168,7 @@ export const deleteDocument = asyncHandler(async (req: Request, res: Response) =
  * Activate a document version
  * PUT /documents/:id/activate
  */
-export const activateDocument = asyncHandler(async (req: Request, res: Response) => {
+export const activateDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const result = await documentService.activateDocument(id as string);
   return res.json(result);
@@ -142,7 +178,7 @@ export const activateDocument = asyncHandler(async (req: Request, res: Response)
  * Deactivate a document version
  * PUT /documents/:id/deactivate
  */
-export const deactivateDocument = asyncHandler(async (req: Request, res: Response) => {
+export const deactivateDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const result = await documentService.deactivateDocument(id as string);
   return res.json(result);

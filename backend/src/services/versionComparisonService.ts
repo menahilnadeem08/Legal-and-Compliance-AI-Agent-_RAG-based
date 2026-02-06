@@ -128,7 +128,7 @@ Return ONLY the JSON object or null, nothing else.`;
   /**
    * Process intelligent version comparison with fuzzy matching and citations
    */
-  async processComparison(userQuery: string): Promise<any> {
+  async processComparison(userQuery: string, adminId?: number): Promise<any> {
     // Parse the user query
     const parsed = await this.parseComparisonRequest(userQuery);
     
@@ -140,10 +140,10 @@ Return ONLY the JSON object or null, nothing else.`;
     }
 
     // Resolve fuzzy document name
-    const resolvedName = await this.documentService.findDocumentByName(parsed.documentName);
+    const resolvedName = await this.documentService.findDocumentByName(parsed.documentName, adminId);
     
     if (!resolvedName) {
-      const similar = await this.documentService.getSimilarDocuments(parsed.documentName);
+      const similar = await this.documentService.getSimilarDocuments(parsed.documentName, adminId);
       return {
         error: `Document "${parsed.documentName}" not found.`,
         suggestions: similar.length > 0 
@@ -153,11 +153,11 @@ Return ONLY the JSON object or null, nothing else.`;
     }
 
     // Resolve versions (supports "latest", "previous", partial versions, etc.)
-    const resolvedV1 = await this.documentService.resolveVersion(resolvedName, parsed.version1);
-    const resolvedV2 = await this.documentService.resolveVersion(resolvedName, parsed.version2);
+    const resolvedV1 = await this.documentService.resolveVersion(resolvedName, parsed.version1, adminId);
+    const resolvedV2 = await this.documentService.resolveVersion(resolvedName, parsed.version2, adminId);
 
     if (!resolvedV1 || !resolvedV2) {
-      const availableVersions = await this.documentService.getDocumentVersions(resolvedName);
+      const availableVersions = await this.documentService.getDocumentVersions(resolvedName, adminId);
       return {
         error: `Could not resolve versions "${parsed.version1}" and/or "${parsed.version2}"`,
         document: resolvedName,
@@ -171,7 +171,8 @@ Return ONLY the JSON object or null, nothing else.`;
       const comparison = await this.documentService.compareVersionsDetailed(
         resolvedName,
         resolvedV1,
-        resolvedV2
+        resolvedV2,
+        adminId
       );
       
       // Extract citations from changes

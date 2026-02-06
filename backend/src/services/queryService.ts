@@ -87,20 +87,25 @@ class BM25Scorer {
     return tokens.filter(t => t === term).length;
   }
 
-  async score(query: string, topK: number = 20): Promise<Array<RetrievedChunk & { id: string }>> {
+  async score(query: string, topK: number = 20, adminId?: number): Promise<Array<RetrievedChunk & { id: string }>> {
     const queryTerms = this.tokenize(query);
     if (queryTerms.length === 0) return [];
 
     const tsQuery = queryTerms.join(' | ');
-
-    const candidates = await pool.query(
-      `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
+    
+    let sqlQuery = `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
               d.id as document_id, d.name as document_name, d.version as document_version,
               d.type as document_type, d.upload_date, LENGTH(c.content) as doc_length
        FROM chunks c JOIN documents d ON c.document_id = d.id
-       WHERE d.is_latest = true AND to_tsvector('english', c.content) @@ to_tsquery('english', $1)`,
-      [tsQuery]
-    );
+       WHERE d.is_latest = true AND to_tsvector('english', c.content) @@ to_tsquery('english', $1)`;
+    
+    const params: any[] = [tsQuery];
+    if (adminId) {
+      sqlQuery += ` AND d.admin_id = $2`;
+      params.push(adminId);
+    }
+    
+    const candidates = await pool.query(sqlQuery, params);
 
     if (candidates.rows.length === 0) return [];
 
@@ -249,19 +254,28 @@ export class QueryService {
     return minSize > 0 ? intersection.size / minSize : 0;
   }
 
-  async vectorSearch(queryEmbedding: number[], topK: number = 20): Promise<RetrievedChunk[]> {
-    const result = await pool.query(
-      `SELECT c.content, c.embedding, c.section_name, c.page_number, c.chunk_index,
+  async vectorSearch(queryEmbedding: number[], topK: number = 20, adminId?: number): Promise<RetrievedChunk[]> {
+    let query = `SELECT c.content, c.embedding, c.section_name, c.page_number, c.chunk_index,
               d.name as document_name, d.id as document_id, d.version as document_version,
               d.type as document_type, d.upload_date,
               1 - (c.embedding <=> $1::vector) as similarity
        FROM chunks c
        JOIN documents d ON c.document_id = d.id
-       WHERE d.is_latest = true
-       ORDER BY c.embedding <=> $1::vector
-       LIMIT $2`,
-      [JSON.stringify(queryEmbedding), topK]
-    );
+       WHERE d.is_latest = true`;
+    
+    const params: any[] = [JSON.stringify(queryEmbedding)];
+    let paramIndex = 2;
+    
+    if (adminId) {
+      query += ` AND d.admin_id = $${paramIndex}`;
+      params.push(adminId);
+      paramIndex++;
+    }
+    
+    query += ` ORDER BY c.embedding <=> $1::vector LIMIT $${paramIndex}`;
+    params.push(topK);
+    
+    const result = await pool.query(query, params);
 
     return result.rows.map(row => ({
       ...row,
@@ -270,7 +284,7 @@ export class QueryService {
     }));
   }
 
-  async search(query: string, topK: number = 20, options?: HybridSearchOptions): Promise<RetrievedChunk[]> {
+  async search(query: string, topK: number = 20, options?: HybridSearchOptions, adminId?: number): Promise<RetrievedChunk[]> {
     const opts = {
       vectorWeight: 0.6,
       keywordWeight: 0.4,
@@ -283,10 +297,10 @@ export class QueryService {
 
     const [queryEmbedding, keywordResults] = await Promise.all([
       embeddings.embedQuery(query),
-      opts.useBM25 ? this.bm25Scorer.score(query, opts.keywordTopK) : Promise.resolve([])
+      opts.useBM25 ? this.bm25Scorer.score(query, opts.keywordTopK, adminId) : Promise.resolve([])
     ]);
 
-    const vectorResults = await this.vectorSearch(queryEmbedding, opts.vectorTopK);
+    const vectorResults = await this.vectorSearch(queryEmbedding, opts.vectorTopK, adminId);
 
     this.bm25Scorer.normalizeScores(keywordResults);
 
@@ -496,7 +510,7 @@ Answer (be specific and cite sources):`;
   /**
    * ENHANCED: Main query processing with intelligent version comparison
    */
-  async processQuery(query: string, debug: boolean = true): Promise<QueryResult> {
+  async processQuery(query: string, adminId?: number, debug: boolean = true): Promise<QueryResult> {
     console.log('\n🔍 Starting query processing:', query);
 
     // Check if this might be a version comparison query
@@ -552,7 +566,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
     }
 
     // Regular RAG query processing
-    const results = await this.search(query, 30);
+    const results = await this.search(query, 30, undefined, adminId);
 
     if (debug) {
       console.log('\n[DEBUG] Retrieved Chunks (after hybrid search):', results.length);
