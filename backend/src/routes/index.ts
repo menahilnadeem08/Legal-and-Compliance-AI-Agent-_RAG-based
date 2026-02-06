@@ -1,4 +1,4 @@
-import express, { RequestHandler } from 'express';
+import express from 'express';
 import { uploadController, uploadMiddleware, uploadErrorCleanup } from '../controllers/uploadController';
 import { 
   listDocuments, 
@@ -26,7 +26,6 @@ import {
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
-import { verifyDocumentOwnership } from '../middleware/documentOwnershipMiddleware';
 
 const router = express.Router();
 
@@ -108,24 +107,21 @@ router.get('/documents/:id/newer',
   checkForNewerVersion as any
 );
 
-// Activate document (requires ownership)
+// Activate document
 router.put('/documents/:id/activate', 
   authenticate as any,
-  verifyDocumentOwnership as any,
   activateDocument as any
 );
 
-// Deactivate document (requires ownership)
+// Deactivate document
 router.put('/documents/:id/deactivate', 
   authenticate as any,
-  verifyDocumentOwnership as any,
   deactivateDocument as any
 );
 
-// Delete document (requires ownership)
+// Delete document
 router.delete('/documents/:id',
   authenticate as any,
-  verifyDocumentOwnership as any,
   validateDeleteDocument,
   handleValidationErrors,
   deleteDocument as any
