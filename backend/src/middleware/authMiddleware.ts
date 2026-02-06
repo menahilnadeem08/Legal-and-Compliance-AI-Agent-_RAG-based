@@ -7,9 +7,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: number;
-    email: string;
-    name: string;
+    email?: string;
+    username?: string;
+    name?: string;
     picture?: string;
+    role?: string;
+    admin_id?: number;
   };
 }
 
@@ -43,8 +46,11 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     req.user = {
       id: user.id,
       email: user.email,
+      username: user.username,
       name: user.name,
-      picture: user.picture
+      picture: user.picture,
+      role: user.role,
+      admin_id: user.admin_id
     };
 
     next();
@@ -68,8 +74,11 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
     req.user = {
       id: decoded.id,
       email: decoded.email,
+      username: decoded.username,
       name: decoded.name || 'Unknown User',
-      picture: decoded.picture
+      picture: decoded.picture,
+      role: decoded.role,
+      admin_id: decoded.admin_id
     };
 
     next();

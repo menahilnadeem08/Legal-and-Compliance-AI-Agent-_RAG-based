@@ -111,10 +111,10 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
           [name, image, user.id]
         );
       } else {
-        // Create new user
+        // Create new user as admin (Google OAuth users are admins)
         const newUser = await client.query(
-          'INSERT INTO users (google_id, email, name, picture) VALUES ($1, $2, $3, $4) RETURNING *',
-          [googleId, email, name, image]
+          'INSERT INTO users (google_id, email, name, picture, role, auth_provider) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+          [googleId, email, name, image, 'admin', 'google']
         );
         user = newUser.rows[0];
       }
@@ -124,7 +124,8 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
         {
           id: user.id,
           email: user.email,
-          googleId: user.google_id
+          googleId: user.google_id,
+          role: user.role
         },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRE }

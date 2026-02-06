@@ -26,24 +26,25 @@ import {
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
+import { verifyDocumentOwnership } from '../middleware/documentOwnershipMiddleware';
 
 const router = express.Router();
 
 // ===== Authentication Routes =====
-router.post('/auth/signin', handleGoogleSignIn as RequestHandler);
-router.post('/auth/login', login as RequestHandler); // Employee local login
-router.post('/auth/logout', authenticate as RequestHandler, logout as RequestHandler);
-router.get('/auth/me', authenticate as RequestHandler, getCurrentUser as RequestHandler);
-router.post('/auth/change-password', authenticate as RequestHandler, changePassword as RequestHandler);
+router.post('/auth/signin', handleGoogleSignIn as any);
+router.post('/auth/login', login as any); // Employee local login
+router.post('/auth/logout', authenticate as any, logout as any);
+router.get('/auth/me', authenticate as any, getCurrentUser as any);
+router.post('/auth/change-password', authenticate as any, changePassword as any);
 
 // ===== Admin Routes (protected with admin role) =====
-router.post('/admin/create-user', authenticate as RequestHandler, requireRole('admin') as RequestHandler, createEmployee as RequestHandler);
-router.get('/admin/employees', authenticate as RequestHandler, requireRole('admin') as RequestHandler, getEmployees as RequestHandler);
-router.put('/admin/employees/:id/deactivate', authenticate as RequestHandler, requireRole('admin') as RequestHandler, deactivateEmployee as RequestHandler);
-router.put('/admin/employees/:id/activate', authenticate as RequestHandler, requireRole('admin') as RequestHandler, activateEmployee as RequestHandler);
+router.post('/admin/create-user', authenticate as any, requireRole('admin') as any, createEmployee as any);
+router.get('/admin/employees', authenticate as any, requireRole('admin') as any, getEmployees as any);
+router.put('/admin/employees/:id/deactivate', authenticate as any, requireRole('admin') as any, deactivateEmployee as any);
+router.put('/admin/employees/:id/activate', authenticate as any, requireRole('admin') as any, activateEmployee as any);
 
 // ===== Health Check / Connection Test =====
-router.get('/health', (req, res) => {
+router.get('/health', (req: any, res: any) => {
   res.json({
     status: 'ok',
     message: 'Backend is running and connected',
@@ -52,65 +53,82 @@ router.get('/health', (req, res) => {
   });
 });
 
-// ===== Agent/Query Endpoint =====
+// ===== Agent/Query Endpoint (requires authentication) =====
 router.post('/query', 
+  authenticate as any,
   validateAgentQuery,
   handleValidationErrors,
-  agentQuery
+  agentQuery as any
 );
 
-// ===== Document Upload =====
+// ===== Document Upload (only admins) =====
 router.post('/upload', 
+  authenticate as any,
+  requireRole('admin') as any,
   uploadMiddleware,
   validateDocumentUpload,
   handleValidationErrors,
-  uploadController,
+  uploadController as any,
   uploadErrorCleanup  // Error cleanup middleware
 );
 
-// ===== Document Management =====
-router.get('/documents', listDocuments);
-router.get('/documents/outdated', getOutdatedDocuments);
-router.get('/documents/suggestions', getSuggestions);
+// ===== Document Management (requires authentication) =====
+router.get('/documents', authenticate as any, listDocuments as any);
+router.get('/documents/outdated', authenticate as any, getOutdatedDocuments as any);
+router.get('/documents/suggestions', authenticate as any, getSuggestions as any);
 
 // Version history endpoint (must come before other :name routes)
 router.get('/documents/versions/:name',
+  authenticate as any,
   validateGetVersionHistory,
   handleValidationErrors,
-  getDocumentVersionHistory
+  getDocumentVersionHistory as any
 );
 
 // Version comparison endpoints
 router.get('/documents/compare/detailed',
+  authenticate as any,
   validateCompareVersionsDetailed,
   handleValidationErrors,
-  compareVersionsDetailed
+  compareVersionsDetailed as any
 );
 
 router.get('/documents/compare',
+  authenticate as any,
   validateCompareVersions,
   handleValidationErrors,
-  compareVersions
+  compareVersions as any
 );
 
 // Check for newer version
 router.get('/documents/:id/newer',
+  authenticate as any,
   validateCheckNewerVersion,
   handleValidationErrors,
-  checkForNewerVersion
+  checkForNewerVersion as any
 );
 
-// Activate document
-router.put('/documents/:id/activate', activateDocument);
+// Activate document (requires ownership)
+router.put('/documents/:id/activate', 
+  authenticate as any,
+  verifyDocumentOwnership as any,
+  activateDocument as any
+);
 
-// Deactivate document
-router.put('/documents/:id/deactivate', deactivateDocument);
+// Deactivate document (requires ownership)
+router.put('/documents/:id/deactivate', 
+  authenticate as any,
+  verifyDocumentOwnership as any,
+  deactivateDocument as any
+);
 
-// Delete document
+// Delete document (requires ownership)
 router.delete('/documents/:id',
+  authenticate as any,
+  verifyDocumentOwnership as any,
   validateDeleteDocument,
   handleValidationErrors,
-  deleteDocument
+  deleteDocument as any
 );
 
 export default router;
