@@ -23,7 +23,7 @@ import {
   validateCompareVersionsDetailed,
   validateDeleteDocument
 } from '../middleware/validationSchemas';
-import { handleGoogleSignIn, logout, getCurrentUser, login } from '../controllers/authController';
+import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
 
@@ -34,6 +34,7 @@ router.post('/auth/signin', handleGoogleSignIn as RequestHandler);
 router.post('/auth/login', login as RequestHandler); // Employee local login
 router.post('/auth/logout', authenticate as RequestHandler, logout as RequestHandler);
 router.get('/auth/me', authenticate as RequestHandler, getCurrentUser as RequestHandler);
+router.post('/auth/change-password', authenticate as RequestHandler, changePassword as RequestHandler);
 
 // ===== Admin Routes (protected with admin role) =====
 router.post('/admin/create-user', authenticate as RequestHandler, requireRole('admin') as RequestHandler, createEmployee as RequestHandler);

@@ -191,3 +191,70 @@ export async function getCurrentUser(req: AuthenticatedRequest, res: Response): 
     res.status(500).json({ error: 'Failed to get user' });
   }
 }
+// Change password
+export async function changePassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({ error: 'All fields are required' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ error: 'New passwords do not match' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: 'New password must be at least 6 characters' });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ error: 'User not authenticated' });
+      return;
+    }
+
+    // Get current user with password hash
+    const userResult = await pool.query(
+      'SELECT id, password_hash, auth_provider FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const user = userResult.rows[0];
+
+    // Check if user is local auth (has password hash)
+    if (user.auth_provider !== 'local') {
+      res.status(400).json({ error: 'Password change not available for OAuth users' });
+      return;
+    }
+
+    // Verify current password
+    const passwordMatch = await comparePassword(currentPassword, user.password_hash);
+    if (!passwordMatch) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    // Hash new password
+    const newPasswordHash = await hashPassword(newPassword);
+
+    // Update password
+    await pool.query(
+      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [newPasswordHash, req.user.id]
+    );
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+}
