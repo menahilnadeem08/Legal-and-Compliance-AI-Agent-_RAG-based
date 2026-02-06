@@ -49,8 +49,8 @@ export interface ConflictAnalysisResult {
 export class ConflictDetectionService {
   private reranker: Reranker;
 
-  constructor(cohereApiKey?: string) {
-    this.reranker = new Reranker(cohereApiKey);
+  constructor() {
+    this.reranker = new Reranker();
   }
 
   /**
