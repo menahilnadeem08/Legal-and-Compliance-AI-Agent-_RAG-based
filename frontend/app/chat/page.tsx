@@ -7,6 +7,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
 import Navigation from '../components/Navigation';
+import PageContainer from '../components/PageContainer';
 
 interface Citation {
   document_name: string;
@@ -257,8 +258,8 @@ export default function ChatPage() {
   return (
     <>
       <Navigation />
-      <div className="w-full h-screen bg-gradient-to-br from-background to-background-alt flex flex-col overflow-hidden pt-32">
-        <div className="flex-1 flex gap-4 overflow-hidden p-4 max-w-7xl mx-auto w-full justify-center">
+      <PageContainer>
+        <div className="max-w-7xl mx-auto w-full h-full flex gap-4 overflow-hidden justify-center">
           {/* Messages Column */}
           <div className="flex-1 flex flex-col overflow-hidden max-w-2xl">
             {/* Messages Container */}
@@ -416,7 +417,7 @@ export default function ChatPage() {
             </form>
           </div>
         </div>
-      </div>
+      </PageContainer>
     </>
   );
 }

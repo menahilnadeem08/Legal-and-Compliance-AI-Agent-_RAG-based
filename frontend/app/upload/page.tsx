@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import FileUpload from '../components/FileUpload';
 import Navigation from '../components/Navigation';
+import PageContainer from '../components/PageContainer';
 
 export default function UploadPage() {
   const router = useRouter();
@@ -48,26 +49,26 @@ export default function UploadPage() {
   return (
     <>
       <Navigation />
-      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-        {/* Content */}
-        <div className="flex-1 overflow-hidden flex items-center justify-center py-8">
+      <PageContainer>
+        <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
+          {/* Content */}
+          <div className="flex-1 overflow-hidden flex items-center justify-center py-8">
           <div className="w-full">
             <FileUpload />
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="glass-border my-8">
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <p>Upload documents in PDF or DOCX format</p>
-            <Link href="/document" className="text-gray-400 hover:text-gray-300">
-              View documents →
-            </Link>
+          {/* Footer */}
+          <div className="flex-shrink-0 glass-border my-6 sm:my-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs sm:text-sm text-gray-500">
+              <p>Upload documents in PDF or DOCX format</p>
+              <Link href="/document" className="text-gray-400 hover:text-gray-300 whitespace-nowrap">
+                View documents →
+              </Link>
+            </div>
           </div>
         </div>
-        </div>
-      </div>
+      </PageContainer>
     </>
   );
 }

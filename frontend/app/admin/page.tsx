@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
+import PageContainer from '../components/PageContainer';
 
 interface Employee {
   id: number;
@@ -204,31 +205,31 @@ export default function AdminDashboard() {
   return (
     <>
       <Navigation />
-      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+      <PageContainer>
+        <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-6">
           {/* Header */}
-          <div className="glass-border rounded-2xl p-8 mb-10">
-            <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
-            <p className="text-gray-400">Manage employees and system configuration</p>
+          <div className="glass-border rounded-2xl p-6 sm:p-8 flex-shrink-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Admin Dashboard</h1>
+            <p className="text-sm text-gray-400">Manage employees and system configuration</p>
           </div>
 
           {/* Success/Error Messages */}
           {error && (
-            <div className="mb-8 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400">
+            <div className="mb-5 p-3 sm:p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
               {error}
             </div>
           )}
 
           {successMessage && (
-            <div className="mb-8 p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-400">
+            <div className="mb-5 p-3 sm:p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-400 text-sm">
               {successMessage}
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-6">
             {/* Create Employee Form */}
             <div className="lg:col-span-1">
-              <div className="glass-border rounded-2xl p-8">
+              <div className="glass-border rounded-2xl p-6 sm:p-8">
                 <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
                   <span>👤</span> Create Employee
                 </h2>
@@ -311,7 +312,7 @@ export default function AdminDashboard() {
 
             {/* Employees List */}
             <div className="lg:col-span-2">
-              <div className="glass-border rounded-2xl p-8">
+              <div className="glass-border rounded-2xl p-6 sm:p-8">
                 <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
                   <span>📋</span> Employees List
                 </h2>
@@ -380,7 +381,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-      </div>
+      </PageContainer>
     </>
   );
 }
