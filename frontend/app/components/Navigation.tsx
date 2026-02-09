@@ -62,53 +62,60 @@ export default function Navigation() {
     }
   };
 
+  const handleNavigation = (href: string) => {
+    router.push(href);
+  };
+
   return (
-    <nav className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 backdrop-blur-md border-b border-slate-600/50 sticky top-0 z-50 shadow-lg">
-      <div className="max-w-full mx-auto px-10 py-5">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+    <nav className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 backdrop-blur-md border-b border-slate-600/50 sticky top-0 z-50 shadow-lg w-full">
+      <div className="px-4 sm:px-6 lg:px-8 py-3">
+        <div className="flex items-center justify-between gap-3 sm:gap-4">
+          {/* Logo on Left */}
+          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg">
               ⚖️
             </div>
-            <span className="font-bold text-white text-lg hidden sm:inline">Legal Compliance</span>
+            <span className="font-bold text-white text-sm sm:text-base hidden sm:inline">Legal Compliance</span>
           </Link>
 
-          {/* Navigation Links */}
-          <div className="flex items-center gap-8">
+          {/* All Buttons Right-Aligned */}
+          <div className="flex items-center gap-2 ml-auto h-10">
             {navItems.map((item) => {
               const isActive = pathname === item.href;
               return (
-                <Link
+                <button
                   key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-6 py-3 rounded-lg transition-all font-semibold text-base ${
+                  onClick={() => handleNavigation(item.href)}
+                  className={`inline-flex items-center justify-center h-10 px-3 sm:px-4 rounded-lg transition-all font-semibold text-xs sm:text-sm whitespace-nowrap border leading-none cursor-pointer ${
                     isActive
-                      ? 'bg-blue-600 text-white border border-blue-500 shadow-lg shadow-blue-500/40'
-                      : 'text-gray-300 hover:text-white hover:bg-blue-600/20 border border-slate-600/30 hover:border-blue-500/50 hover:shadow-md hover:shadow-blue-500/20'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/40'
+                      : 'text-gray-300 bg-slate-700/30 border-slate-600/50 hover:text-white hover:bg-blue-600/30 hover:border-blue-500/50'
                   }`}
                 >
-                  <span className="text-xl">{item.icon}</span>
-                  <span className="hidden sm:inline">{item.label}</span>
-                </Link>
+                  <span className="text-base w-6 h-6 flex items-center justify-center flex-shrink-0">{item.icon}</span>
+                  <span className="hidden md:inline ml-1">{item.label}</span>
+                </button>
               );
             })}
-
-            {/* User Profile & Logout */}
-            <div className="flex items-center gap-4">
-              {isEmployee && userName && (
-                <div className="text-sm text-gray-300">
-                  <span className="hidden sm:inline">{userName}</span>
-                </div>
-              )}
+            
+            {/* User Profile Name Button */}
+            {isEmployee && userName && (
               <button
-                onClick={handleLogout}
-                className="px-6 py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-base transition-all border border-red-500 hover:shadow-md hover:shadow-red-500/20"
+                onClick={() => handleNavigation('/profile')}
+                className="inline-flex items-center justify-center h-10 px-3 sm:px-4 rounded-lg border border-slate-600/50 bg-slate-700/30 text-xs sm:text-sm text-gray-300 whitespace-nowrap leading-none cursor-pointer hover:bg-blue-600/30 hover:border-blue-500/50 transition-all"
               >
-                <span className="hidden sm:inline">Logout</span>
-                <span className="sm:hidden">🚪</span>
+                {userName}
               </button>
-            </div>
+            )}
+            
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center justify-center h-10 px-3 sm:px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs sm:text-sm transition-all border border-red-500 hover:shadow-md hover:shadow-red-500/20 whitespace-nowrap leading-none cursor-pointer"
+            >
+              <span className="text-base w-6 h-6 flex items-center justify-center flex-shrink-0">🚪</span>
+              <span className="hidden sm:inline ml-1">Logout</span>
+            </button>
           </div>
         </div>
       </div>

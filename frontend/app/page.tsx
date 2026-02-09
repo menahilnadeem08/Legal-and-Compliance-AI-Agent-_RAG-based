@@ -50,7 +50,7 @@ export default function Dashboard() {
   // Show loading state while checking authentication
   if (isLoading || status === 'loading') {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-400">Loading...</p>
@@ -105,9 +105,10 @@ export default function Dashboard() {
   return (
     <>
       <Navigation />
-      <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
+      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
       {/* Header */}
-      <div className="glass-border m-4 mb-0 py-6">
+      <div className="glass-border mb-8 py-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center text-2xl shadow-lg">
@@ -120,8 +121,8 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
-        <div className={`grid gap-6 w-full max-w-6xl ${isEmployee ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-3'}`}>
+      <div className="w-full py-8">
+        <div className={`grid gap-8 w-full ${isEmployee ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-3'}`}>
           {cards.map((card) => (
             <Link
               key={card.id}
@@ -190,12 +191,13 @@ export default function Dashboard() {
       </div>
 
       {/* Footer */}
-      <div className="glass-border m-4 mt-0 py-3">
+      <div className="glass-border my-8">
         <div className="flex items-center justify-between text-xs text-gray-500">
           <p>Legal Compliance RAG System v1.0</p>
           <p>Powered by AI</p>
         </div>
       </div>
+        </div>
       </div>
     </>
   );

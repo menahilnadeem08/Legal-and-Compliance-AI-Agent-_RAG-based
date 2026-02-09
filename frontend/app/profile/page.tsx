@@ -132,7 +132,7 @@ export default function ProfilePage() {
 
   if (loading || status === 'loading') {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-400">Loading...</p>
@@ -148,70 +148,70 @@ export default function ProfilePage() {
   return (
     <>
       <Navigation />
-      <div className="w-screen min-h-screen bg-gradient-to-br from-background to-background-alt pt-6 px-6">
+      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
-          <div className="glass-border rounded-2xl p-8 mb-6">
+          <div className="glass-border rounded-2xl p-8 mb-10">
             <h1 className="text-3xl font-bold text-white mb-2">Profile</h1>
             <p className="text-gray-400">Manage your account settings</p>
           </div>
 
           {/* Success Message */}
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-400">
+            <div className="mb-8 p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-400">
               {successMessage}
             </div>
           )}
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400">
+            <div className="mb-8 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400">
               {error}
             </div>
           )}
 
           {/* User Info */}
-          <div className="glass-border rounded-2xl p-8 mb-6 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="glass-border rounded-2xl p-8 mb-10 space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Username */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Username</label>
-                <p className="text-white text-lg mt-2">{user.username}</p>
+                <p className="text-white text-lg mt-3">{user.username}</p>
               </div>
 
               {/* Name */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Name</label>
-                <p className="text-white text-lg mt-2">{user.name || 'N/A'}</p>
+                <p className="text-white text-lg mt-3">{user.name || 'N/A'}</p>
               </div>
 
               {/* Email */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Email</label>
-                <p className="text-white text-lg mt-2">{user.email}</p>
+                <p className="text-white text-lg mt-3">{user.email}</p>
               </div>
 
               {/* Role */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Role</label>
-                <p className="text-white text-lg mt-2 uppercase">{user.role}</p>
+                <p className="text-white text-lg mt-3 uppercase">{user.role}</p>
               </div>
 
               {/* Status */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Status</label>
-                <p className="text-white text-lg mt-2">Active</p>
+                <p className="text-white text-lg mt-3">Active</p>
               </div>
 
               {/* Authentication */}
               <div>
                 <label className="text-gray-400 text-sm font-semibold">Authentication</label>
-                <p className="text-white text-lg mt-2">{isEmployee ? 'Local Login' : 'Google OAuth'}</p>
+                <p className="text-white text-lg mt-3">{isEmployee ? 'Local Login' : 'Google OAuth'}</p>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="pt-6 border-t border-gray-600 space-y-4">
+            <div className="pt-8 border-t border-gray-600 space-y-4">
               {isEmployee && (
                 <button
                   onClick={() => setShowPasswordModal(true)}

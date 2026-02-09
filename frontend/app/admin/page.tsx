@@ -204,156 +204,167 @@ export default function AdminDashboard() {
   return (
     <>
       <Navigation />
-      <div className="min-h-screen bg-gray-50">
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Create Employee Form */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Create Employee</h2>
-
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-              )}
-
-              {successMessage && (
-                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-green-700 text-sm">{successMessage}</p>
-                </div>
-              )}
-
-              <form onSubmit={handleCreateEmployee} className="space-y-4">
-                <div>
-                  <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                    Username
-                  </label>
-                  <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    value={formData.username}
-                    onChange={handleInputChange}
-                    placeholder="john_doe"
-                    disabled={loading}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    placeholder="john@example.com"
-                    disabled={loading}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                    Full Name (optional)
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    placeholder="John Doe"
-                    disabled={loading}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Minimum 6 characters"
-                    disabled={loading}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
-                >
-                  {loading ? 'Creating...' : 'Create Employee'}
-                </button>
-              </form>
-            </div>
+      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="glass-border rounded-2xl p-8 mb-10">
+            <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
+            <p className="text-gray-400">Manage employees and system configuration</p>
           </div>
 
-          {/* Employees List */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Employees</h2>
+          {/* Success/Error Messages */}
+          {error && (
+            <div className="mb-8 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400">
+              {error}
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="mb-8 p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-400">
+              {successMessage}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            {/* Create Employee Form */}
+            <div className="lg:col-span-1">
+              <div className="glass-border rounded-2xl p-8">
+                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                  <span>👤</span> Create Employee
+                </h2>
+
+                <form onSubmit={handleCreateEmployee} className="space-y-5">
+                  <div>
+                    <label htmlFor="username" className="block text-sm font-semibold text-gray-300 mb-3">
+                      Username
+                    </label>
+                    <input
+                      id="username"
+                      name="username"
+                      type="text"
+                      value={formData.username}
+                      onChange={handleInputChange}
+                      placeholder="john_doe"
+                      disabled={loading}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-300 mb-3">
+                      Email
+                    </label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="john@example.com"
+                      disabled={loading}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-semibold text-gray-300 mb-3">
+                      Full Name (optional)
+                    </label>
+                    <input
+                      id="name"
+                      name="name"
+                      type="text"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="John Doe"
+                      disabled={loading}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-semibold text-gray-300 mb-3">
+                      Password
+                    </label>
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Minimum 6 characters"
+                      disabled={loading}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200"
+                  >
+                    {loading ? 'Creating...' : 'Create Employee'}
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Employees List */}
+            <div className="lg:col-span-2">
+              <div className="glass-border rounded-2xl p-8">
+                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                  <span>📋</span> Employees List
+                </h2>
 
               {employees.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No employees created yet</p>
+                <div className="text-center py-12">
+                  <p className="text-gray-400 text-lg">No employees created yet</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Username</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Email</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Name</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Status</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Created</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-900">Action</th>
+                      <tr className="border-b border-gray-600">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Username</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Email</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Name</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Status</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Created</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-300">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {employees.map((employee) => (
-                        <tr key={employee.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 px-4 text-gray-900">{employee.username}</td>
-                          <td className="py-3 px-4 text-gray-600 text-sm">{employee.email}</td>
-                          <td className="py-3 px-4 text-gray-600">{employee.name || '-'}</td>
+                        <tr key={employee.id} className="border-b border-gray-700 hover:bg-gray-800/50 transition-colors">
+                          <td className="py-3 px-4 text-white">{employee.username}</td>
+                          <td className="py-3 px-4 text-gray-400 text-sm">{employee.email}</td>
+                          <td className="py-3 px-4 text-gray-400">{employee.name || '-'}</td>
                           <td className="py-3 px-4">
                             <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
+                              className={`px-3 py-1 rounded-full text-xs font-semibold ${
                                 employee.is_active
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
+                                  ? 'bg-green-500/20 text-green-300 border border-green-500/50'
+                                  : 'bg-red-500/20 text-red-300 border border-red-500/50'
                               }`}
                             >
-                              {employee.is_active ? 'Active' : 'Inactive'}
+                              {employee.is_active ? '● Active' : '● Inactive'}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-gray-600 text-sm">
+                          <td className="py-3 px-4 text-gray-400 text-sm">
                             {new Date(employee.created_at).toLocaleDateString()}
                           </td>
                           <td className="py-3 px-4">
                             {employee.is_active ? (
                               <button
                                 onClick={() => handleDeactivate(employee.id)}
-                                className="text-red-600 hover:text-red-800 font-medium text-sm"
+                                className="text-red-400 hover:text-red-300 font-semibold text-sm transition-colors"
                               >
                                 Deactivate
                               </button>
                             ) : (
                               <button
                                 onClick={() => handleActivate(employee.id)}
-                                className="text-green-600 hover:text-green-800 font-medium text-sm"
+                                className="text-green-400 hover:text-green-300 font-semibold text-sm transition-colors"
                               >
                                 Activate
                               </button>
@@ -365,10 +376,10 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>
-      </main>
       </div>
     </>
   );

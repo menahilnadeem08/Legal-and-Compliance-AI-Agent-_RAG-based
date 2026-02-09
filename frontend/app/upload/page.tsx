@@ -31,7 +31,7 @@ export default function UploadPage() {
   // Show loading state while checking authentication
   if (status === 'loading') {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-400">Loading...</p>
@@ -48,22 +48,24 @@ export default function UploadPage() {
   return (
     <>
       <Navigation />
-      <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
+      <div className="w-full min-h-screen bg-gradient-to-br from-background to-background-alt pt-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
         {/* Content */}
-        <div className="flex-1 overflow-hidden flex items-center justify-center p-6">
+        <div className="flex-1 overflow-hidden flex items-center justify-center py-8">
           <div className="w-full">
             <FileUpload />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="glass-border m-6 mt-0">
+        <div className="glass-border my-8">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <p>Upload documents in PDF or DOCX format</p>
             <Link href="/document" className="text-gray-400 hover:text-gray-300">
               View documents →
             </Link>
           </div>
+        </div>
         </div>
       </div>
     </>
