@@ -1,12 +1,66 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Navigation from './components/Navigation';
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const cards = [
+  // Check authentication and user type
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+
+    // Employees are authenticated via localStorage
+    if (token && userStr) {
+      setIsEmployee(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // Wait for NextAuth to load before checking status
+    if (status === 'loading') {
+      return;
+    }
+
+    // Admins are authenticated via NextAuth
+    if (status === 'authenticated' && session) {
+      setIsEmployee(false);
+      setIsLoading(false);
+      return;
+    }
+
+    // Not authenticated - redirect to login
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+      setIsLoading(false);
+      return;
+    }
+  }, [status, session, router]);
+
+  // Show loading state while checking authentication
+  if (isLoading || status === 'loading') {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // All cards available for admin
+  const allCards = [
     {
       id: 'upload',
       icon: '📤',
@@ -42,8 +96,16 @@ export default function Dashboard() {
     },
   ];
 
+  // Employee only sees documents and chat
+  const employeeCards = allCards.filter(card => card.id !== 'upload');
+
+  // Show appropriate cards based on role
+  const cards = isEmployee ? employeeCards : allCards;
+
   return (
-    <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
+    <>
+      <Navigation />
+      <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
       {/* Header */}
       <div className="glass-border m-4 mb-0 py-6">
         <div className="text-center">
@@ -59,7 +121,7 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-6xl">
+        <div className={`grid gap-6 w-full max-w-6xl ${isEmployee ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-3'}`}>
           {cards.map((card) => (
             <Link
               key={card.id}
@@ -134,6 +196,7 @@ export default function Dashboard() {
           <p>Powered by AI</p>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

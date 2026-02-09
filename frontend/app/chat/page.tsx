@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
@@ -31,10 +33,31 @@ interface Message {
 }
 
 export default function ChatPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check authentication and user type
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+
+    // Employees can access chat
+    if (token && userStr) {
+      setIsEmployee(true);
+      return;
+    }
+
+    // Redirect to login if not authenticated
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+      return;
+    }
+  }, [status, router]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -43,6 +66,23 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  // Show loading state while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Allow access if admin or employee
+  if (!session && !isEmployee) {
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,9 +94,30 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/query`, {
-        query: input,
-      });
+      // Get token from localStorage (employee) or session (admin)
+      let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token && session && (session.user as any)?.token) {
+        token = (session.user as any).token;
+      }
+
+      if (!token) {
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: '❌ Authentication required. Please sign in again.' },
+        ]);
+        setLoading(false);
+        return;
+      }
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/query`,
+        { query: input },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       const assistantMessage: Message = {
         role: 'assistant',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Link from 'next/link';
 
@@ -14,12 +15,23 @@ interface Document {
 }
 
 export default function DocumentList() {
+  const { data: session } = useSession();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchDocuments = async () => {
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/documents`);
+      // Get token from localStorage (employee) or session (admin Google OAuth)
+      let token = localStorage.getItem('token');
+      if (!token && session && (session.user as any)?.token) {
+        token = (session.user as any).token;
+      }
+      
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/documents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       setDocuments(response.data);
     } catch (error) {
       console.error('Error fetching documents:', error);
@@ -86,7 +98,7 @@ export default function DocumentList() {
 
       {/* View All Button */}
       <Link
-        href="/documents"
+        href="/document"
         className="mt-6 w-full px-6 py-4 text-sm rounded-lg bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-300 border border-cyan-500/50 hover:from-cyan-500/30 hover:to-teal-500/30 transition-all font-semibold text-center"
       >
         📄 View All Documents

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 
 interface Document {
@@ -15,40 +17,167 @@ interface Document {
 }
 
 export default function DocumentsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'latest' | 'outdated'>('all');
+  const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
+
+  // Check authentication and user type
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+
+    // Employees can access documents
+    if (token && userStr) {
+      setIsEmployee(true);
+      setIsAdmin(false);
+      return;
+    }
+
+    // Redirect to login if not authenticated
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+      return;
+    }
+
+    // Check if admin
+    if (session && session.user) {
+      setIsAdmin(true);
+      setIsEmployee(false);
+    }
+  }, [status, session, router]);
 
   const fetchDocuments = async () => {
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/documents`);
+      // Get token from localStorage (employee) or session (admin Google OAuth)
+      let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token && session && (session.user as any)?.token) {
+        token = (session.user as any).token;
+      }
+
+      if (!token) {
+        setError('Authentication required to view documents.');
+        return;
+      }
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/documents`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       setDocuments(response.data);
-    } catch (error) {
-      console.error('Error fetching documents:', error);
+      setError(null);
+    } catch (err: any) {
+      console.error('Error fetching documents:', err);
+      if (err.response?.status === 401) {
+        setError('Session expired or unauthorized. Please sign in again.');
+      } else if (err.response?.status === 403) {
+        setError('You do not have permission to view documents.');
+      } else {
+        setError('Failed to load documents. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    // Only admins can delete documents
+    if (!isAdmin) {
+      alert('You do not have permission to delete documents.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     setDeleting(id);
     try {
-      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${id}`);
+      // Get token from session (admin Google OAuth)
+      const token = session && (session.user as any)?.token;
+
+      if (!token) {
+        alert('Authentication required to delete documents.');
+        return;
+      }
+
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/documents/${id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       setDocuments(prev => prev.filter(doc => doc.id !== id));
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert('Failed to delete document');
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      if (err.response?.status === 403) {
+        alert('You do not have permission to delete this document.');
+      } else {
+        alert('Failed to delete document');
+      }
     } finally {
       setDeleting(null);
     }
   };
 
+  const handleToggleActive = async (id: string, makeActive: boolean) => {
+    // Only admins can toggle document status
+    if (!isAdmin) {
+      alert('You do not have permission to change document status.');
+      return;
+    }
+
+    setToggling(id);
+    try {
+      // Get token from session (admin Google OAuth)
+      const token = session && (session.user as any)?.token;
+
+      if (!token) {
+        alert('Authentication required to update document status.');
+        return;
+      }
+
+      const action = makeActive ? 'activate' : 'deactivate';
+      await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/documents/${id}/${action}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Refresh list to reflect updated active state
+      await fetchDocuments();
+    } catch (err: any) {
+      console.error('Toggle active error:', err);
+      if (err.response?.status === 403) {
+        alert('You do not have permission to change document status.');
+      } else {
+        alert('Failed to update document status.');
+      }
+    } finally {
+      setToggling(null);
+    }
+  };
+
   useEffect(() => {
+    // Wait for NextAuth to finish loading before trying to fetch with session token
+    if (status === 'loading') return;
+
     fetchDocuments();
-  }, []);
+  }, [status, session]);
 
   const getDocumentIcon = (type: string) => {
     switch (type) {
@@ -177,8 +306,8 @@ export default function DocumentsPage() {
                     )}
                   </div>
 
-                  {/* Date and Actions */}
-                  <div className="flex items-center justify-between">
+                {/* Date and Actions */}
+                <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-gray-500">
                       📅 {new Date(doc.upload_date).toLocaleDateString('en-US', {
                         month: 'short',
@@ -186,13 +315,32 @@ export default function DocumentsPage() {
                         year: 'numeric',
                       })}
                     </p>
-                    <button
-                      onClick={() => handleDelete(doc.id)}
-                      disabled={deleting === doc.id}
-                      className="px-4 py-2 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-all disabled:opacity-50"
-                    >
-                      {deleting === doc.id ? '⟳' : '🗑'}
-                    </button>
+                  <div className="flex items-center gap-2">
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleToggleActive(doc.id, !doc.is_latest)}
+                        disabled={toggling === doc.id || deleting === doc.id}
+                        className={`px-3 py-1 text-xs rounded-lg border transition-all ${
+                          doc.is_latest
+                            ? 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/40'
+                            : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/40'
+                        } disabled:opacity-50`}
+                        title={doc.is_latest ? 'Set as inactive' : 'Set as active'}
+                      >
+                        {toggling === doc.id ? '⟳' : doc.is_latest ? 'Active' : 'Inactive'}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDelete(doc.id)}
+                        disabled={deleting === doc.id}
+                        className="px-3 py-1 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-all disabled:opacity-50"
+                        title="Delete document"
+                      >
+                        {deleting === doc.id ? '⟳' : '🗑'}
+                      </button>
+                    )}
+                  </div>
                   </div>
                 </div>
               ))}
