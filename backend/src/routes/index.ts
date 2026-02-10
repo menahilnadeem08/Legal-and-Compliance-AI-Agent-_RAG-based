@@ -13,6 +13,7 @@ import {
   deactivateDocument
 } from '../controllers/documentController';
 import { agentQuery } from '../controllers/agentController';
+import { queryStreamController } from '../controllers/queryStreamController';
 import { handleValidationErrors } from '../middleware/validation';
 import {
   validateAgentQuery,
@@ -58,6 +59,14 @@ router.post('/query',
   validateAgentQuery,
   handleValidationErrors,
   agentQuery as any
+);
+
+// ===== Streaming Query Endpoint (with real-time logs) =====
+router.post('/query/stream', 
+  authenticate as any,
+  validateAgentQuery,
+  handleValidationErrors,
+  queryStreamController as any
 );
 
 // ===== Document Upload (only admins) =====
