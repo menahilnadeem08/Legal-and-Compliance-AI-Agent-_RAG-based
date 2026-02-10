@@ -82,9 +82,11 @@ export default function ChatPage() {
       } else {
         id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       }
-      sessionStorage.setItem(key, id);
     }
-    setSessionId(id);
+    if (id) {
+      sessionStorage.setItem(key, id);
+      setSessionId(id);
+    }
   }, []);
 
   /* Auto scroll */
