@@ -169,29 +169,28 @@ export default function DocumentsPage() {
   return (
     <>
       <Navigation />
-      <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-8">
-      {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col p-4">
-        {/* Filter Tabs */}
-        <div className="flex gap-2 mb-4">
-          {[
-            { id: 'all', label: 'All Documents', icon: '📋' },
-            { id: 'latest', label: 'Active Versions', icon: '✓' },
-            { id: 'outdated', label: 'Inactive', icon: '⏸️' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id as any)}
-              className={`px-6 py-3 rounded-lg transition-all font-medium ${
-                filter === tab.id
-                  ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400'
-                  : 'bg-gray-600/20 text-gray-400 border border-gray-500/30 hover:bg-gray-600/30'
-              }`}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
+      <PageContainer>
+        <div className="w-full h-full flex flex-col gap-4">
+          {/* Filter Tabs */}
+          <div className="flex gap-2 flex-shrink-0">
+            {[
+              { id: 'all', label: 'All Documents', icon: '📋' },
+              { id: 'latest', label: 'Latest Versions', icon: '✓' },
+              { id: 'outdated', label: 'Outdated', icon: '⏱️' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id as any)}
+                className={`px-6 py-3 rounded-lg transition-all font-medium ${
+                  filter === tab.id
+                    ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400'
+                    : 'bg-gray-600/20 text-gray-400 border border-gray-500/30 hover:bg-gray-600/30'
+                }`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
 
         {/* Documents Grid */}
         <div className="flex-1 overflow-y-auto pr-2">
@@ -214,10 +213,9 @@ export default function DocumentsPage() {
                 </p>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-            {filteredDocuments.map((doc) => (
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+              {filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
                 className={`p-4 rounded-lg border-2 bg-gradient-to-br ${getDocumentColor(
@@ -310,8 +308,6 @@ export default function DocumentsPage() {
             </div>
           )}
         </div>
-
-        {/* Footer */}
         <div className="mt-4 p-4 rounded-lg bg-gray-800/30 border border-gray-700/50 text-xs text-gray-400">
           Total: <span className="font-semibold text-gray-300">{filteredDocuments.length}</span> document{filteredDocuments.length !== 1 ? 's' : ''} 
           {filter === 'all' && documents.length > 0 && (
@@ -319,8 +315,7 @@ export default function DocumentsPage() {
           )}
         </div>
       </div>
-    </div>
-  </PageContainer>
-</>
+    </PageContainer>
+  </>
   );
 }
