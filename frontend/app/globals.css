@@ -28,15 +28,40 @@
   box-sizing: border-box;
 }
 
-html, body {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+html {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
+  height: 100%;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
   overflow: hidden;
+}
+
+/* App Layout Structure */
+#__next {
+  display: contents;
+}
+
+/* Scrollbar styling for content areas */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
 }
 
 /* Animations */
@@ -228,6 +253,16 @@ button:disabled {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(99, 102, 241, 0.8);
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
 }
 
 /* Utilities */

@@ -1,12 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Navigation from './components/Navigation';
+import PageContainer from './components/PageContainer';
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const cards = [
+  // Check authentication and user type
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+
+    // Employees are authenticated via localStorage
+    if (token && userStr) {
+      setIsEmployee(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // Wait for NextAuth to load before checking status
+    if (status === 'loading') {
+      return;
+    }
+
+    // Admins are authenticated via NextAuth
+    if (status === 'authenticated' && session) {
+      setIsEmployee(false);
+      setIsLoading(false);
+      return;
+    }
+
+    // Not authenticated - redirect to login
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+      setIsLoading(false);
+      return;
+    }
+  }, [status, session, router]);
+
+  // Show loading state while checking authentication
+  if (isLoading || status === 'loading') {
+    return (
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // All cards available for admin
+  const allCards = [
     {
       id: 'upload',
       icon: '📤',
@@ -23,7 +78,7 @@ export default function Dashboard() {
       icon: '📚',
       title: 'Document Library',
       description: 'Browse and manage your documents',
-      link: '/documents',
+      link: '/document',
       color: 'from-green-500/20 to-green-600/20',
       borderColor: 'border-green-500/50',
       hoverColor: 'hover:shadow-green-500/50',
@@ -42,98 +97,114 @@ export default function Dashboard() {
     },
   ];
 
-  return (
-    <div className="w-screen h-screen flex flex-col bg-gradient-to-br from-background to-background-alt overflow-hidden pt-6">
-      {/* Header */}
-      <div className="glass-border m-4 mb-0 py-6">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center text-2xl shadow-lg">
-              ⚖️
+  // Employee only sees documents and chat
+  const employeeCards = allCards.filter(card => card.id !== 'upload');
+
+  // Show appropriate cards based on role
+  const cards = isEmployee ? employeeCards : allCards;
+
+return (
+  <>
+    <Navigation />
+    <PageContainer>
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
+        {/* Hero Section - Compact */}
+        <div className="w-full py-6 sm:py-8 flex justify-center flex-shrink-0">
+          <div className="text-center max-w-3xl mx-auto">
+            {/* Icon */}
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-blue-500/30 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-3xl sm:text-4xl shadow-lg">
+                ⚖️
+              </div>
             </div>
+
+            {/* Title and Subtitle - Compact */}
+            <h1 className="text-3xl sm:text-4xl font-bold text-gradient mb-2">
+              Legal Compliance Assistant
+            </h1>
+            <p className="text-sm sm:text-base text-gray-400">
+              AI-Powered Legal Document Analysis & Compliance Checking
+            </p>
           </div>
-          <h1 className="text-3xl font-bold text-gradient mb-1">Legal Compliance Assistant</h1>
-          <p className="text-sm text-gray-400">AI-Powered Legal Document Analysis & Compliance Checking</p>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-6xl">
-          {cards.map((card) => (
-            <Link
-              key={card.id}
-              href={card.link}
-              onMouseEnter={() => setHoveredCard(card.id)}
-              onMouseLeave={() => setHoveredCard(null)}
-              className={`group relative overflow-hidden rounded-2xl border-2 ${card.borderColor} bg-gradient-to-br ${card.color} p-8 transition-all duration-300 cursor-pointer ${
-                hoveredCard === card.id
-                  ? `transform scale-105 shadow-2xl ${card.hoverColor} shadow-2xl`
-                  : 'shadow-lg'
-              }`}
-            >
-              {/* Background Animation */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-              {/* Content */}
-              <div className="relative z-10 flex flex-col h-full gap-6 items-center justify-center text-center">
-                {/* Icon */}
-                <div
-                  className={`text-6xl transform transition-transform duration-300 ${
-                    hoveredCard === card.id ? 'scale-110 rotate-12' : ''
-                  }`}
+        {/* Cards Section - Centered */}
+        <div className="w-full flex justify-center flex-1 min-h-0 items-center">
+          <div className={`w-full ${isEmployee ? 'max-w-3xl' : 'max-w-5xl'}`}>
+            <div className={`grid gap-6 w-full ${
+              isEmployee 
+                ? 'grid-cols-1 sm:grid-cols-2' 
+                : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+            }`}>
+              {cards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => router.push(card.link)}
+                  onMouseEnter={() => setHoveredCard(card.id)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                  className="w-full"
                 >
-                  {card.icon}
-                </div>
-
-                {/* Title and Description */}
-                <div>
-                  <h2 className={`text-2xl font-bold ${card.accent} mb-3 transition-colors duration-300`}>
-                    {card.title}
-                  </h2>
-                  <p className="text-gray-400 text-sm leading-relaxed">
-                    {card.description}
-                  </p>
-                </div>
-
-                {/* CTA Button */}
-                <div className="mt-2">
                   <div
-                    className={`inline-flex items-center gap-3 px-8 py-4 rounded-lg font-semibold transition-all duration-300 ${
+                    className={`group relative overflow-hidden rounded-xl border-2 ${card.borderColor} bg-gradient-to-br ${card.color} p-6 sm:p-8 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center h-56 sm:h-64 ${
                       hoveredCard === card.id
-                        ? `${card.accent} bg-gray-700/40`
-                        : 'text-gray-400 bg-gray-800/20'
+                        ? `transform scale-105 shadow-xl ${card.hoverColor}`
+                        : 'shadow-lg hover:shadow-xl'
                     }`}
                   >
-                    <span>Open</span>
-                    <span className={`transform transition-transform duration-300 ${hoveredCard === card.id ? 'translate-x-1' : ''}`}>
-                      →
-                    </span>
+                    {/* Background Animation */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+                    {/* Content */}
+                    <div className="relative z-10 flex flex-col items-center justify-center gap-3 h-full">
+                      {/* Icon */}
+                      <div
+                        className={`text-5xl sm:text-6xl transform transition-transform duration-300 ${
+                          hoveredCard === card.id ? 'scale-110' : ''
+                        }`}
+                      >
+                        {card.icon}
+                      </div>
+
+                      {/* Title */}
+                      <h2 className={`text-lg sm:text-xl font-bold ${card.accent} transition-colors duration-300`}>
+                        {card.title}
+                      </h2>
+
+                      {/* Description */}
+                      <p className="text-gray-400 text-xs sm:text-sm leading-relaxed max-w-xs">
+                        {card.description}
+                      </p>
+
+                      {/* CTA Button */}
+                      <div
+                        className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 mt-1 ${
+                          hoveredCard === card.id
+                            ? `${card.accent} bg-gray-700/40`
+                            : 'text-gray-300 bg-gray-800/20'
+                        }`}
+                      >
+                        <span>Open</span>
+                        <span className={`transform transition-transform ${hoveredCard === card.id ? 'translate-x-0.5' : ''}`}>
+                          →
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
-                {/* Animated Border */}
-                <div
-                  className={`absolute inset-0 border-2 rounded-2xl transition-all duration-300 pointer-events-none ${card.borderColor} ${
-                    hoveredCard === card.id ? 'opacity-100' : 'opacity-0'
-                  }`}
-                  style={{
-                    animation: hoveredCard === card.id ? 'pulse 2s infinite' : 'none',
-                  }}
-                ></div>
-              </div>
-            </Link>
-          ))}
+        {/* Footer - Compact */}
+        <div className="w-full border-t border-gray-700/50 pt-4 pb-2 flex-shrink-0">
+          <div className="w-full flex flex-col items-center justify-center gap-1 text-xs text-gray-600">
+            <p className="text-center">Legal Compliance RAG System v1.0</p>
+            <p className="text-center">Powered by AI</p>
+          </div>
         </div>
       </div>
-
-      {/* Footer */}
-      <div className="glass-border m-4 mt-0 py-3">
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <p>Legal Compliance RAG System v1.0</p>
-          <p>Powered by AI</p>
-        </div>
-      </div>
-    </div>
-  );
+    </PageContainer>
+  </>
+);
 }
