@@ -3,14 +3,21 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import Link from 'next/link';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
 
 interface Citation {
   document_name: string;
+  document_version?: string;
   section?: string;
+  section_id?: string;
+  page?: number;
   content: string;
+  relevance_score?: number;
+  search_method?: string;
 }
 
 interface LogEntry {
@@ -18,16 +25,10 @@ interface LogEntry {
   level: 'info' | 'debug' | 'warn' | 'error';
   stage: string;
   message: string;
+  data?: any;
 }
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  confidence?: number;
-  citations?: Citation[];
-  logs?: LogEntry[];
-}
-
+// Friendly message translations for non-technical users
 const getFriendlyMessage = (stage: string, message: string): string => {
   const stageMap: { [key: string]: string } = {
     'QUERY_START': '📋 Processing your question...',
@@ -49,54 +50,84 @@ const getFriendlyMessage = (stage: string, message: string): string => {
     'QUERY_COMPLETE': '✅ Done!',
     'RETRIEVAL_COMPLETE': '✓ Document search complete',
   };
-
+  
   return stageMap[stage] || message;
 };
+
+interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'debug' | 'warn' | 'error';
+  stage: string;
+  message: string;
+  data?: any;
+}
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: Citation[];
+  confidence?: number;
+  version_warnings?: string[];
+  sources_used?: {
+    total_documents: number;
+    versions: string[];
+    has_outdated: boolean;
+  };
+  logs?: LogEntry[];
+}
 
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [currentLogs, setCurrentLogs] = useState<LogEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  /* Redirect if unauthenticated */
+  // Check authentication and user type
   useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+
+    // Employees can access chat
+    if (token && userStr) {
+      setIsEmployee(true);
+      return;
+    }
+
+    // Redirect to login if not authenticated
     if (status === 'unauthenticated') {
       router.push('/auth/login');
+      return;
     }
   }, [status, router]);
-
-  // Ensure a sessionId exists in sessionStorage for short-term memory
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const key = 'rag_session_id';
-    let id = sessionStorage.getItem(key);
-    if (!id) {
-      if (typeof (window as any).crypto?.randomUUID === 'function') {
-        id = (window as any).crypto.randomUUID();
-      } else {
-        id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      }
-    }
-    if (id) {
-      sessionStorage.setItem(key, id);
-      setSessionId(id);
-    }
-  }, []);
-
-  /* Auto scroll */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
+
+  // Show loading state while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-background to-background-alt">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Allow access if admin or employee
+  if (!session && !isEmployee) {
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,225 +135,184 @@ export default function ChatPage() {
 
     const userMessage: Message = { role: 'user', content: input };
     const userQuery = input;
-
-    // Add user message AND an empty pending assistant message
-    setMessages(prev => [
-      ...prev,
-      userMessage,
-      { role: 'assistant', content: '', logs: [], confidence: undefined }
-    ]);
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
-
+    setCurrentLogs([]);
 
     try {
+      // Get token from localStorage (employee) or session (admin)
       let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token && session && (session.user as any)?.token) {
         token = (session.user as any).token;
       }
 
       if (!token) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: '❌ Authentication required. Please sign in again.',
-          };
-          return updated;
-        });
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: '❌ Authentication required. Please sign in again.' },
+        ]);
         setLoading(false);
         return;
       }
 
-      // === REAL STREAMING API CALL ===
+      // Use fetch with streaming
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/query/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ query: userQuery, sessionId }),
+        body: JSON.stringify({ query: userQuery }),
       });
 
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('Response does not support streaming');
+      if (!reader) {
+        throw new Error('Response does not support streaming');
+      }
 
       const decoder = new TextDecoder();
-      let buffer = '';
-      let finalAnswer: any = null;
-      const logs: LogEntry[] = [];
       let hasError = false;
+      let finalAnswer: any = null;
+      let buffer = '';
+
+      const logs: LogEntry[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const messagesChunks = buffer.split('\n\n');
-        buffer = messagesChunks.pop() || '';
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
 
-        for (const msgChunk of messagesChunks) {
-          if (!msgChunk.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(msgChunk.slice(6));
+        // Process complete SSE messages
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop() || ''; // Keep incomplete message in buffer
 
-            if (data.type === 'log') {
-              logs.push(data.log);
-              // Update the pending assistant message with new logs
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  logs: [...logs],
-                };
-                return updated;
-              });
-            } else if (data.type === 'answer') {
-              finalAnswer = data.answer;
-            } else if (data.type === 'complete') {
-              if (finalAnswer) {
-                // Replace pending message with final answer
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
+        for (const message of messages) {
+          if (message.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(message.slice(6));
+
+              if (data.type === 'log') {
+                logs.push(data.log);
+                setCurrentLogs([...logs]);
+              } else if (data.type === 'answer') {
+                finalAnswer = data.answer;
+              } else if (data.type === 'complete') {
+                if (finalAnswer) {
+                  const assistantMessage: Message = {
                     role: 'assistant',
                     content: finalAnswer.answer || 'No answer generated',
                     citations: finalAnswer.citations,
                     confidence: finalAnswer.confidence,
-                    logs,
+                    version_warnings: finalAnswer.version_warnings,
+                    sources_used: finalAnswer.sources_used,
+                    logs: logs,
                   };
-                  return updated;
-                });
-              }
-            } else if (data.type === 'error') {
-              hasError = true;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
+                  setMessages(prev => [...prev, assistantMessage]);
+                }
+              } else if (data.type === 'error') {
+                hasError = true;
+                const errorMessage: Message = {
                   role: 'assistant',
                   content: `❌ Error: ${data.error}`,
-                  logs,
+                  logs: logs,
                 };
-                return updated;
-              });
+                setMessages(prev => [...prev, errorMessage]);
+                break;
+              }
+            } catch (err) {
+              console.error('Failed to parse SSE message:', err, message);
             }
-          } catch (err) {
-            console.error('Failed to parse SSE chunk:', err, msgChunk);
           }
         }
       }
 
       if (!hasError && !finalAnswer) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: '❌ No response from server',
-            logs,
-          };
-          return updated;
-        });
-      }
-    } catch (err: any) {
-      console.error('Error:', err);
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
+        const errorMessage: Message = {
           role: 'assistant',
-          content: `❌ Error: ${err.message || 'Error processing your query.'}`,
+          content: '❌ No response from server',
+          logs: logs,
         };
-        return updated;
-      });
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error: any) {
+      console.error('Error:', error);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `❌ Error: ${error.message || 'Error processing your query. Please try again.'}`,
+        },
+      ]);
     } finally {
       setLoading(false);
-      scrollToBottom();
     }
   };
-
-  const handleClearSession = async () => {
-    if (!sessionId) return;
-    let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token && session && (session.user as any)?.token) token = (session.user as any).token;
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (res.ok) {
-        // clear local session storage entry and append a system message
-        const key = 'rag_session_id';
-        sessionStorage.removeItem(key);
-        // generate a fresh session id for subsequent queries
-        let newId = typeof (window as any).crypto?.randomUUID === 'function'
-          ? (window as any).crypto.randomUUID()
-          : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        sessionStorage.setItem(key, newId);
-        setSessionId(newId);
-        setMessages(prev => ([...prev, { role: 'assistant', content: '🧹 Short-term session memory cleared.' }]));
-      } else {
-        const json = await res.json();
-        setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Failed to clear session: ${json?.error || res.status}` }]));
-      }
-    } catch (err: any) {
-      setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Error clearing session: ${err.message || err}` }]));
-    }
-  };
-
-  if (status === 'loading') return null;
 
   return (
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full h-full flex items-center justify-center">
-          <div className="max-w-3xl w-full h-full flex overflow-hidden flex-col">
-
-            {/* ================= MESSAGES ================= */}
-            <div className="flex-1 overflow-y-auto space-y-4 px-3 py-4">
+        <div className="max-w-7xl mx-auto w-full h-full flex gap-4 overflow-hidden justify-center">
+          {/* Messages Column */}
+          <div className="flex-1 flex flex-col overflow-hidden max-w-2xl">
+            {/* Messages Container */}
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
               {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-4 py-12">
-                  {/* Welcome Message Card */}
-                  <div className="w-full max-w-2xl p-6 glass-border rounded-lg text-center !mt-8 !mb-8">
-                    <p className="text-gray-300 text-base leading-relaxed">
-                      Hello! I&apos;m here to help with legal and compliance questions.
-                      Ask me about policies, regulations, contracts, or any compliance-related matters.
-                    </p>
-                  </div>
-
-                  {/* Feature Cards */}
-                  <div className="flex gap-6 w-full max-w-2xl justify-center">
-                    <div className="flex-1 max-w-[280px] p-6 glass-border rounded-lg text-center flex flex-col items-center">
-                      <p className="text-base font-semibold text-gray-200 mb-2">📚 Use Documents</p>
-                      <p className="text-sm text-gray-400">Reference your uploaded files</p>
+                <div className="h-full flex flex-col items-center justify-center text-center">
+                  <div className="text-6xl mb-4 animate-float">💬</div>
+                  <h2 className="text-2xl font-bold text-gray-300 mb-2">Welcome to Chat Assistant</h2>
+                  <p className="text-gray-400 max-w-md mb-6">
+                    Ask questions about your uploaded legal documents. Get instant answers with proper citations.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 max-w-md">
+                    <div className="p-4 glass-border text-left">
+                      <p className="text-sm font-semibold text-gray-300 mb-2">📚 Use Documents</p>
+                      <p className="text-xs text-gray-500">Reference your uploaded files</p>
                     </div>
-
-                    <div className="flex-1 max-w-[280px] p-6 glass-border rounded-lg text-center flex flex-col items-center">
-                      <p className="text-base font-semibold text-gray-200 mb-2">🎯 Get Citations</p>
-                      <p className="text-sm text-gray-400">See sources for every answer</p>
+                    <div className="p-4 glass-border text-left">
+                      <p className="text-sm font-semibold text-gray-300 mb-2">🎯 Get Citations</p>
+                      <p className="text-xs text-gray-500">See sources for every answer</p>
                     </div>
                   </div>
                 </div>
               ) : (
                 messages.map((msg, idx) => (
-                  <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
-                      {/* If assistant message has content, show it; otherwise show pending logs */}
-                      {msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 ? (
-                        <div className="flex items-center gap-2 text-gray-300">
-                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
-                          <p className="text-sm">
-                            {getFriendlyMessage(msg.logs[msg.logs.length - 1].stage, msg.logs[msg.logs.length - 1].message)}
-                          </p>
-                        </div>
-                      ) : (
-                        <>
+                  <div
+                    key={idx}
+                    className={`flex animate-fade-in ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`message-bubble ${
+                        msg.role === 'user' ? 'message-user max-w-xs' : 'message-assistant max-w-2xl'
+                      }`}
+                    >
+                      {msg.role === 'assistant' ? (
+                        <div className="space-y-4">
                           <div className="prose prose-sm prose-invert max-w-none">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            <ReactMarkdown
+                              components={{
+                                h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2 text-cyan-300" {...props} />,
+                                h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-3 mb-2 text-cyan-300" {...props} />,
+                                h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-2 mb-1 text-cyan-300" {...props} />,
+                                ul: ({node, ...props}) => <ul className="list-disc ml-5 my-2 space-y-1" {...props} />,
+                                ol: ({node, ...props}) => <ol className="list-decimal ml-5 my-2 space-y-1" {...props} />,
+                                li: ({node, ...props}) => <li className="text-gray-300" {...props} />,
+                                p: ({node, ...props}) => <p className="my-2 text-gray-300" {...props} />,
+                                hr: ({node, ...props}) => <hr className="my-4 border-gray-600" {...props} />,
+                                strong: ({node, ...props}) => <strong className="font-bold text-gray-200" {...props} />,
+                                code: ({node, ...props}) => <code className="bg-background-alt px-2 py-1 rounded text-cyan-300 font-mono text-sm" {...props} />,
+                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-cyan-400/50 pl-4 my-2 italic text-gray-400" {...props} />,
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
                           </div>
 
                           {msg.citations && msg.citations.length > 0 && (
@@ -339,10 +329,19 @@ export default function ChatPage() {
                                       <div>
                                         <p className="font-semibold text-gray-200">{cite.document_name}</p>
                                         {cite.section && (
-                                          <p className="text-xs text-gray-500 mt-1">📍 Section: {cite.section}</p>
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            📍 Section: {cite.section}
+                                          </p>
+                                        )}
+                                        {cite.relevance_score && (
+                                          <p className="text-xs text-gray-500">
+                                            Relevance: {(cite.relevance_score * 100).toFixed(0)}%
+                                          </p>
                                         )}
                                         {cite.content && (
-                                          <p className="text-xs text-gray-500 mt-2 italic">&quot;{cite.content.substring(0, 100)}...&quot;</p>
+                                          <p className="text-xs text-gray-500 mt-2 italic">
+                                            "{cite.content.substring(0, 100)}..."
+                                          </p>
                                         )}
                                       </div>
                                     </div>
@@ -351,55 +350,69 @@ export default function ChatPage() {
                               </div>
                             </div>
                           )}
-                        </>
-                      )}
 
-                      {msg.role === 'assistant' && msg.confidence !== undefined && (
-                        <div className="mt-3">
-                          <div className="confidence-row rounded-lg overflow-hidden border border-cyan-400/20 flex">
-                            <div className="confidence-label px-3 py-2 bg-cyan-500/8 text-cyan-300 text-sm font-semibold flex items-center gap-2">
-                              <span>🎯</span>
-                              <span>Confidence Score</span>
+                          {msg.confidence !== undefined && (
+                            <div className="mt-3 p-3 rounded-lg bg-cyan-500/10 border border-cyan-400/30">
+                              <div className="flex items-center gap-2">
+                                <span className="text-cyan-300">🎯</span>
+                                <div>
+                                  <p className="text-xs font-semibold text-cyan-300">Confidence Score</p>
+                                  <div className="w-32 h-2 bg-background-alt rounded-full mt-1 overflow-hidden">
+                                    <div
+                                      className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400"
+                                      style={{ width: `${msg.confidence}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                                <span className="text-cyan-300 font-bold text-sm">{msg.confidence}%</span>
+                              </div>
                             </div>
-                            <div className="confidence-percent px-3 py-2 text-sm bg-background-alt text-cyan-300 font-bold text-right ml-auto">{msg.confidence}%</div>
-                          </div>
+                          )}
                         </div>
+                      ) : (
+                        <p className="text-white">{msg.content}</p>
                       )}
                     </div>
                   </div>
                 ))
               )}
-
-
-              {/* no separate logs panel - logs render inside the assistant bubble */}
-
+              {loading && (
+                <div className="flex justify-start animate-fade-in">
+                  <div className="message-bubble message-assistant">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse-glow"></div>
+                      <p className="text-gray-400">
+                        {currentLogs.length > 0
+                          ? getFriendlyMessage(
+                              currentLogs[currentLogs.length - 1].stage,
+                              currentLogs[currentLogs.length - 1].message
+                            )
+                          : '🔍 Searching your documents...'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* ================= INPUT ================= */}
-            <form
-              onSubmit={handleSubmit}
-              className="flex gap-3 border-t border-gray-700 px-3 py-4"
-            >
-              <button
-                type="button"
-                onClick={handleClearSession}
-                className="px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-sm hover:bg-gray-600"
-              >
-                Clear Memory
-              </button>
+            {/* Input Area */}
+            <form onSubmit={handleSubmit} className="glass-border flex gap-3">
               <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about compliance, regulations, policies..."
-                className="flex-1 rounded-lg px-4 py-3 bg-background-alt border border-gray-700 text-white focus:outline-none"
+                className="flex-1"
+                disabled={loading}
+                autoFocus
               />
               <button
                 type="submit"
-                disabled={!input.trim() || loading}
-                className="px-6 py-3 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 disabled:opacity-50"
+                disabled={loading || !input.trim()}
+                className="px-8 py-3 rounded-lg font-bold transition-all flex items-center gap-2 text-white bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed shadow-lg hover:shadow-cyan-500/50 hover:shadow-lg"
               >
-                Send
+                {loading ? '⟳' : '➤'} {loading ? 'Processing' : 'Send'}
               </button>
             </form>
           </div>
