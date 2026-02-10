@@ -303,14 +303,14 @@ export class LegalComplianceAgent {
   /**
    * Execute tool functions
    */
-  private async executeTool(toolName: string, args: any): Promise<any> {
+  private async executeTool(toolName: string, args: any, adminId: number): Promise<any> {
     const startTime = Date.now();
     console.log(`🔧 [START] ${toolName} (args: ${JSON.stringify(args).substring(0, 60)}...)`);
 
     try {
       switch (toolName) {
         case "search_documents":
-          const searchResult = await this.queryService.processQuery(args.query, false);
+          const searchResult = await this.queryService.processQuery(args.query, adminId);
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           return searchResult;
 
@@ -328,12 +328,12 @@ export class LegalComplianceAgent {
           const query = args.topic
             ? `Check conflicts between ${args.document1} and ${args.document2} regarding ${args.topic}`
             : `Check conflicts between ${args.document1} and ${args.document2}`;
-          const conflictResult = await this.conflictService.detectConflicts(query);
+          const conflictResult = await this.conflictService.detectConflicts(query, adminId);
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           return conflictResult;
 
         case "list_available_documents":
-          const docs = await this.documentService.listDocuments();
+          const docs = await this.documentService.listDocuments(adminId);
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           // Group by document name
           const grouped = docs.reduce((acc: any, doc: any) => {
@@ -354,8 +354,8 @@ export class LegalComplianceAgent {
           return Object.values(grouped);
 
         case "get_document_versions":
-          const versions = await this.documentService.getDocumentVersions(args.document_name);
-          const resolvedName = await this.documentService.findDocumentByName(args.document_name);
+          const versions = await this.documentService.getDocumentVersions(args.document_name, adminId);
+          const resolvedName = await this.documentService.findDocumentByName(args.document_name, adminId);
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           return {
             document_name: resolvedName || args.document_name,
@@ -443,7 +443,7 @@ ${result.conflicts.map((c: any, i: number) =>
   /**
    * Main agent processing with function calling and UNIVERSAL citation tracking
    */
-  async processQuery(userQuery: string, maxIterations: number = 5): Promise<AgentResult> {
+  async processQuery(userQuery: string, adminId: number, maxIterations: number = 5): Promise<AgentResult> {
     console.log('\n🤖 Legal Compliance Agent starting...');
     console.log('📝 Query:', userQuery);
 
@@ -539,7 +539,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...) [PARALLEL]`);
 
           // Execute in parallel
-          const result = await this.executeTool(toolName, toolArgs);
+          const result = await this.executeTool(toolName, toolArgs, adminId);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
           return {

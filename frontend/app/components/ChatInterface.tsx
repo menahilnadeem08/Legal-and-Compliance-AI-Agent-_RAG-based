@@ -18,6 +18,39 @@ interface Citation {
   search_method?: string;
 }
 
+interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'debug' | 'warn' | 'error';
+  stage: string;
+  message: string;
+  data?: any;
+}
+
+const getFriendlyMessage = (stage: string, message: string): string => {
+  const stageMap: { [key: string]: string } = {
+    'QUERY_START': '📋 Processing your question...',
+    'QUERY_REWRITE_START': '🔍 Analyzing how to search for this...',
+    'QUERY_REWRITE_VARIANTS': '🎯 Understanding different ways to ask this...',
+    'RETRIEVAL': '📚 Searching your documents...',
+    'VECTOR_SEARCH': '🔎 Finding relevant sections...',
+    'VECTOR_SEARCH_COMPLETE': '✓ Found matching content',
+    'KEYWORD_SEARCH': '🔤 Searching for specific terms...',
+    'KEYWORD_SEARCH_COMPLETE': '✓ Keyword search complete',
+    'DEDUPLICATION': '♻️ Removing duplicate information...',
+    'DEDUPLICATION_COMPLETE': '✓ Cleaned up results',
+    'RERANKING': '⭐ Ranking results by relevance...',
+    'RERANKING_COMPLETE': '✓ Results ranked',
+    'COMPRESSION': '📦 Preparing context for analysis...',
+    'COMPRESSION_COMPLETE': '✓ Context ready',
+    'GENERATION': '⚡ Generating your answer...',
+    'GENERATION_COMPLETE': '✓ Answer generated',
+    'QUERY_COMPLETE': '✅ Done!',
+    'RETRIEVAL_COMPLETE': '✓ Document search complete',
+  };
+
+  return stageMap[stage] || message;
+};
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
