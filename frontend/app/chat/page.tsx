@@ -60,6 +60,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +70,22 @@ export default function ChatPage() {
       router.push('/auth/login');
     }
   }, [status, router]);
+
+  // Ensure a sessionId exists in sessionStorage for short-term memory
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = 'rag_session_id';
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      if (typeof (window as any).crypto?.randomUUID === 'function') {
+        id = (window as any).crypto.randomUUID();
+      } else {
+        id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      }
+      sessionStorage.setItem(key, id);
+    }
+    setSessionId(id);
+  }, []);
 
   /* Auto scroll */
   useEffect(() => {
@@ -122,7 +139,7 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ query: userQuery }),
+        body: JSON.stringify({ query: userQuery, sessionId }),
       });
 
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -218,6 +235,39 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
       scrollToBottom();
+    }
+  };
+
+  const handleClearSession = async () => {
+    if (!sessionId) return;
+    let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token && session && (session.user as any)?.token) token = (session.user as any).token;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/clear`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (res.ok) {
+        // clear local session storage entry and append a system message
+        const key = 'rag_session_id';
+        sessionStorage.removeItem(key);
+        // generate a fresh session id for subsequent queries
+        let newId = typeof (window as any).crypto?.randomUUID === 'function'
+          ? (window as any).crypto.randomUUID()
+          : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        sessionStorage.setItem(key, newId);
+        setSessionId(newId);
+        setMessages(prev => ([...prev, { role: 'assistant', content: '🧹 Short-term session memory cleared.' }]));
+      } else {
+        const json = await res.json();
+        setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Failed to clear session: ${json?.error || res.status}` }]));
+      }
+    } catch (err: any) {
+      setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Error clearing session: ${err.message || err}` }]));
     }
   };
 
@@ -329,6 +379,13 @@ export default function ChatPage() {
               onSubmit={handleSubmit}
               className="flex gap-3 border-t border-gray-700 px-3 py-4"
             >
+              <button
+                type="button"
+                onClick={handleClearSession}
+                className="px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-sm hover:bg-gray-600"
+              >
+                Clear Memory
+              </button>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

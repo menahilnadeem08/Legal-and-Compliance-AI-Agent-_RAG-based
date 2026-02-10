@@ -14,6 +14,7 @@ import {
 } from '../controllers/documentController';
 import { agentQuery } from '../controllers/agentController';
 import { queryStreamController } from '../controllers/queryStreamController';
+import { clearSessionController } from '../controllers/sessionController';
 import { handleValidationErrors } from '../middleware/validation';
 import {
   validateAgentQuery,
@@ -69,6 +70,8 @@ router.post('/query/stream',
   queryStreamController as any
 );
 
+// Clear short-term session memory for the given sessionId
+router.post('/session/clear', authenticate as any, clearSessionController as any);
 // ===== Document Upload (only admins) =====
 router.post('/upload', 
   authenticate as any,

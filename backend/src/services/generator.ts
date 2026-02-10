@@ -9,7 +9,7 @@ export class AnswerGenerator {
     return greetings.test(text.trim());
   }
 
-  async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
+  async generateAnswer(query: string, chunks: RetrievedChunk[], sessionContext?: string): Promise<QueryResult> {
     // Handle greetings first (no retrieval needed)
     if (this.isGreeting(query)) {
       return {
@@ -35,21 +35,24 @@ export class AnswerGenerator {
       .join('\n\n');
 
     // Create prompt
+    // If sessionContext is provided, include it to give the model short-term memory of the conversation
+    const sessionBlock = sessionContext && sessionContext.trim() ? `Session Context:\n${sessionContext}\n\n` : '';
+
     const prompt = `You are a legal and compliance assistant. Answer the question based ONLY on the provided context.
 
-Rules:
-- Only use information from the context below
-- Cite sources using [number] references
-- If the context doesn't contain enough information, say "Insufficient information in the knowledge base"
-- Be precise and accurate
-- Always include document names in your answer
+  Rules:
+  - Only use information from the context below
+  - Cite sources using [number] references
+  - If the context doesn't contain enough information, say "Insufficient information in the knowledge base"
+  - Be precise and accurate
+  - Always include document names in your answer
 
-Context:
-${context}
+  ${sessionBlock}Context:
+  ${context}
 
-Question: ${query}
+  Question: ${query}
 
-Answer:`;
+  Answer:`;
 
     // Generate answer
     pipelineLogger.info('GENERATION', 'Starting LLM answer generation', {
@@ -88,13 +91,26 @@ Answer:`;
       };
     }
 
-    // Extract citations only for substantive answers
-    const citations: Citation[] = chunks.map(chunk => ({
-      document_name: chunk.document_name,
-      section: chunk.section_name || 'N/A',
-      page: chunk.page_number,
-      content: chunk.content.substring(0, 150) + '...',
-    }));
+    // Extract citations only for references actually used in the answer
+    const citedIndices = new Set<number>();
+    const citationMatches = answer.matchAll(/\[(\d+)\]/g);
+    for (const match of citationMatches) {
+      const idx = parseInt(match[1]) - 1;
+      if (idx >= 0 && idx < chunks.length) {
+        citedIndices.add(idx);
+      }
+    }
+
+    const citations: Citation[] = [];
+    for (const idx of citedIndices) {
+      const chunk = chunks[idx];
+      citations.push({
+        document_name: chunk.document_name,
+        section: chunk.section_name || 'N/A',
+        page: chunk.page_number,
+        content: chunk.content.substring(0, 150) + '...',
+      });
+    }
 
     // Calculate confidence based on similarity scores
     const avgSimilarity = chunks.reduce((sum, c) => sum + c.similarity, 0) / chunks.length;

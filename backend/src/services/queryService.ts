@@ -383,7 +383,7 @@ export class QueryService {
     return { valid: true };
   }
 
-  async generateAnswer(query: string, chunks: RetrievedChunk[]): Promise<QueryResult> {
+  async generateAnswer(query: string, chunks: RetrievedChunk[], sessionContext?: string): Promise<QueryResult> {
     const normalizeScore = (score: number) => Math.max(0, Math.min(1, score));
 
     const bestScore = chunks.length > 0
@@ -406,6 +406,9 @@ Content: ${chunk.content}`;
       })
       .join('\n\n---\n\n');
 
+    // Include session context if provided to give short-term conversational memory
+    const sessionBlock = sessionContext && sessionContext.trim() ? `Session Context:\n${sessionContext}\n\n` : '';
+
     const prompt = `You are a legal and compliance assistant. Answer the question based strictly on the provided context.
 
 CRITICAL RULES:
@@ -419,7 +422,7 @@ CRITICAL RULES:
 8. Always mention document names and versions in your answer
 9. If the answer requires information not in the context, say so clearly
 
-Context:
+${sessionBlock}Context:
 ${context}
 
 Question: ${query}

@@ -3,6 +3,7 @@ import { RetrievalService } from '../services/retrieval';
 import { AnswerGenerator } from '../services/generator';
 import { ContextCompressor } from '../services/compressor';
 import { pipelineLogger } from '../services/logger';
+import { sessionMemory } from '../utils/sessionMemory';
 
 const retrievalService = new RetrievalService();
 const answerGenerator = new AnswerGenerator();
@@ -10,7 +11,7 @@ const compressor = new ContextCompressor();
 
 export const queryStreamController = async (req: Request, res: Response) => {
   try {
-    const { query } = req.body;
+    const { query, sessionId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
@@ -48,6 +49,16 @@ export const queryStreamController = async (req: Request, res: Response) => {
     pipelineLogger.info('QUERY_START', 'Processing query', { query });
 
     try {
+      // If a sessionId was provided, append the user message to short-term memory
+      if (sessionId) {
+        try {
+          sessionMemory.appendMessage(sessionId, 'user', query);
+          pipelineLogger.info('SESSION_APPEND', 'Appended user message to session memory', { sessionId });
+        } catch (e) {
+          pipelineLogger.warn('SESSION_APPEND_FAIL', 'Failed to append session message', { error: e });
+        }
+      }
+
       // Stage 1: Retrieval
       pipelineLogger.info('RETRIEVAL', 'Searching documents for relevant content...');
       const chunks = await retrievalService.hybridSearch(query, 10);
@@ -72,11 +83,23 @@ export const queryStreamController = async (req: Request, res: Response) => {
 
       // Stage 4: Answer Generation
       pipelineLogger.info('GENERATION', 'Generating answer using LLM...');
-      const result = await answerGenerator.generateAnswer(query, compressed);
+      // Include session short-term memory (if any) to the generation step
+      const sessionContextText = sessionId ? sessionMemory.getSessionContextText(sessionId, 20) : '';
+      const result = await answerGenerator.generateAnswer(query, compressed, sessionContextText);
       pipelineLogger.info('GENERATION_COMPLETE', 'Answer generated successfully');
 
       // Send the final answer
       sendAnswer(result);
+
+      // Append assistant answer to session memory (so subsequent queries see it)
+      if (sessionId) {
+        try {
+          sessionMemory.appendMessage(sessionId, 'assistant', result.answer);
+          pipelineLogger.info('SESSION_APPEND', 'Appended assistant message to session memory', { sessionId });
+        } catch (e) {
+          pipelineLogger.warn('SESSION_APPEND_FAIL', 'Failed to append assistant session message', { error: e });
+        }
+      }
 
       // Mark as complete
       pipelineLogger.info('QUERY_COMPLETE', 'Processing finished');
