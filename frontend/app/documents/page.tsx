@@ -219,24 +219,24 @@ export default function DocumentsPage() {
         <div className="w-full h-full flex flex-col gap-4">
           {/* Filter Tabs */}
           <div className="flex gap-2 flex-shrink-0">
-        {[
-          { id: 'all', label: 'All Documents', icon: '📋' },
-          { id: 'latest', label: 'Latest Versions', icon: '✓' },
-          { id: 'outdated', label: 'Outdated', icon: '⏱️' },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setFilter(tab.id as any)}
-            className={`px-6 py-3 rounded-lg transition-all font-medium ${
-              filter === tab.id
-                ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400'
-                : 'bg-gray-600/20 text-gray-400 border border-gray-500/30 hover:bg-gray-600/30'
-            }`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
+            {[
+              { id: 'all', label: 'All Documents', icon: '📋' },
+              { id: 'latest', label: 'Latest Versions', icon: '✓' },
+              { id: 'outdated', label: 'Outdated', icon: '⏱️' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id as any)}
+                className={`px-6 py-3 rounded-lg transition-all font-medium ${
+                  filter === tab.id
+                    ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400'
+                    : 'bg-gray-600/20 text-gray-400 border border-gray-500/30 hover:bg-gray-600/30'
+                }`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
 
       {/* Documents Grid */}
       <div className="flex-1 min-h-0 overflow-y-auto">
