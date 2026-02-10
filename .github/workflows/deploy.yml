@@ -1,0 +1,90 @@
+name: CI/CD Deployment to EC2
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            APP_DIR="/home/${{ secrets.EC2_USER }}/app"
+            
+            # Create app directory
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+            
+            # Clone or pull repo
+            if [ -d ".git" ]; then
+              git pull origin master
+            else
+              git clone https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
+            fi
+            
+            # ========== Backend ==========
+            cd $APP_DIR/backend
+            
+            # Create .env
+            cat > .env << 'ENVFILE'
+            PORT=3001
+            NODE_ENV=production
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            NODE_TLS_REJECT_UNAUTHORIZED=0
+            ENVFILE
+            
+            # Install and build
+            npm install --production
+            npm run build || true
+            
+            # Start backend
+            pm2 delete backend 2>/dev/null || true
+            pm2 start npm --name "backend" -- start
+            
+            # ========== Frontend ==========
+            cd $APP_DIR/frontend
+            
+            # Remove old build
+            rm -rf .next node_modules
+            
+            # Create .env.local
+            cat > .env.local << 'ENVFILE'
+            PORT=3000
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            ENVFILE
+            
+            # Install and build
+            npm install
+            npm run build
+            
+            # Verify build exists
+            if [ ! -d ".next" ]; then
+              echo "Build failed - .next directory not found"
+              exit 1
+            fi
+            
+            # Start frontend
+            pm2 delete frontend 2>/dev/null || true
+            pm2 start npm --name "frontend" -- start
+            
+            # Save PM2 state
+            pm2 save
+            pm2 startup || true

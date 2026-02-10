@@ -27,7 +27,11 @@ export interface Document {
   
   export interface Citation {
     document_name: string;
-    section: string;
-    page?: number;
-    content: string;
+    document_version?: string;  // Version of the document
+    section?: string;            // Section/clause name
+    section_id?: string;         // Clause or section identifier
+    page?: number;               // Page number
+    content: string;             // Quote from the document
+    relevance_score?: number;    // How relevant this citation is (0-1)
+    search_method?: string;      // 'vector', 'keyword', or 'both'
   }
