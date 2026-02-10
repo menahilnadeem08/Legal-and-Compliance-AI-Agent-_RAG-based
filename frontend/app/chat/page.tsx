@@ -235,7 +235,7 @@ export default function ChatPage() {
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-12">
                   {/* Welcome Message Card */}
-                  <div className="w-full max-w-2xl p-6 glass-border rounded-lg text-center mb-8">
+                  <div className="w-full max-w-2xl p-6 glass-border rounded-lg text-center !mt-8 !mb-8">
                     <p className="text-gray-300 text-base leading-relaxed">
                       Hello! I&apos;m here to help with legal and compliance questions.
                       Ask me about policies, regulations, contracts, or any compliance-related matters.
