@@ -206,7 +206,7 @@ export default function AdminDashboard() {
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full h-full flex flex-col gap-6">
+        <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-6">
           {/* Header */}
           <div className="glass-border rounded-2xl p-6 sm:p-8 flex-shrink-0">
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Admin Dashboard</h1>
