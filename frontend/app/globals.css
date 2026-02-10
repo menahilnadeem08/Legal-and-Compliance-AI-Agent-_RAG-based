@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #a8b5c6;
+  --primary-dark: #8a96a8;
+  --secondary: #ec4899;
+  --accent: #06b6d4;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --background: #0f172a;
+  --background-alt: #1e293b;
+  --foreground: #f1f5f9;
+  --foreground-dim: #cbd5e1;
+  --border: #334155;
 }
 
 @theme inline {
@@ -12,64 +22,377 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  background: var(--background);
+  height: 100%;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  overflow: hidden;
 }
 
-/* Improve default bubble and panel contrast (works with Tailwind classes used in components) */
-.bg-blue-100 {
-  background-color: #dbeafe !important; /* light blue */
-  color: #0b1220 !important;
-}
-.bg-gray-100 {
-  background-color: #f3f4f6 !important; /* light gray */
-  color: #0b1220 !important;
-}
-.bg-white {
-  background-color: #ffffff !important;
-  color: #0b1220 !important;
+/* App Layout Structure */
+#__next {
+  display: contents;
 }
 
-.text-gray-600 { color: #4b5563 !important; }
+/* Scrollbar styling for content areas */
+::-webkit-scrollbar {
+  width: 8px;
+}
 
-input, textarea, select {
+::-webkit-scrollbar-track {
   background: transparent;
-  color: var(--foreground);
-  border-color: rgba(0,0,0,0.12);
 }
 
-button:disabled { opacity: 0.7; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.5s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.5s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  background-size: 1000px 100%;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.glass-border {
+  border-radius: 16px;
+  padding: 1.5rem;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Chat bubbles */
+.message-bubble {
+  padding: 1.25rem 1.5rem;
+  /* 20px 24px – readable, breathable */
+  border-radius: 1rem;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+.message-user {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  border-radius: 16px 4px 16px 16px;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.message-assistant .prose p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.message-assistant .prose ul,
+.message-assistant .prose ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.message-assistant .prose li {
+  margin: 0.25rem 0;
+}
+
+.message-assistant .prose h1,
+.message-assistant .prose h2,
+.message-assistant .prose h3 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+
+/* Input styling */
+input,
+textarea,
+select {
+  background: rgba(30, 41, 59, 0.6);
+  color: var(--foreground);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: rgba(30, 41, 59, 0.8);
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+input::placeholder {
+  color: rgba(203, 213, 225, 0.5);
+}
+
+/* Buttons */
+button {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  padding: 0.75rem 1.5rem;
+  margin: 0.5rem;
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: left 0.3s ease;
+}
+
+button:hover::before {
+  left: 100%;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+}
+
+.btn-secondary {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--foreground);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.3);
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.8);
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari and Opera */
+}
+
+/* Utilities */
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glow {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+}
+
+.glow-secondary {
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.5);
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.1));
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .glass-border {
+    padding: 1rem;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
 
 /* Dark mode overrides to ensure readable bubbles/panels */
 @media (prefers-color-scheme: dark) {
   .bg-blue-100 {
-    background-color: #083544 !important; /* darker blue */
+    background-color: #083544 !important;
+    /* darker blue */
     color: #e6fbff !important;
   }
+
   .bg-gray-100 {
-    background-color: #0f1724 !important; /* dark panel */
+    background-color: #0f1724 !important;
+    /* dark panel */
     color: #e6eef6 !important;
   }
+
   .bg-white {
     background-color: #0b0b0b !important;
     color: #e6eef6 !important;
   }
 
-  .text-gray-600 { color: #94a3b8 !important; }
+  .text-gray-600 {
+    color: #94a3b8 !important;
+  }
 
-  input, textarea, select {
-    background: rgba(255,255,255,0.02);
+  input,
+  textarea,
+  select {
+    background: rgba(255, 255, 255, 0.02);
     color: var(--foreground);
-    border-color: rgba(255,255,255,0.06);
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
   /* Ensure upload panel (which uses bg-white) remains visible */
@@ -83,6 +406,69 @@ button:disabled { opacity: 0.7; }
 .flex-1.overflow-y-auto.mb-4.space-y-4 {
   padding: 12px;
 }
-.flex-1.overflow-y-auto.mb-4.space-y-4 > div {
+
+.flex-1.overflow-y-auto.mb-4.space-y-4>div {
   max-width: 90%;
+}
+
+/* Chat bubble fine-tuning */
+.message-bubble {
+  padding: 0.75rem 1rem; /* tighter padding */
+  border-radius: 12px;
+  line-height: 1.5;
+}
+
+.message-user {
+  background: linear-gradient(135deg, #06b6d4 0%, #0ea5a9 100%);
+  color: #fff;
+  border-radius: 12px 6px 12px 12px;
+  box-shadow: 0 6px 18px rgba(6, 182, 212, 0.12);
+}
+
+.message-assistant {
+  background: linear-gradient(135deg, rgba(148,163,184,0.06), rgba(148,163,184,0.03));
+  border: 1px solid rgba(148,163,184,0.08);
+  color: var(--foreground);
+  border-radius: 8px 12px 12px 12px;
+}
+
+.message-assistant .prose p {
+  margin: 0.25rem 0;
+}
+
+.confidence-row {
+  display: flex;
+  align-items: center;
+}
+
+.confidence-label {
+  border-right: 1px solid rgba(99,102,241,0.08);
+}
+
+.confidence-percent {
+  min-width: 56px;
+}
+
+/* Slightly reduce gap between stacked messages for denser look */
+.space-y-4 > * + * {
+  margin-top: 0.5rem;
+}
+
+/* Logs panel styles */
+.log-panel {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.log-entry {
+  padding: 0.25rem 0.25rem;
+}
+
+.log-badge {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+/* smaller timestamp */
+.text-2xs {
+  font-size: 11px;
 }
