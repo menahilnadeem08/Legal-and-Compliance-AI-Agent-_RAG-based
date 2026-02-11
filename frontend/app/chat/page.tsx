@@ -1,16 +1,23 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import ConversationList from '../components/ConversationList';
 
 interface Citation {
   document_name: string;
+  document_version?: string;
   section?: string;
+  section_id?: string;
+  page?: number;
   content: string;
+  relevance_score?: number;
+  search_method?: string;
 }
 
 interface LogEntry {
@@ -18,13 +25,20 @@ interface LogEntry {
   level: 'info' | 'debug' | 'warn' | 'error';
   stage: string;
   message: string;
+  data?: any;
 }
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  confidence?: number;
   citations?: Citation[];
+  confidence?: number;
+  version_warnings?: string[];
+  sources_used?: {
+    total_documents: number;
+    versions: string[];
+    has_outdated: boolean;
+  };
   logs?: LogEntry[];
 }
 
@@ -56,20 +70,83 @@ const getFriendlyMessage = (stage: string, message: string): string => {
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [currentLogs, setCurrentLogs] = useState<LogEntry[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-
+  const [token, setToken] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  /* Redirect if unauthenticated */
+  const loadConversation = useCallback(async (conversationId: number) => {
+    try {
+      if (!token) {
+        console.error('No token available');
+        return;
+      }
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/conversations/${conversationId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          }
+        }
+      );
+
+      const data = response.data;
+      setCurrentConversationId(conversationId);
+      
+      // Convert DB messages to UI format
+      const convertedMessages: Message[] = data.messages.map((msg: any) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+        citations: msg.metadata?.citations,
+        confidence: msg.metadata?.confidence,
+      }));
+      
+      setMessages(convertedMessages);
+    } catch (err) {
+      console.error('Error loading conversation:', err);
+    }
+  }, [token]);
+
+  // Load conversation from URL
   useEffect(() => {
+    const conversationId = searchParams.get('conversation');
+    if (conversationId && token) {
+      loadConversation(parseInt(conversationId));
+    } else {
+      // Clear state for new chat
+      setCurrentConversationId(null);
+      setMessages([]);
+    }
+  }, [searchParams, token, loadConversation]);
+
+  useEffect(() => {
+    const localToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+
+    if (localToken && userStr) {
+      setIsEmployee(true);
+      setToken(localToken);
+      return;
+    }
+
+    // Check for NextAuth session token
+    if (session && (session.user as any)?.token) {
+      setToken((session.user as any).token);
+      return;
+    }
+
     if (status === 'unauthenticated') {
       router.push('/auth/login');
+      return;
     }
-  }, [status, router]);
+  }, [status, router, session]);
 
   // Ensure a sessionId exists in sessionStorage for short-term memory
   useEffect(() => {
@@ -89,14 +166,79 @@ export default function ChatPage() {
     }
   }, []);
 
+  const createNewConversation = useCallback(async () => {
+    try {
+      if (!token) {
+        console.error('No token available');
+        return null;
+      }
+
+      console.log('Creating new conversation with token:', token.substring(0, 20) + '...');
+      
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/conversations`,
+        {
+          title: 'New Chat',
+          metadata: {}
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          }
+        }
+      );
+
+      console.log('Conversation created:', response.data);
+      
+      const newConvId = response.data.id;
+      setCurrentConversationId(newConvId);
+      setMessages([]);
+      await router.push(`/chat?conversation=${newConvId}`);
+      return newConvId;
+    } catch (err) {
+      console.error('Error creating conversation:', err);
+      alert('Failed to create conversation: ' + (err instanceof Error ? err.message : String(err)));
+      return null;
+    }
+  }, [router, token]);
+
+  const saveMessage = useCallback(async (conversationId: number, role: 'user' | 'assistant', content: string, metadata?: any) => {
+    try {
+      if (!token) {
+        console.error('No token available');
+        return;
+      }
+
+      if (!conversationId) {
+        console.error('No conversation ID provided');
+        return;
+      }
+
+      console.log('Saving message to conversation:', conversationId, 'role:', role);
+
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/conversations/${conversationId}/messages`,
+        {
+          role,
+          content,
+          metadata: metadata || {}
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          }
+        }
+      );
+      console.log('Message saved successfully');
+    } catch (err) {
+      console.error('Error saving message:', err);
+    }
+  }, [token]);
+
   /* Auto scroll */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,13 +256,20 @@ export default function ChatPage() {
     setInput('');
     setLoading(true);
 
+    // Create or get conversation ID
+    let convId = currentConversationId;
+    if (!convId) {
+      convId = await createNewConversation();
+      if (!convId) {
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Save user message
+    await saveMessage(convId, 'user', userQuery);
 
     try {
-      let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token && session && (session.user as any)?.token) {
-        token = (session.user as any).token;
-      }
-
       if (!token) {
         setMessages(prev => {
           const updated = [...prev];
@@ -169,6 +318,7 @@ export default function ChatPage() {
 
             if (data.type === 'log') {
               logs.push(data.log);
+              setCurrentLogs([...logs]);
               // Update the pending assistant message with new logs
               setMessages(prev => {
                 const updated = [...prev];
@@ -213,7 +363,13 @@ export default function ChatPage() {
         }
       }
 
-      if (!hasError && !finalAnswer) {
+      if (!hasError && finalAnswer) {
+        // Save assistant message with the same conversation ID
+        await saveMessage(convId, 'assistant', finalAnswer.answer || 'No answer generated', {
+          citations: finalAnswer.citations,
+          confidence: finalAnswer.confidence,
+        });
+      } else if (!hasError && !finalAnswer) {
         setMessages(prev => {
           const updated = [...prev];
           updated[updated.length - 1] = {
@@ -223,6 +379,9 @@ export default function ChatPage() {
           };
           return updated;
         });
+        await saveMessage(convId, 'assistant', '❌ No response from server');
+      } else if (hasError) {
+        // Error was already saved in the error block
       }
     } catch (err: any) {
       console.error('Error:', err);
@@ -234,42 +393,10 @@ export default function ChatPage() {
         };
         return updated;
       });
+      await saveMessage(convId, 'assistant', `❌ Error: ${err.message || 'Error processing your query.'}`);
     } finally {
       setLoading(false);
-      scrollToBottom();
-    }
-  };
-
-  const handleClearSession = async () => {
-    if (!sessionId) return;
-    let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token && session && (session.user as any)?.token) token = (session.user as any).token;
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (res.ok) {
-        // clear local session storage entry and append a system message
-        const key = 'rag_session_id';
-        sessionStorage.removeItem(key);
-        // generate a fresh session id for subsequent queries
-        let newId = typeof (window as any).crypto?.randomUUID === 'function'
-          ? (window as any).crypto.randomUUID()
-          : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        sessionStorage.setItem(key, newId);
-        setSessionId(newId);
-        setMessages(prev => ([...prev, { role: 'assistant', content: '🧹 Short-term session memory cleared.' }]));
-      } else {
-        const json = await res.json();
-        setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Failed to clear session: ${json?.error || res.status}` }]));
-      }
-    } catch (err: any) {
-      setMessages(prev => ([...prev, { role: 'assistant', content: `❌ Error clearing session: ${err.message || err}` }]));
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -279,11 +406,18 @@ export default function ChatPage() {
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full h-full flex items-center justify-center">
-          <div className="max-w-3xl w-full h-full flex overflow-hidden flex-col">
+        <div className="w-full mx-auto h-full flex gap-4 overflow-hidden justify-center">
+          {/* Sidebar */}
+          <ConversationList 
+            onSelectConversation={loadConversation}
+            currentConversationId={currentConversationId || undefined}
+            token={token}
+          />
 
+          {/* Main Chat Area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
             {/* ================= MESSAGES ================= */}
-            <div className="flex-1 overflow-y-auto space-y-4 px-3 py-4">
+            <div className="flex-1 overflow-y-auto space-y-4 px-3 pt-20 pb-4">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-12">
                   {/* Welcome Message Card */}
@@ -308,11 +442,13 @@ export default function ChatPage() {
                   </div>
                 </div>
               ) : (
-                messages.map((msg, idx) => (
-                  <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  messages.map((msg, idx) => {
+                    const hasPriorUser = messages.slice(0, idx).some(m => m.role === 'user' && m.content && m.content.trim() !== '');
+                    return (
+                    <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
                       {/* If assistant message has content, show it; otherwise show pending logs */}
-                      {msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 ? (
+                      {msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && hasPriorUser ? (
                         <div className="flex items-center gap-2 text-gray-300">
                           <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
                           <p className="text-sm">
@@ -367,7 +503,8 @@ export default function ChatPage() {
                       )}
                     </div>
                   </div>
-                ))
+                );
+                })
               )}
 
 
@@ -381,13 +518,6 @@ export default function ChatPage() {
               onSubmit={handleSubmit}
               className="flex gap-3 border-t border-gray-700 px-3 py-4"
             >
-              <button
-                type="button"
-                onClick={handleClearSession}
-                className="px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-sm hover:bg-gray-600"
-              >
-                Clear Memory
-              </button>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

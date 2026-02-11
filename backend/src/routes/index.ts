@@ -28,6 +28,17 @@ import {
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
+import {
+  createConversation,
+  listConversations,
+  getConversation,
+  updateConversation,
+  deleteConversation,
+  addMessage,
+  getRecentMessages,
+  clearConversationMessages,
+  getMessageCount
+} from '../controllers/conversationController';
 
 const router = express.Router();
 
@@ -137,6 +148,61 @@ router.delete('/documents/:id',
   validateDeleteDocument,
   handleValidationErrors,
   deleteDocument as any
+);
+
+// ===== Chat History / Conversation Routes (requires authentication) =====
+// Create a new conversation
+router.post('/conversations',
+  authenticate as any,
+  createConversation as any
+);
+
+// List all conversations for current user
+router.get('/conversations',
+  authenticate as any,
+  listConversations as any
+);
+
+// Get a specific conversation with all messages
+router.get('/conversations/:conversationId',
+  authenticate as any,
+  getConversation as any
+);
+
+// Update conversation title and metadata
+router.put('/conversations/:conversationId',
+  authenticate as any,
+  updateConversation as any
+);
+
+// Delete a conversation
+router.delete('/conversations/:conversationId',
+  authenticate as any,
+  deleteConversation as any
+);
+
+// Add a message to a conversation
+router.post('/conversations/:conversationId/messages',
+  authenticate as any,
+  addMessage as any
+);
+
+// Get recent messages from a conversation
+router.get('/conversations/:conversationId/messages/recent',
+  authenticate as any,
+  getRecentMessages as any
+);
+
+// Get message count for a conversation
+router.get('/conversations/:conversationId/message-count',
+  authenticate as any,
+  getMessageCount as any
+);
+
+// Clear all messages from a conversation
+router.post('/conversations/:conversationId/clear',
+  authenticate as any,
+  clearConversationMessages as any
 );
 
 export default router;
