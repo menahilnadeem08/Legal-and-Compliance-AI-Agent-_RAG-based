@@ -117,14 +117,11 @@ export default function ChatPage() {
   // Load conversation from URL
   useEffect(() => {
     const conversationId = searchParams.get('conversation');
-    if (conversationId && token) {
+    if (conversationId && token && messages.length === 0) {
+      // Only load if we don't already have messages (avoid overwriting pending state)
       loadConversation(parseInt(conversationId));
-    } else {
-      // Clear state for new chat
-      setCurrentConversationId(null);
-      setMessages([]);
     }
-  }, [searchParams, token, loadConversation]);
+  }, [searchParams, token]);
 
   useEffect(() => {
     const localToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -192,7 +189,6 @@ export default function ChatPage() {
       
       const newConvId = response.data.id;
       setCurrentConversationId(newConvId);
-      setMessages([]);
       await router.push(`/chat?conversation=${newConvId}`);
       return newConvId;
     } catch (err) {
@@ -240,6 +236,14 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const handleNewChat = useCallback(() => {
+    setMessages([]);
+    setCurrentConversationId(null);
+    router.push('/chat');
+  }, [router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -247,14 +251,15 @@ export default function ChatPage() {
     const userMessage: Message = { role: 'user', content: input };
     const userQuery = input;
 
-    // Add user message AND an empty pending assistant message
+    setInput('');
+    setLoading(true);
+
+    // Add user message AND an empty pending assistant message FIRST
     setMessages(prev => [
       ...prev,
       userMessage,
       { role: 'assistant', content: '', logs: [], confidence: undefined }
     ]);
-    setInput('');
-    setLoading(true);
 
     // Create or get conversation ID
     let convId = currentConversationId;
@@ -402,22 +407,49 @@ export default function ChatPage() {
 
   if (status === 'loading') return null;
 
+  const anyUserMessages = messages.some(m => m.role === 'user' && m.content && m.content.trim() !== '');
+
   return (
     <>
       <Navigation />
-      <PageContainer>
-        <div className="w-full mx-auto h-full flex gap-4 overflow-hidden justify-center">
-          {/* Sidebar */}
+      <div className="flex h-screen overflow-hidden">
+        {/* Sidebar - Collapsible Conversation List */}
+        <div className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-gray-900 border-r border-gray-800 overflow-hidden transition-all duration-300 flex-shrink-0 mr-4`}>
           <ConversationList 
             onSelectConversation={loadConversation}
             currentConversationId={currentConversationId || undefined}
             token={token}
+            sidebarOpen={sidebarOpen}
+            setSidebarOpen={setSidebarOpen}
           />
+        </div>
 
-          {/* Main Chat Area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Main Content Area */}
+        <PageContainer className="flex-1 overflow-hidden">
+          <div className="w-full h-full flex flex-col overflow-hidden">
+            {/* Chat Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                {!sidebarOpen && (
+                  <button
+                    onClick={() => setSidebarOpen(true)}
+                    className="p-2 hover:bg-gray-800 rounded transition-colors text-gray-400 hover:text-white"
+                    title="Open sidebar"
+                  >
+                    ▶
+                  </button>
+                )}
+                <h2 className="text-white font-semibold ml-4 pl-4">Legal Compliance Chat</h2>
+              </div>
+              <button
+                onClick={handleNewChat}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+              >
+                + New Chat
+              </button>
+            </div>
             {/* ================= MESSAGES ================= */}
-            <div className="flex-1 overflow-y-auto space-y-4 px-3 pt-20 pb-4">
+            <div className="flex-1 overflow-y-auto space-y-4 px-3 pt-4 pb-4">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-12">
                   {/* Welcome Message Card */}
@@ -443,12 +475,12 @@ export default function ChatPage() {
                 </div>
               ) : (
                   messages.map((msg, idx) => {
-                    const hasPriorUser = messages.slice(0, idx).some(m => m.role === 'user' && m.content && m.content.trim() !== '');
-                    return (
-                    <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      const shouldShowLogs = msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && anyUserMessages;
+                      return (
+                      <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
                       {/* If assistant message has content, show it; otherwise show pending logs */}
-                      {msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && hasPriorUser ? (
+                      {shouldShowLogs && msg.logs ? (
                         <div className="flex items-center gap-2 text-gray-300">
                           <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
                           <p className="text-sm">
@@ -533,8 +565,8 @@ export default function ChatPage() {
               </button>
             </form>
           </div>
-        </div>
-      </PageContainer>
+        </PageContainer>
+      </div>
     </>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 
@@ -18,9 +17,11 @@ interface ConversationListProps {
   onSelectConversation?: (conversationId: number) => void;
   currentConversationId?: number;
   token?: string | null;
+  sidebarOpen?: boolean;
+  setSidebarOpen?: (open: boolean) => void;
 }
 
-export default function ConversationList({ onSelectConversation, currentConversationId, token }: ConversationListProps) {
+export default function ConversationList({ onSelectConversation, currentConversationId, token, sidebarOpen, setSidebarOpen }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +95,6 @@ export default function ConversationList({ onSelectConversation, currentConversa
     router.push(`/chat?conversation=${conversationId}`);
   };
 
-  const handleNewChat = () => {
-    router.push('/chat');
-    fetchConversations(); // Refresh automatically
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -114,19 +110,23 @@ export default function ConversationList({ onSelectConversation, currentConversa
   };
 
   return (
-    <div className="w-64 bg-gray-900 border-r border-gray-800 overflow-y-auto">
+    <div className="h-full bg-gray-900 border-r border-gray-800 overflow-y-auto flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-gray-800">
-        <h2 className="text-sm font-semibold text-white mb-3">Chat History</h2>
-        <button 
-          onClick={handleNewChat}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors cursor-pointer">
-          + New Chat
-        </button>
+      <div className="px-6 py-6 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Chat History</h2>
+        {setSidebarOpen && (
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-1 hover:bg-gray-800 rounded transition-colors text-gray-400 hover:text-white"
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
+        )}
       </div>
 
       {/* Conversations List */}
-      <div className="p-2">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
           <div className="text-center py-4">
             <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
@@ -136,35 +136,35 @@ export default function ConversationList({ onSelectConversation, currentConversa
         ) : conversations.filter(c => c.message_count > 0).length === 0 ? (
           <div className="text-xs text-gray-400 text-center py-4">No conversations yet</div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-5">
             {conversations.filter(c => c.message_count > 0).map((conversation) => (
               <div
                 key={conversation.id}
                 onClick={() => handleSelectConversation(conversation.id)}
-                className={`group p-3 rounded-md cursor-pointer transition-colors ${
+                className={`group p-6 rounded-lg cursor-pointer transition-all ${
                   currentConversationId === conversation.id
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-300 hover:bg-gray-800'
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <p className="text-sm font-semibold truncate">
                       {conversation.title || `Chat ${conversation.id}`}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {conversation.message_count} messages
+                    <p className="text-xs text-gray-400">
+                      {conversation.message_count} message{conversation.message_count !== 1 ? 's' : ''}
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-gray-500">
                       {formatDate(conversation.updated_at)}
                     </p>
                   </div>
                   <button
                     onClick={(e) => handleDeleteConversation(conversation.id, e)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all"
+                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-all flex-shrink-0"
                     title="Delete conversation"
                   >
-                    ×
+                    ✕
                   </button>
                 </div>
               </div>
