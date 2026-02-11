@@ -415,7 +415,7 @@ export default function ChatPage() {
       <div className="flex h-screen overflow-hidden">
         {/* Sidebar - Collapsible Conversation List */}
         <div className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-gray-900 border-r border-gray-800 overflow-hidden transition-all duration-300 flex-shrink-0 mr-4`}>
-          <ConversationList 
+          <ConversationList
             onSelectConversation={loadConversation}
             currentConversationId={currentConversationId || undefined}
             token={token}
@@ -428,8 +428,8 @@ export default function ChatPage() {
         <PageContainer className="flex-1 overflow-hidden">
           <div className="w-full h-full flex flex-col overflow-hidden">
             {/* Chat Header */}
-            <div className="flex items-center justify-center px-4 py-3 border-b border-gray-700 relative">
-              <div className="absolute left-4 flex items-center gap-3">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+              <div className="flex items-center gap-3">
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
@@ -440,10 +440,10 @@ export default function ChatPage() {
                   </button>
                 )}
               </div>
-              <h2 className="text-white font-semibold">Legal Compliance Chat</h2>
+              <h2 className="text-white font-semibold absolute left-1/2 transform -translate-x-1/2">Legal Compliance Chat</h2>
               <button
                 onClick={handleNewChat}
-                className="absolute right-4 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
               >
                 + New Chat
               </button>
@@ -474,68 +474,68 @@ export default function ChatPage() {
                   </div>
                 </div>
               ) : (
-                  messages.map((msg, idx) => {
-                      const shouldShowLogs = msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && anyUserMessages;
-                      return (
-                      <div key={idx} className={`w-full !mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
-                      {/* If assistant message has content, show it; otherwise show pending logs */}
-                      {shouldShowLogs && msg.logs ? (
-                        <div className="flex items-center gap-2 text-gray-300">
-                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
-                          <p className="text-sm">
-                            {getFriendlyMessage(msg.logs[msg.logs.length - 1].stage, msg.logs[msg.logs.length - 1].message)}
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="prose prose-sm prose-invert max-w-none">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                messages.map((msg, idx) => {
+                  const shouldShowLogs = msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && anyUserMessages;
+                  return (
+                    <div key={idx} className={`w-full !mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
+                        {/* If assistant message has content, show it; otherwise show pending logs */}
+                        {shouldShowLogs && msg.logs ? (
+                          <div className="flex items-center gap-2 text-gray-300">
+                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                            <p className="text-sm">
+                              {getFriendlyMessage(msg.logs[msg.logs.length - 1].stage, msg.logs[msg.logs.length - 1].message)}
+                            </p>
                           </div>
+                        ) : (
+                          <>
+                            <div className="prose prose-sm prose-invert max-w-none">
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            </div>
 
-                          {msg.citations && msg.citations.length > 0 && (
-                            <div className="mt-4 pt-4 border-t border-gray-600">
-                              <p className="text-sm font-semibold text-cyan-300 mb-3">📚 Sources & Citations</p>
-                              <div className="space-y-3">
-                                {msg.citations.map((cite, i) => (
-                                  <div
-                                    key={i}
-                                    className="p-3 rounded-lg bg-background/50 border border-gray-600/20 hover:border-gray-500/40 transition-all"
-                                  >
-                                    <div className="flex gap-2">
-                                      <span className="text-cyan-300 font-bold flex-shrink-0">[{i + 1}]</span>
-                                      <div>
-                                        <p className="font-semibold text-gray-200">{cite.document_name}</p>
-                                        {cite.section && (
-                                          <p className="text-xs text-gray-500 mt-1">📍 Section: {cite.section}</p>
-                                        )}
-                                        {cite.content && (
-                                          <p className="text-xs text-gray-500 mt-2 italic">&quot;{cite.content.substring(0, 100)}...&quot;</p>
-                                        )}
+                            {msg.citations && msg.citations.length > 0 && (
+                              <div className="mt-4 pt-4 border-t border-gray-600">
+                                <p className="text-sm font-semibold text-cyan-300 mb-3">📚 Sources & Citations</p>
+                                <div className="space-y-3">
+                                  {msg.citations.map((cite, i) => (
+                                    <div
+                                      key={i}
+                                      className="p-3 rounded-lg bg-background/50 border border-gray-600/20 hover:border-gray-500/40 transition-all"
+                                    >
+                                      <div className="flex gap-2">
+                                        <span className="text-cyan-300 font-bold flex-shrink-0">[{i + 1}]</span>
+                                        <div>
+                                          <p className="font-semibold text-gray-200">{cite.document_name}</p>
+                                          {cite.section && (
+                                            <p className="text-xs text-gray-500 mt-1">📍 Section: {cite.section}</p>
+                                          )}
+                                          {cite.content && (
+                                            <p className="text-xs text-gray-500 mt-2 italic">&quot;{cite.content.substring(0, 100)}...&quot;</p>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </>
-                      )}
+                            )}
+                          </>
+                        )}
 
-                      {msg.role === 'assistant' && msg.confidence !== undefined && (
-                        <div className="mt-3">
-                          <div className="confidence-row rounded-lg overflow-hidden border border-cyan-400/20 flex">
-                            <div className="confidence-label px-3 py-2 bg-cyan-500/8 text-cyan-300 text-sm font-semibold flex items-center gap-2">
-                              <span>🎯</span>
-                              <span>Confidence Score</span>
+                        {msg.role === 'assistant' && msg.confidence !== undefined && (
+                          <div className="mt-3">
+                            <div className="confidence-row rounded-lg overflow-hidden border border-cyan-400/20 flex">
+                              <div className="confidence-label px-3 py-2 bg-cyan-500/8 text-cyan-300 text-sm font-semibold flex items-center gap-2">
+                                <span>🎯</span>
+                                <span>Confidence Score</span>
+                              </div>
+                              <div className="confidence-percent px-3 py-2 text-sm bg-background-alt text-cyan-300 font-bold text-right ml-auto">{msg.confidence}%</div>
                             </div>
-                            <div className="confidence-percent px-3 py-2 text-sm bg-background-alt text-cyan-300 font-bold text-right ml-auto">{msg.confidence}%</div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
+                  );
                 })
               )}
 
