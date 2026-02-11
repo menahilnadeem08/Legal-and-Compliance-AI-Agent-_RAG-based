@@ -428,8 +428,8 @@ export default function ChatPage() {
         <PageContainer className="flex-1 overflow-hidden">
           <div className="w-full h-full flex flex-col overflow-hidden">
             {/* Chat Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center px-4 py-3 border-b border-gray-700 relative">
+              <div className="absolute left-4 flex items-center gap-3">
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
@@ -439,17 +439,17 @@ export default function ChatPage() {
                     ▶
                   </button>
                 )}
-                <h2 className="text-white font-semibold ml-4 pl-4">Legal Compliance Chat</h2>
               </div>
+              <h2 className="text-white font-semibold">Legal Compliance Chat</h2>
               <button
                 onClick={handleNewChat}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                className="absolute right-4 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
               >
                 + New Chat
               </button>
             </div>
             {/* ================= MESSAGES ================= */}
-            <div className="flex-1 overflow-y-auto space-y-4 px-3 pt-4 pb-4">
+            <div className="!flex-1 !overflow-y-auto !space-y-6 !px-6 !py-6">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-12">
                   {/* Welcome Message Card */}
@@ -477,7 +477,7 @@ export default function ChatPage() {
                   messages.map((msg, idx) => {
                       const shouldShowLogs = msg.role === 'assistant' && !msg.content && msg.logs && msg.logs.length > 0 && anyUserMessages;
                       return (
-                      <div key={idx} className={`w-full mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div key={idx} className={`w-full !mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`message-bubble ${msg.role === 'user' ? 'message-user max-w-[70%]' : 'message-assistant max-w-[78%]'}`}>
                       {/* If assistant message has content, show it; otherwise show pending logs */}
                       {shouldShowLogs && msg.logs ? (

@@ -126,29 +126,29 @@ export default function ConversationList({ onSelectConversation, currentConversa
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto !px-4 !pt-6 !pb-4 flex flex-col items-center">
         {loading ? (
           <div className="text-center py-4">
             <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
           </div>
         ) : error ? (
-          <div className="text-xs text-red-400 p-2 bg-red-950 rounded">{error}</div>
+          <div className="text-xs text-red-400 p-2 bg-red-950 rounded w-full max-w-[200px]">{error}</div>
         ) : conversations.filter(c => c.message_count > 0).length === 0 ? (
           <div className="text-xs text-gray-400 text-center py-4">No conversations yet</div>
         ) : (
-          <div className="space-y-5">
+          <div className="!space-y-3 w-full max-w-[200px]">
             {conversations.filter(c => c.message_count > 0).map((conversation) => (
               <div
                 key={conversation.id}
                 onClick={() => handleSelectConversation(conversation.id)}
-                className={`group p-6 rounded-lg cursor-pointer transition-all ${
+                className={`group !p-3 rounded-lg cursor-pointer transition-all !mb-3 ${
                   currentConversationId === conversation.id
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0 text-center space-y-1">
                     <p className="text-sm font-semibold truncate">
                       {conversation.title || `Chat ${conversation.id}`}
                     </p>
