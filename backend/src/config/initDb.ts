@@ -82,6 +82,45 @@ export async function initializeAuthTables() {
       // Constraint might already exist, ignore error
     });
 
+    // Create conversations table for chat history
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255),
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create messages table for storing individual messages
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        sequence_number INTEGER NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Verify foreign key relationship exists
+    await client.query(`
+      ALTER TABLE messages
+      DROP CONSTRAINT IF EXISTS messages_conversation_id_fkey
+    `).catch(() => {});
+
+    await client.query(`
+      ALTER TABLE messages
+      ADD CONSTRAINT messages_conversation_id_fkey
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    `).catch(() => {
+      // Constraint might already exist
+    });
+
     // Create indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -91,6 +130,10 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
       CREATE INDEX IF NOT EXISTS idx_documents_admin_id ON documents(admin_id);
       CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
+      CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+      CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(conversation_id, sequence_number);
     `);
 
     console.log('Auth tables initialized successfully');
