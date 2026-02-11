@@ -66,73 +66,33 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes pulse-glow {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.7;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-
-  100% {
-    background-position: 1000px 0;
-  }
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
 }
 
 @keyframes float {
-
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-
-  50% {
-    transform: translateY(-10px);
-  }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
 }
 
 .animate-fade-in {
@@ -153,7 +113,7 @@ body {
 
 .animate-shimmer {
   animation: shimmer 2s infinite;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
   background-size: 1000px 100%;
 }
 
@@ -178,11 +138,11 @@ body {
 
 /* Chat bubbles */
 .message-bubble {
-  padding: 1.25rem 1.5rem;
-  /* 20px 24px – readable, breathable */
-  border-radius: 1rem;
-  line-height: 1.6;
-  box-sizing: border-box;
+  border-radius: 16px;
+  padding: 1rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .message-user {
@@ -192,34 +152,16 @@ body {
   box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
 }
 
-.message-assistant .prose p {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+.message-assistant {
+  background: rgba(30, 41, 59, 0.9);
+  color: var(--foreground);
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
-
-.message-assistant .prose ul,
-.message-assistant .prose ol {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  padding-left: 1.25rem;
-}
-
-.message-assistant .prose li {
-  margin: 0.25rem 0;
-}
-
-.message-assistant .prose h1,
-.message-assistant .prose h2,
-.message-assistant .prose h3 {
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-}
-
 
 /* Input styling */
-input,
-textarea,
-select {
+input, textarea, select {
   background: rgba(30, 41, 59, 0.6);
   color: var(--foreground);
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -228,9 +170,7 @@ select {
   transition: all 0.3s ease;
 }
 
-input:focus,
-textarea:focus,
-select:focus {
+input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--primary);
   background: rgba(30, 41, 59, 0.8);
@@ -317,15 +257,12 @@ button:disabled {
 
 /* Scrollbar hide utility */
 .scrollbar-hide {
-  -ms-overflow-style: none;
-  /* IE and Edge */
-  scrollbar-width: none;
-  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;
-  /* Chrome, Safari and Opera */
+  display: none; /* Chrome, Safari and Opera */
 }
 
 /* Utilities */
@@ -357,9 +294,7 @@ button:disabled {
     padding: 1rem;
   }
 
-  input,
-  textarea,
-  select {
+  input, textarea, select {
     font-size: 16px;
   }
 }

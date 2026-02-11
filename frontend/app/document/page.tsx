@@ -216,7 +216,7 @@ export default function DocumentsPage() {
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full h-full flex flex-col gap-3">
+        <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-3">
           {/* Filter Tabs */}
           <div className="flex gap-3 mb-8 flex-shrink-0">
           {[

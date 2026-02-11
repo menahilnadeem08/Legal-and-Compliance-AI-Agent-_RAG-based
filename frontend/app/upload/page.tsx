@@ -50,7 +50,7 @@ export default function UploadPage() {
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full h-full flex flex-col">
+        <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
           {/* Content */}
           <div className="flex-1 overflow-hidden flex items-center justify-center py-8">
           <div className="w-full">

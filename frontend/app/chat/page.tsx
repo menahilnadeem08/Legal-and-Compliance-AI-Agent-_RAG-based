@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import Link from 'next/link';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
 import ConversationList from '../components/ConversationList';
@@ -63,9 +64,31 @@ const getFriendlyMessage = (stage: string, message: string): string => {
     'QUERY_COMPLETE': '✅ Done!',
     'RETRIEVAL_COMPLETE': '✓ Document search complete',
   };
-
+  
   return stageMap[stage] || message;
 };
+
+interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'debug' | 'warn' | 'error';
+  stage: string;
+  message: string;
+  data?: any;
+}
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: Citation[];
+  confidence?: number;
+  version_warnings?: string[];
+  sources_used?: {
+    total_documents: number;
+    versions: string[];
+    has_outdated: boolean;
+  };
+  logs?: LogEntry[];
+}
 
 export default function ChatPage() {
   const { data: session, status } = useSession();
@@ -145,23 +168,9 @@ export default function ChatPage() {
     }
   }, [status, router, session]);
 
-  // Ensure a sessionId exists in sessionStorage for short-term memory
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const key = 'rag_session_id';
-    let id = sessionStorage.getItem(key);
-    if (!id) {
-      if (typeof (window as any).crypto?.randomUUID === 'function') {
-        id = (window as any).crypto.randomUUID();
-      } else {
-        id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      }
-    }
-    if (id) {
-      sessionStorage.setItem(key, id);
-      setSessionId(id);
-    }
-  }, []);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const createNewConversation = useCallback(async () => {
     try {
@@ -233,7 +242,7 @@ export default function ChatPage() {
 
   /* Auto scroll */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom();
   }, [messages, loading]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -276,37 +285,39 @@ export default function ChatPage() {
 
     try {
       if (!token) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: '❌ Authentication required. Please sign in again.',
-          };
-          return updated;
-        });
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: '❌ Authentication required. Please sign in again.' },
+        ]);
         setLoading(false);
         return;
       }
 
-      // === REAL STREAMING API CALL ===
+      // Use fetch with streaming
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/query/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ query: userQuery, sessionId }),
+        body: JSON.stringify({ query: userQuery }),
       });
 
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('Response does not support streaming');
+      if (!reader) {
+        throw new Error('Response does not support streaming');
+      }
 
       const decoder = new TextDecoder();
-      let buffer = '';
-      let finalAnswer: any = null;
-      const logs: LogEntry[] = [];
       let hasError = false;
+      let finalAnswer: any = null;
+      let buffer = '';
+
+      const logs: LogEntry[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -345,25 +356,25 @@ export default function ChatPage() {
                     content: finalAnswer.answer || 'No answer generated',
                     citations: finalAnswer.citations,
                     confidence: finalAnswer.confidence,
-                    logs,
+                    version_warnings: finalAnswer.version_warnings,
+                    sources_used: finalAnswer.sources_used,
+                    logs: logs,
                   };
-                  return updated;
-                });
-              }
-            } else if (data.type === 'error') {
-              hasError = true;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
+                  setMessages(prev => [...prev, assistantMessage]);
+                }
+              } else if (data.type === 'error') {
+                hasError = true;
+                const errorMessage: Message = {
                   role: 'assistant',
                   content: `❌ Error: ${data.error}`,
-                  logs,
+                  logs: logs,
                 };
-                return updated;
-              });
+                setMessages(prev => [...prev, errorMessage]);
+                break;
+              }
+            } catch (err) {
+              console.error('Failed to parse SSE message:', err, message);
             }
-          } catch (err) {
-            console.error('Failed to parse SSE chunk:', err, msgChunk);
           }
         }
       }
@@ -394,7 +405,8 @@ export default function ChatPage() {
         const updated = [...prev];
         updated[updated.length - 1] = {
           role: 'assistant',
-          content: `❌ Error: ${err.message || 'Error processing your query.'}`,
+          content: '❌ No response from server',
+          logs: logs,
         };
         return updated;
       });
@@ -451,25 +463,20 @@ export default function ChatPage() {
             {/* ================= MESSAGES ================= */}
             <div className="!flex-1 !overflow-y-auto !space-y-6 !px-6 !py-6">
               {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-4 py-12">
-                  {/* Welcome Message Card */}
-                  <div className="w-full max-w-2xl p-6 glass-border rounded-lg text-center !mt-8 !mb-8">
-                    <p className="text-gray-300 text-base leading-relaxed">
-                      Hello! I&apos;m here to help with legal and compliance questions.
-                      Ask me about policies, regulations, contracts, or any compliance-related matters.
-                    </p>
-                  </div>
-
-                  {/* Feature Cards */}
-                  <div className="flex gap-6 w-full max-w-2xl justify-center">
-                    <div className="flex-1 max-w-[280px] p-6 glass-border rounded-lg text-center flex flex-col items-center">
-                      <p className="text-base font-semibold text-gray-200 mb-2">📚 Use Documents</p>
-                      <p className="text-sm text-gray-400">Reference your uploaded files</p>
+                <div className="h-full flex flex-col items-center justify-center text-center">
+                  <div className="text-6xl mb-4 animate-float">💬</div>
+                  <h2 className="text-2xl font-bold text-gray-300 mb-2">Welcome to Chat Assistant</h2>
+                  <p className="text-gray-400 max-w-md mb-6">
+                    Ask questions about your uploaded legal documents. Get instant answers with proper citations.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 max-w-md">
+                    <div className="p-4 glass-border text-left">
+                      <p className="text-sm font-semibold text-gray-300 mb-2">📚 Use Documents</p>
+                      <p className="text-xs text-gray-500">Reference your uploaded files</p>
                     </div>
-
-                    <div className="flex-1 max-w-[280px] p-6 glass-border rounded-lg text-center flex flex-col items-center">
-                      <p className="text-base font-semibold text-gray-200 mb-2">🎯 Get Citations</p>
-                      <p className="text-sm text-gray-400">See sources for every answer</p>
+                    <div className="p-4 glass-border text-left">
+                      <p className="text-sm font-semibold text-gray-300 mb-2">🎯 Get Citations</p>
+                      <p className="text-xs text-gray-500">See sources for every answer</p>
                     </div>
                   </div>
                 </div>
@@ -538,10 +545,23 @@ export default function ChatPage() {
                   );
                 })
               )}
-
-
-              {/* no separate logs panel - logs render inside the assistant bubble */}
-
+              {loading && (
+                <div className="flex justify-start animate-fade-in">
+                  <div className="message-bubble message-assistant">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse-glow"></div>
+                      <p className="text-gray-400">
+                        {currentLogs.length > 0
+                          ? getFriendlyMessage(
+                              currentLogs[currentLogs.length - 1].stage,
+                              currentLogs[currentLogs.length - 1].message
+                            )
+                          : '🔍 Searching your documents...'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -551,17 +571,20 @@ export default function ChatPage() {
               className="flex gap-3 border-t border-gray-700 px-3 py-4"
             >
               <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about compliance, regulations, policies..."
-                className="flex-1 rounded-lg px-4 py-3 bg-background-alt border border-gray-700 text-white focus:outline-none"
+                className="flex-1"
+                disabled={loading}
+                autoFocus
               />
               <button
                 type="submit"
-                disabled={!input.trim() || loading}
-                className="px-6 py-3 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 disabled:opacity-50"
+                disabled={loading || !input.trim()}
+                className="px-8 py-3 rounded-lg font-bold transition-all flex items-center gap-2 text-white bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed shadow-lg hover:shadow-cyan-500/50 hover:shadow-lg"
               >
-                Send
+                {loading ? '⟳' : '➤'} {loading ? 'Processing' : 'Send'}
               </button>
             </form>
           </div>
