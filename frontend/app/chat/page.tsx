@@ -68,28 +68,6 @@ const getFriendlyMessage = (stage: string, message: string): string => {
   return stageMap[stage] || message;
 };
 
-interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'debug' | 'warn' | 'error';
-  stage: string;
-  message: string;
-  data?: any;
-}
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: Citation[];
-  confidence?: number;
-  version_warnings?: string[];
-  sources_used?: {
-    total_documents: number;
-    versions: string[];
-    has_outdated: boolean;
-  };
-  logs?: LogEntry[];
-}
-
 export default function ChatPage() {
   return (
     <Suspense fallback={null}>
@@ -552,23 +530,6 @@ function ChatPageContent() {
                     </div>
                   );
                 })
-              )}
-              {loading && (
-                <div className="flex justify-start animate-fade-in">
-                  <div className="message-bubble message-assistant">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse-glow"></div>
-                      <p className="text-gray-400">
-                        {currentLogs.length > 0
-                          ? getFriendlyMessage(
-                              currentLogs[currentLogs.length - 1].stage,
-                              currentLogs[currentLogs.length - 1].message
-                            )
-                          : '🔍 Searching your documents...'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
               )}
               <div ref={messagesEndRef} />
             </div>
