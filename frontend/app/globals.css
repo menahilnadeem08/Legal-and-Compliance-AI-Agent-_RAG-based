@@ -348,7 +348,7 @@ button:disabled {
 
 /* Chat bubble fine-tuning */
 .message-bubble {
-  padding: 0.75rem 1rem; /* tighter padding */
+  padding: 0.75rem 1rem;
   border-radius: 12px;
   line-height: 1.5;
 }
@@ -405,5 +405,6 @@ button:disabled {
 
 /* smaller timestamp */
 .text-2xs {
+  padding: 11px 1000px 1000px 11px !important;
   font-size: 11px;
 }
