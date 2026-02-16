@@ -48,6 +48,7 @@ jobs:
             NODE_ENV=production
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
             
@@ -67,8 +68,10 @@ jobs:
             
             # Create .env.local
             cat > .env.local << 'ENVFILE'
-            PORT=3000
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             ENVFILE
             
             # Install and build
