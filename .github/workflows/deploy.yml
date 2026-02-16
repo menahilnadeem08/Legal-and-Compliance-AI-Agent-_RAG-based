@@ -34,9 +34,9 @@ jobs:
             
             # Clone or pull repo
             if [ -d ".git" ]; then
-              git pull origin master
+              git pull origin chat-memory
             else
-              git clone https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
+              git clone -b chat-memory https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
             fi
             
             # ========== Backend ==========
