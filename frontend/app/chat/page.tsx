@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
@@ -91,6 +91,14 @@ interface Message {
 }
 
 export default function ChatPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatPageContent />
+    </Suspense>
+  );
+}
+
+function ChatPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -283,6 +291,8 @@ export default function ChatPage() {
     // Save user message
     await saveMessage(convId, 'user', userQuery);
 
+    const logs: LogEntry[] = [];
+
     try {
       if (!token) {
         setMessages(prev => [
@@ -316,8 +326,6 @@ export default function ChatPage() {
       let hasError = false;
       let finalAnswer: any = null;
       let buffer = '';
-
-      const logs: LogEntry[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -360,21 +368,21 @@ export default function ChatPage() {
                     sources_used: finalAnswer.sources_used,
                     logs: logs,
                   };
-                  setMessages(prev => [...prev, assistantMessage]);
-                }
-              } else if (data.type === 'error') {
-                hasError = true;
-                const errorMessage: Message = {
-                  role: 'assistant',
-                  content: `❌ Error: ${data.error}`,
-                  logs: logs,
-                };
-                setMessages(prev => [...prev, errorMessage]);
-                break;
+                  return updated;
+                });
               }
-            } catch (err) {
-              console.error('Failed to parse SSE message:', err, message);
+            } else if (data.type === 'error') {
+              hasError = true;
+              const errorMessage: Message = {
+                role: 'assistant',
+                content: `❌ Error: ${data.error}`,
+                logs: logs,
+              };
+              setMessages(prev => [...prev, errorMessage]);
+              break;
             }
+          } catch (err) {
+            console.error('Failed to parse SSE message:', err, msgChunk);
           }
         }
       }
