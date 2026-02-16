@@ -101,22 +101,39 @@ export default function FileUpload() {
   };
 
   return (
-    <div className="w-full  from-slate-950 to-slate-900 space-y-8">
-      <div className="max-w-full mx-auto px-6 space-y-8">
-        {/* Header Section */}
-        <div className="text-center pt-4">
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3">Upload Document</h1>
-          <p className="text-base sm:text-lg text-gray-400">Add legal documents to your knowledge base</p>
+    <div className="w-full bg-gradient-to-b from-slate-950 to-slate-900">
+      <div className="max-w-full mx-auto px-6">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold text-white">Upload Document</h2>
+            <p className="text-sm text-gray-400 mt-1">
+              Add legal documents to your knowledge base
+            </p>
+          </div>
         </div>
 
-        {/* Form Card Section */}
         <div
           className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-2xl border border-slate-700/50 p-8 mx-auto"
           style={{ maxWidth: '1400px' }}
         >
-          <form onSubmit={handleUpload} className="space-y-8">
+          <form onSubmit={handleUpload} className="space-y-6">
             {/* Horizontal Stepper Progress */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-6">
               {[
                 { step: 1, label: 'Document', icon: '📄', active: true },
                 { step: 2, label: 'Type', icon: '📋', active: !!file },
@@ -140,8 +157,7 @@ export default function FileUpload() {
                     }`}
                   >
                     <div
-                      className={`w-12 h-12 
-                         flex items-center justify-center text-lg font-semibold transition-all ${
+                      className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold transition-all ${
                         item.active
                           ? 'bg-blue-500/20 border-2 border-blue-500 text-blue-300'
                           : 'bg-slate-700/50 border-2 border-slate-600 text-gray-400'
@@ -344,7 +360,7 @@ export default function FileUpload() {
           {/* Success/Error Message */}
           {message && (
             <div
-              className={`p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
+              className={`mt-6 p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
                 message.includes('✓')
                   ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                   : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -354,6 +370,11 @@ export default function FileUpload() {
               {message}
             </div>
           )}
+        </div>
+
+        {/* Helper Text */}
+        <div className="mt-4 text-center text-xs text-gray-500">
+          Upload documents in PDF or DOCX format
         </div>
       </div>
     </div>
