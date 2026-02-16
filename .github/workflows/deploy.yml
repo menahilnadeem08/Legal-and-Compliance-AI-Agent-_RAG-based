@@ -3,7 +3,7 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - master
+      - chat-memory
 
 jobs:
   deploy:
