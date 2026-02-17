@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
-import { hashPassword, comparePassword } from '../utils/passwordUtils';
+import { hashPassword, comparePassword, validatePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -14,6 +14,16 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
 
     if (!username || !password) {
       res.status(400).json({ error: 'Username and password are required' });
+      return;
+    }
+
+    // Validate password format
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      res.status(400).json({ 
+        error: 'Invalid password format',
+        details: passwordValidation.errors 
+      });
       return;
     }
 
@@ -198,8 +208,13 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    if (newPassword.length < 6) {
-      res.status(400).json({ error: 'New password must be at least 6 characters' });
+    // Validate new password format
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.valid) {
+      res.status(400).json({ 
+        error: 'New password does not meet requirements',
+        details: passwordValidation.errors
+      });
       return;
     }
 

@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import pool from '../config/database';
-import { hashPassword } from '../utils/passwordUtils';
+import { hashPassword, validatePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 
 // Create employee user (admin only)
@@ -20,8 +20,12 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      res.status(400).json({ 
+        error: 'Invalid password format',
+        details: passwordValidation.errors 
+      });
       return;
     }
 
