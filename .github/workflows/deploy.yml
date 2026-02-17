@@ -69,12 +69,13 @@ jobs:
             # Clean old build and cache
             rm -rf .next node_modules/.cache
             
-            # Create .env.local
-            cat > .env.local << 'ENVFILE'
+            # Create .env
+            cat > .env << 'ENVFILE'
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+            NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             ENVFILE
             
             # Install and build
@@ -95,3 +96,4 @@ jobs:
             # Save PM2 state
             pm2 save
             pm2 startup || true
+            
