@@ -150,7 +150,7 @@ export default function ProfilePage() {
     <>
       <Navigation />
       <PageContainer>
-        <div className="w-full max-w-7xl mx-auto">
+        <div className="w-full">
           {/* Main Content */}
           <div className="flex flex-col w-full">
             {/* Success Message */}
