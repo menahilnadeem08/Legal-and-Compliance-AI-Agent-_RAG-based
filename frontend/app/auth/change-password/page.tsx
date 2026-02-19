@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { setAuth, getAuthUser } from '../../utils/auth';
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -95,10 +96,17 @@ export default function ChangePasswordPage() {
         body: JSON.stringify(body),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         setError(data.error || 'Failed to change password');
         return;
+      }
+
+      // Backend returns fresh token pair — store them so this device stays logged in
+      if (data.accessToken) {
+        const user = getAuthUser();
+        setAuth(data.accessToken, user, data.refreshToken);
       }
 
       localStorage.removeItem('forcePasswordChange');

@@ -64,7 +64,7 @@ export default function AdminLoginPage() {
 
       const data = await response.json();
       
-      setAuth(data.token, data.user);
+      setAuth(data.accessToken, data.user, data.refreshToken);
       router.push('/');
     } catch (err) {
       setError('An error occurred during login');

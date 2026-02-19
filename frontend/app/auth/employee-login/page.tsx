@@ -56,8 +56,7 @@ export default function EmployeeLoginPage() {
       }
 
       const data = await response.json();
-      const token = data.token || data.accessToken;
-      setAuth(token, data.user);
+      setAuth(data.accessToken, data.user, data.refreshToken);
 
       if (data.forcePasswordChange) {
         localStorage.setItem('forcePasswordChange', 'true');

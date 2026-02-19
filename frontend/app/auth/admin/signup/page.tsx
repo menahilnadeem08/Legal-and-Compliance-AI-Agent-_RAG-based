@@ -171,7 +171,7 @@ export default function AdminSignupPage() {
         return;
       }
 
-      setAuth(data.token, data.user);
+      setAuth(data.accessToken, data.user, data.refreshToken);
       router.push('/');
     } catch (err) {
       setError('An error occurred during verification');

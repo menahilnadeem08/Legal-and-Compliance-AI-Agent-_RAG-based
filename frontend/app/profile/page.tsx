@@ -5,7 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
-import { getAuthToken, getAuthUser, isEmployeeUser, clearAllAuth } from '../utils/auth';
+import { getAuthToken, getRefreshToken, getAuthUser, isEmployeeUser, clearAllAuth, setAuth } from '../utils/auth';
 
 interface UserInfo {
   id: number;
@@ -75,10 +75,12 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     try {
       const token = getAuthToken(session);
+      const refresh = getRefreshToken();
       if (token) {
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: refresh }),
         });
       }
     } catch (error) {
@@ -114,10 +116,17 @@ export default function ProfilePage() {
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         setError(data.error || 'Failed to change password');
         return;
+      }
+
+      // Store the fresh token pair returned after password change
+      if (data.accessToken) {
+        const currentUser = getAuthUser();
+        setAuth(data.accessToken, currentUser, data.refreshToken);
       }
 
       setSuccessMessage('Password changed successfully');

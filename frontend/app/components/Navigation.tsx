@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { isEmployeeUser, clearAllAuth, getAuthToken, getAuthUser } from '../utils/auth';
+import { isEmployeeUser, clearAllAuth, getAuthToken, getRefreshToken, getAuthUser } from '../utils/auth';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -45,10 +45,12 @@ export default function Navigation() {
   const handleLogout = async () => {
     try {
       const token = getAuthToken();
+      const refresh = getRefreshToken();
       if (token) {
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: refresh }),
         });
       }
     } catch (error) {

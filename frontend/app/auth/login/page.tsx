@@ -20,8 +20,10 @@ export default function LoginPage() {
     }
 
     // Google OAuth admin — sync session to unified store and redirect
-    if (session?.user && (session.user as any)?.token) {
-      setAuth((session.user as any).token, { ...session.user, role: 'admin' });
+    const sessionAccessToken = (session?.user as any)?.accessToken || (session?.user as any)?.token;
+    const sessionRefreshToken = (session?.user as any)?.refreshToken;
+    if (session?.user && sessionAccessToken) {
+      setAuth(sessionAccessToken, { ...session.user, role: 'admin' }, sessionRefreshToken);
       setIsAuthLoading(false);
       router.push('/');
       return;
