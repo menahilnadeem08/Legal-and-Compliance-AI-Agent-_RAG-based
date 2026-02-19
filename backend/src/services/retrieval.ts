@@ -23,7 +23,7 @@ export class RetrievalService {
     this.reranker = new Reranker();
   }
 
-  async hybridSearch(query: string, topK: number = 10): Promise<RetrievedChunk[]> {
+  async hybridSearch(query: string, topK: number = 10, adminId: number): Promise<RetrievedChunk[]> {
     // Rewrite query
     pipelineLogger.info('QUERY_REWRITE', 'Rewriting query for better coverage...');
     const queries = await this.queryRewriter.rewrite(query);
@@ -40,10 +40,6 @@ export class RetrievalService {
       const queryEmbedding = await embeddings.embedQuery(q);
       pipelineLogger.debug('VECTOR_SEARCH', 'Searching vector database for similar content...');
 
-      // Vector search. Pass the vector as a Postgres-style bracketed string
-      // and cast to `vector` in the query so pgvector operators work.
-      const vectorText = `[${queryEmbedding.join(',')}]`;
-      // Fetch candidate chunks and their stored embeddings (as text)
       const vectorResults = await pool.query(
         `SELECT 
     c.id,
@@ -54,9 +50,9 @@ export class RetrievalService {
     c.embedding
    FROM chunks c
    JOIN documents d ON c.document_id = d.id
-   WHERE d.is_latest = true
-   LIMIT $1`,
-        [50]
+   WHERE d.is_latest = true AND d.admin_id = $1
+   LIMIT $2`,
+        [adminId, 50]
       );
 
       pipelineLogger.debug('VECTOR_SEARCH_COMPLETE', `Found ${vectorResults.rows.length} vector results`, {
@@ -64,7 +60,6 @@ export class RetrievalService {
       });
 
       pipelineLogger.debug('KEYWORD_SEARCH', 'Performing keyword search on documents...');
-      // Keyword search
       const keywordResults = await pool.query(
         `SELECT 
           c.id,
@@ -75,11 +70,11 @@ export class RetrievalService {
           ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', $1::text)) as rank
          FROM chunks c
          JOIN documents d ON c.document_id = d.id
-         WHERE d.is_latest = true
+         WHERE d.is_latest = true AND d.admin_id = $2
          AND to_tsvector('english', c.content) @@ plainto_tsquery('english', $1::text)
          ORDER BY rank DESC
-         LIMIT $2`,
-        [q, 5]
+         LIMIT $3`,
+        [q, adminId, 5]
       );
 
       pipelineLogger.debug('KEYWORD_SEARCH_COMPLETE', `Found ${keywordResults.rows.length} keyword results`, {

@@ -443,9 +443,16 @@ ${result.conflicts.map((c: any, i: number) =>
   /**
    * Main agent processing with function calling and UNIVERSAL citation tracking
    */
-  async processQuery(userQuery: string, adminId: number, maxIterations: number = 5): Promise<AgentResult> {
+  async processQuery(
+    userQuery: string,
+    adminId: number,
+    maxIterations: number = 5,
+    onLog?: (stage: string, message: string) => void
+  ): Promise<AgentResult> {
+    const log = onLog || (() => {});
     console.log('\n🤖 Legal Compliance Agent starting...');
     console.log('📝 Query:', userQuery);
+    log('AGENT_START', 'Processing your question...');
 
     // Reset metadata storage
     this.toolResultsMetadata.clear();
@@ -514,6 +521,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
     while (iteration < maxIterations) {
       iteration++;
       console.log(`\n🔄 Iteration ${iteration}/${maxIterations}`);
+      log('LLM_THINKING', 'Analyzing your question and deciding which tools to use...');
 
       // Call LLM with tools
       const response = await llm.invoke(conversationHistory, {
@@ -527,10 +535,8 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       if (message.additional_kwargs?.tool_calls && message.additional_kwargs.tool_calls.length > 0) {
         console.log(`📞 LLM requesting ${message.additional_kwargs.tool_calls.length} tool call(s)`);
 
-        // Execute all requested tools IN PARALLEL for better performance
         const toolResults: any[] = [];
         
-        // Prepare all tool calls
         const toolPromises = message.additional_kwargs.tool_calls.map(async (toolCall: any) => {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
@@ -538,10 +544,20 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           toolCalls.push(toolName);
           console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...) [PARALLEL]`);
 
+          const friendlyNames: Record<string, string> = {
+            search_documents: 'Searching documents...',
+            compare_document_versions: 'Comparing document versions...',
+            detect_policy_conflicts: 'Detecting policy conflicts...',
+            list_available_documents: 'Listing available documents...',
+            get_document_versions: 'Retrieving document versions...',
+          };
+          log('TOOL_START', friendlyNames[toolName] || `Running ${toolName}...`);
+
           // Execute in parallel
           const result = await this.executeTool(toolName, toolArgs, adminId);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
+          log('TOOL_DONE', `Completed ${toolName.replace(/_/g, ' ')}`);
           return {
             toolCall,
             toolName,
@@ -585,6 +601,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
       } else {
         // No more tool calls - LLM has final answer
+        log('GENERATING', 'Generating final answer...');
         finalAnswer = message.content.toString();
         console.log('\n✅ Agent completed');
         break;

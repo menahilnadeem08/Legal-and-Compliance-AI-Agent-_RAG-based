@@ -12,7 +12,7 @@ import {
   activateDocument,
   deactivateDocument
 } from '../controllers/documentController';
-import { agentQuery } from '../controllers/agentController';
+import { agentQuery, agentQueryStream } from '../controllers/agentController';
 import { queryStreamController } from '../controllers/queryStreamController';
 import { clearSessionController } from '../controllers/sessionController';
 import { handleValidationErrors } from '../middleware/validation';
@@ -90,6 +90,12 @@ router.post('/query/stream',
   validateAgentQuery,
   handleValidationErrors,
   queryStreamController as any
+);
+
+router.post('/query/agent-stream',
+  validateAgentQuery,
+  handleValidationErrors,
+  agentQueryStream as any
 );
 
 router.post('/session/clear', clearSessionController as any);

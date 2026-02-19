@@ -64,6 +64,9 @@ const getFriendlyMessage = (stage: string, message: string): string => {
     'GENERATION_COMPLETE': '✓ Answer generated',
     'QUERY_COMPLETE': '✅ Done!',
     'RETRIEVAL_COMPLETE': '✓ Document search complete',
+    'AGENT_START': '🤖 Agent is processing your question...',
+    'LLM_THINKING': '🧠 Analyzing and deciding which tools to use...',
+    'GENERATING': '⚡ Generating final answer...',
   };
   
   return stageMap[stage] || message;
@@ -286,7 +289,7 @@ function ChatPageContent() {
       }
 
       // Use fetch with streaming
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/query/stream`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/query/agent-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
