@@ -321,6 +321,27 @@ export class LegalComplianceAgent {
             required: ["document_name"]
           }
         }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "find_related_documents",
+          description: "Find documents that are semantically related to a given document using embedding similarity. Returns ranked list of related documents with relationship scores and shared topics. Use when user asks 'what documents relate to X', 'find similar policies', 'what else covers this topic'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_name: {
+                type: "string",
+                description: "Name of the source document"
+              },
+              limit: {
+                type: "number",
+                description: "Max related documents to return (default 5)"
+              }
+            },
+            required: ["document_name"]
+          }
+        }
       }
     ];
   }
@@ -480,6 +501,18 @@ Be specific about business/compliance impact.`;
             throw new Error('Only one version exists; no changes to track');
           }
 
+        case "find_related_documents":
+          const relatedDocs = await this.documentService.findRelatedDocuments(
+            args.document_name,
+            adminId,
+            args.limit || 5
+          );
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return {
+            document_name: args.document_name,
+            related_documents: relatedDocs
+          };
+
         default:
           throw new Error(`Unknown tool: ${toolName}`);
       }
@@ -561,6 +594,23 @@ ${result.conflicts.map((c: any, i: number) =>
             document_name: result.document_name,
             changes: result.timeline.flatMap((t: any) => t.key_changes || [])
           })
+        };
+
+      case "find_related_documents":
+        const relatedListText = result.related_documents
+          .map((d: any) => `• ${d.document_name} (v${d.version}) - Similarity: ${(d.similarity_score * 100).toFixed(0)}% [${d.relationship_type}]\n  Topics: ${d.shared_topics.join(', ')}`)
+          .join('\n\n');
+        return {
+          text: `Related Documents for ${result.document_name}:\n\n${relatedListText || 'No related documents found.'}`,
+          citations: result.related_documents.map((d: any) => ({
+            document_name: d.document_name,
+            version: d.version,
+            relationship_type: d.relationship_type,
+            similarity_score: d.similarity_score,
+            shared_topics: d.shared_topics.join(', '),
+            content: `Related with ${(d.similarity_score * 100).toFixed(0)}% similarity. Shared topics: ${d.shared_topics.join(', ')}`,
+            relevance_score: d.similarity_score
+          }))
         };
 
       default:

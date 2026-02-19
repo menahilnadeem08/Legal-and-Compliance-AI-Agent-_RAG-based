@@ -1,6 +1,14 @@
 import pool from '../config/database';
 import { llm } from '../config/openai';
 
+export interface RelatedDocument {
+  document_name: string;
+  version: string;
+  similarity_score: number;
+  relationship_type: 'highly related' | 'related' | 'tangentially related';
+  shared_topics: string[];
+}
+
 export interface DocumentVersion {
   id: string;
   name: string;
@@ -827,5 +835,219 @@ Be specific and actionable. Focus on business/legal impact.`;
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Find documents related to a given document using embedding similarity
+   * Computes average embedding for the source document and all other documents,
+   * then ranks by cosine similarity
+   */
+  async findRelatedDocuments(
+    documentName: string,
+    adminId: number,
+    limit: number = 5
+  ): Promise<RelatedDocument[]> {
+    // Find the actual document
+    const actualName = await this.findDocumentByName(documentName, adminId);
+    if (!actualName) {
+      throw new Error(`Document "${documentName}" not found`);
+    }
+
+    // Get source document ID
+    const sourceDocQuery = await pool.query(
+      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_latest = true LIMIT 1`,
+      [actualName, adminId]
+    );
+
+    if (sourceDocQuery.rows.length === 0) {
+      throw new Error(`Document "${actualName}" not found`);
+    }
+
+    const sourceDocId = sourceDocQuery.rows[0].id;
+
+    // Get all chunks for source document with embeddings
+    const sourceChunksQuery = await pool.query(
+      `SELECT c.embedding, c.content FROM chunks c
+       WHERE c.document_id = $1
+       ORDER BY c.chunk_index ASC`,
+      [sourceDocId]
+    );
+
+    if (sourceChunksQuery.rows.length === 0) {
+      throw new Error(`No chunks found for document "${actualName}"`);
+    }
+
+    // Average the source document embeddings
+    const sourceEmbeddings = sourceChunksQuery.rows.map(row => {
+      const emb = typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding;
+      return Array.isArray(emb) ? emb : [];
+    }).filter(e => e.length > 0);
+
+    if (sourceEmbeddings.length === 0) {
+      throw new Error('Source document has no valid embeddings');
+    }
+
+    const sourceDocVector = this.averageEmbeddings(sourceEmbeddings);
+
+    // Get all OTHER latest documents for this admin
+    const otherDocsQuery = await pool.query(
+      `SELECT DISTINCT d.id, d.name, d.version FROM documents d
+       WHERE d.admin_id = $1 AND d.is_latest = true AND d.id != $2
+       ORDER BY d.name ASC`,
+      [adminId, sourceDocId]
+    );
+
+    if (otherDocsQuery.rows.length === 0) {
+      return []; // No other documents
+    }
+
+    // Compute average embeddings for each other document and compute similarity
+    const documentSimilarities: Array<{
+      document_name: string;
+      version: string;
+      similarity_score: number;
+      source_chunks: string[];
+      target_chunks: string[];
+    }> = [];
+
+    for (const doc of otherDocsQuery.rows) {
+      const chunksQuery = await pool.query(
+        `SELECT c.embedding, c.content FROM chunks c
+         WHERE c.document_id = $1
+         ORDER BY c.chunk_index ASC`,
+        [doc.id]
+      );
+
+      if (chunksQuery.rows.length === 0) continue;
+
+      const otherEmbeddings = chunksQuery.rows
+        .map(row => {
+          const emb = typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding;
+          return Array.isArray(emb) ? emb : [];
+        })
+        .filter(e => e.length > 0);
+
+      if (otherEmbeddings.length === 0) continue;
+
+      const otherDocVector = this.averageEmbeddings(otherEmbeddings);
+      const similarity = this.cosineSimilarity(sourceDocVector, otherDocVector);
+
+      // Get top chunk samples from both documents for LLM analysis
+      const sourceChunkSamples = sourceChunksQuery.rows
+        .slice(0, 3)
+        .map(r => r.content.substring(0, 200));
+
+      const targetChunkSamples = chunksQuery.rows
+        .slice(0, 3)
+        .map(r => r.content.substring(0, 200));
+
+      documentSimilarities.push({
+        document_name: doc.name,
+        version: doc.version,
+        similarity_score: similarity,
+        source_chunks: sourceChunkSamples,
+        target_chunks: targetChunkSamples
+      });
+    }
+
+    // Sort by similarity and take top N
+    const topDocuments = documentSimilarities
+      .sort((a, b) => b.similarity_score - a.similarity_score)
+      .slice(0, limit);
+
+    if (topDocuments.length === 0) {
+      return [];
+    }
+
+    // Use LLM to infer relationship type and shared topics for each related document
+    const result: RelatedDocument[] = [];
+
+    for (const doc of topDocuments) {
+      const inferencePrompt = `You are analyzing document relationships. Given snippets from two documents, infer:
+1. Relationship type: "highly related" (same topic/regulatory area), "related" (overlapping concerns), or "tangentially related" (minor overlap)
+2. Shared topics: 2-4 key topics they share
+
+Source Document (${actualName}) snippets:
+${doc.source_chunks.join('\n\n')}
+
+Target Document (${doc.document_name}) snippets:
+${doc.target_chunks.join('\n\n')}
+
+Respond ONLY with valid JSON:
+{
+  "relationship_type": "highly related" | "related" | "tangentially related",
+  "shared_topics": ["topic1", "topic2"]
+}`;
+
+      try {
+        const response = await llm.invoke(inferencePrompt);
+        const content = response.content.toString().trim();
+        const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        result.push({
+          document_name: doc.document_name,
+          version: doc.version,
+          similarity_score: Math.round(doc.similarity_score * 100) / 100,
+          relationship_type: parsed.relationship_type || 'related',
+          shared_topics: parsed.shared_topics || []
+        });
+      } catch (error) {
+        console.warn(`Failed to infer relationship for ${doc.document_name}:`, error);
+        // Fallback: determine relationship type from similarity score
+        const relType = doc.similarity_score > 0.7 ? 'highly related' : doc.similarity_score > 0.4 ? 'related' : 'tangentially related';
+        result.push({
+          document_name: doc.document_name,
+          version: doc.version,
+          similarity_score: Math.round(doc.similarity_score * 100) / 100,
+          relationship_type: relType,
+          shared_topics: []
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Calculate average of multiple embedding vectors (element-wise mean)
+   */
+  private averageEmbeddings(embeddings: number[][]): number[] {
+    if (embeddings.length === 0) return [];
+
+    const dims = embeddings[0].length;
+    const avg = new Array(dims).fill(0);
+
+    for (const emb of embeddings) {
+      for (let i = 0; i < dims; i++) {
+        avg[i] += (emb[i] || 0);
+      }
+    }
+
+    return avg.map(val => val / embeddings.length);
+  }
+
+  /**
+   * Calculate cosine similarity between two vectors
+   */
+  private cosineSimilarity(vec1: number[], vec2: number[]): number {
+    if (vec1.length !== vec2.length) return 0;
+
+    let dotProduct = 0;
+    let magnitude1 = 0;
+    let magnitude2 = 0;
+
+    for (let i = 0; i < vec1.length; i++) {
+      dotProduct += vec1[i] * vec2[i];
+      magnitude1 += vec1[i] * vec1[i];
+      magnitude2 += vec2[i] * vec2[i];
+    }
+
+    magnitude1 = Math.sqrt(magnitude1);
+    magnitude2 = Math.sqrt(magnitude2);
+
+    if (magnitude1 === 0 || magnitude2 === 0) return 0;
+
+    return dotProduct / (magnitude1 * magnitude2);
   }
 }
