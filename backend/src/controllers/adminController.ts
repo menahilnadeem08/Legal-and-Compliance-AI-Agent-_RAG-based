@@ -182,7 +182,7 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
             is_active: user.is_active,
             created_at: user.created_at
           },
-          warning: 'Email sending failed - temp password: ' + tempPassword
+          warning: 'Email sending failed. Please resend credentials manually.'
         });
       }
     } catch (error) {
@@ -324,7 +324,7 @@ export async function resendCredentials(req: AuthenticatedRequest, res: Response
       console.error('[RESEND-CREDENTIALS] Email sending failed:', emailError);
       res.json({
         message: 'Credentials reset but email could not be sent',
-        warning: 'Email sending failed - temp password: ' + tempPassword,
+        warning: 'Email sending failed. Contact support to resend.',
         expiresAt: expiresAt.toISOString()
       });
     }
