@@ -151,15 +151,35 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
     const client = await pool.connect();
 
     try {
-      const existingUser = await client.query(
-        'SELECT * FROM users WHERE google_id = $1 OR email = $2',
-        [googleId, email]
+      // Check if email already exists with different auth provider
+      const existingbyEmail = await client.query(
+        'SELECT id, email, auth_provider FROM users WHERE email = $1',
+        [email]
+      );
+
+      if (existingbyEmail.rows.length > 0) {
+        const existingUser = existingbyEmail.rows[0];
+        if (existingUser.auth_provider !== 'google') {
+          client.release();
+          res.status(403).json({
+            error: `An account with this email already exists using ${existingUser.auth_provider === 'local' ? 'local login' : existingUser.auth_provider}. Please sign in with your original login method.`,
+            auth_provider: existingUser.auth_provider,
+            email: email
+          });
+          return;
+        }
+      }
+
+      // Check for existing Google user by google_id
+      const existingByGoogleId = await client.query(
+        'SELECT * FROM users WHERE google_id = $1',
+        [googleId]
       );
 
       let user;
 
-      if (existingUser.rows.length > 0) {
-        user = existingUser.rows[0];
+      if (existingByGoogleId.rows.length > 0) {
+        user = existingByGoogleId.rows[0];
         await client.query(
           'UPDATE users SET name = $1, picture = $2, email_verified = true, email_verified_at = NOW(), updated_at = CURRENT_TIMESTAMP WHERE id = $3',
           [name, image, user.id]

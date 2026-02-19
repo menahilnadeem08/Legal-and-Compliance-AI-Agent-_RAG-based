@@ -44,8 +44,10 @@ const handler = NextAuth({
         });
 
         if (!response.ok) {
-          console.error("[NEXTAUTH] Backend signin error:", response.status, response.statusText);
-          return false;
+          const errorData = await response.json();
+          console.error("[NEXTAUTH] Backend signin error:", response.status, errorData);
+          // Return error object with custom error code for client-side handling
+          throw new Error(errorData.error || `Signin failed with status ${response.status}`);
         }
 
         const data = await response.json();
@@ -58,7 +60,8 @@ const handler = NextAuth({
         return true;
       } catch (error) {
         console.error("[NEXTAUTH] Sign in error:", error);
-        return false;
+        // Re-throw to let NextAuth handle the error page redirect
+        throw error;
       }
     },
 
