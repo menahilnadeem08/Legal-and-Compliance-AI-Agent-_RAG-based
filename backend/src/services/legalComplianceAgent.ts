@@ -3,6 +3,7 @@ import { QueryService } from './queryService';
 import { VersionComparisonService } from './versionComparisonService';
 import { ConflictDetectionService } from './conflictDetectionService';
 import { DocumentService } from './documentService';
+import { GapAnalysisService } from './gapAnalysisService';
 
 export interface AgentResult {
   answer: string;
@@ -23,6 +24,7 @@ export class LegalComplianceAgent {
   private versionService: VersionComparisonService;
   private conflictService: ConflictDetectionService;
   private documentService: DocumentService;
+  private gapAnalysisService: GapAnalysisService;
   private toolResultsMetadata: Map<string, any> = new Map();
 
   constructor() {
@@ -30,6 +32,7 @@ export class LegalComplianceAgent {
     this.versionService = new VersionComparisonService();
     this.conflictService = new ConflictDetectionService();
     this.documentService = new DocumentService();
+    this.gapAnalysisService = new GapAnalysisService();
   }
 
   /**
@@ -342,6 +345,31 @@ export class LegalComplianceAgent {
             required: ["document_name"]
           }
         }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "gap_analysis",
+          description: "Compare two documents and identify topics, obligations, or clauses that exist in one but are missing in the other. Returns coverage scores and recommendations. Use when user asks 'what is missing from', 'does this contract cover', 'compare coverage between', 'what does Doc A have that Doc B doesnt'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_a: {
+                type: "string",
+                description: "First document name"
+              },
+              document_b: {
+                type: "string",
+                description: "Second document name to compare against"
+              },
+              focus_area: {
+                type: "string",
+                description: "Optional specific topic to focus on e.g. 'data retention' or 'termination'"
+              }
+            },
+            required: ["document_a", "document_b"]
+          }
+        }
       }
     ];
   }
@@ -513,6 +541,16 @@ Be specific about business/compliance impact.`;
             related_documents: relatedDocs
           };
 
+        case "gap_analysis":
+          const gapResult = await this.gapAnalysisService.analyzeGaps(
+            args.document_a,
+            args.document_b,
+            adminId,
+            args.focus_area
+          );
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return gapResult;
+
         default:
           throw new Error(`Unknown tool: ${toolName}`);
       }
@@ -611,6 +649,49 @@ ${result.conflicts.map((c: any, i: number) =>
             content: `Related with ${(d.similarity_score * 100).toFixed(0)}% similarity. Shared topics: ${d.shared_topics.join(', ')}`,
             relevance_score: d.similarity_score
           }))
+        };
+
+      case "gap_analysis":
+        const gapsInBText = result.gaps_in_b.length > 0
+          ? `\n${result.gaps_in_b.map((g: any) => `• [${g.severity.toUpperCase()}] ${g.topic}: ${g.recommendation}`).join('\n')}`
+          : '\nNo major gaps found in this direction.';
+        const gapsInAText = result.gaps_in_a.length > 0
+          ? `\n${result.gaps_in_a.map((g: any) => `• [${g.severity.toUpperCase()}] ${g.topic}: ${g.recommendation}`).join('\n')}`
+          : '\nNo major gaps found in this direction.';
+        
+        return {
+          text: `Gap Analysis: "${result.document_a}" vs "${result.document_b}"
+
+Coverage Scores:
+• ${result.document_a}: ${result.coverage_score_a}% coverage of ${result.document_b}
+• ${result.document_b}: ${result.coverage_score_b}% coverage of ${result.document_a}
+
+Critical Gaps Found: ${result.critical_gaps}
+
+Missing from ${result.document_b}:${gapsInBText}
+
+Missing from ${result.document_a}:${gapsInAText}
+
+Expert Analysis:
+${result.llm_summary}`,
+          citations: [
+            ...result.gaps_in_b.map((g: any) => ({
+              document_name: result.document_b,
+              gap_type: 'missing',
+              topic: g.topic,
+              severity: g.severity,
+              content: g.recommendation,
+              relevance_score: g.severity === 'critical' ? 1.0 : g.severity === 'important' ? 0.7 : 0.4
+            })),
+            ...result.gaps_in_a.map((g: any) => ({
+              document_name: result.document_a,
+              gap_type: 'missing',
+              topic: g.topic,
+              severity: g.severity,
+              content: g.recommendation,
+              relevance_score: g.severity === 'critical' ? 1.0 : g.severity === 'important' ? 0.7 : 0.4
+            }))
+          ]
         };
 
       default:
