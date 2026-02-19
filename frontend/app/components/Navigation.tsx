@@ -47,6 +47,18 @@ export default function Navigation() {
   const navItems = isEmployee ? employeeNavItems : adminNavItems;
 
   const handleLogout = async () => {
+    try {
+      // Call backend to invalidate session
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+      // Continue with local cleanup even if API fails
+    }
+    
+    // Clear local auth state
     clearAllAuth();
     await signOut({ redirect: false });
     router.push('/auth/login');
