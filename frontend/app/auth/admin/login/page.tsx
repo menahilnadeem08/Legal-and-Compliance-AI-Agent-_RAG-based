@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { setAdminAuth } from '../../../utils/auth';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -72,11 +73,7 @@ export default function AdminLoginPage() {
 
       const data = await response.json();
       
-      // Store admin token and user info in localStorage
-      localStorage.setItem('adminToken', data.token);
-      localStorage.setItem('adminUser', JSON.stringify(data.user));
-
-      // Redirect to admin dashboard
+      setAdminAuth(data.token, data.user);
       router.push('/');
     } catch (err) {
       setError('An error occurred during login');

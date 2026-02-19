@@ -3,25 +3,22 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
+import { isEmployeeUser, clearAllAuth } from '../utils/auth';
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session } = useSession();
   const [isEmployee, setIsEmployee] = useState(false);
   const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
 
-    // If there is a local JWT + user, treat as employee login
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       setIsEmployee(true);
       try {
-        const userData = JSON.parse(userStr);
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
         setUserName(userData.username || userData.name || 'Employee');
       } catch {
         setUserName('Employee');
@@ -50,16 +47,9 @@ export default function Navigation() {
   const navItems = isEmployee ? employeeNavItems : adminNavItems;
 
   const handleLogout = async () => {
-    if (isEmployee) {
-      // Employee logout
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      router.push('/auth/employee-login');
-    } else {
-      // Admin logout
-      await signOut({ redirect: false });
-      router.push('/auth/login');
-    }
+    clearAllAuth();
+    await signOut({ redirect: false });
+    router.push('/auth/login');
   };
 
   const handleNavigation = (href: string) => {

@@ -4,7 +4,7 @@ import { hashPassword, validatePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { TempPasswordService } from '../services/tempPasswordService';
-import { AuditLogRepository } from '../repositories/invitationRepository';
+import { AuditLogRepository } from '../repositories/auditLogRepository';
 
 // Create employee user (admin only)
 // Generates temporary password and sends welcome email

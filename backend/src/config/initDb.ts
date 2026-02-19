@@ -147,25 +147,6 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(conversation_id, sequence_number);
     `);
 
-    // Create user_invitations table for multi-tenant employee invitations
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS user_invitations (
-        id SERIAL PRIMARY KEY,
-        admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        email VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'employee',
-        invited_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        status VARCHAR(50) DEFAULT 'PENDING',
-        token_hash VARCHAR(255) UNIQUE NOT NULL,
-        expires_at TIMESTAMP NOT NULL,
-        activated_at TIMESTAMP,
-        is_used BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT unique_tenant_email UNIQUE (admin_id, email)
-      )
-    `);
-
     // Create audit_logs table for comprehensive audit trail
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -187,27 +168,17 @@ export async function initializeAuthTables() {
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP,
-      ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
-      ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false
+      ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS otp_code VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP
     `);
 
-    // Create indexes for new tables
+    // Create indexes for audit_logs
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_user_invitations_admin_id ON user_invitations(admin_id);
-      CREATE INDEX IF NOT EXISTS idx_user_invitations_email ON user_invitations(email);
-      CREATE INDEX IF NOT EXISTS idx_user_invitations_status ON user_invitations(status);
-      CREATE INDEX IF NOT EXISTS idx_user_invitations_token_hash ON user_invitations(token_hash);
-      CREATE INDEX IF NOT EXISTS idx_user_invitations_expires_at ON user_invitations(expires_at);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-    `);
-
-    // Add is_used column migration if it doesn't exist
-    await client.query(`
-      ALTER TABLE user_invitations
-      ADD COLUMN IF NOT EXISTS is_used BOOLEAN DEFAULT false
     `);
 
     console.log('Auth tables initialized successfully');

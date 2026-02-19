@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import { getAuthToken, isEmployeeUser, clearAllAuth } from '../utils/auth';
 
 interface UserInfo {
   id: number;
@@ -33,13 +34,9 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Check for employee authentication (localStorage)
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       try {
-        const userData = JSON.parse(userStr);
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(userData);
         setIsEmployee(true);
         setLoading(false);
@@ -49,15 +46,32 @@ export default function ProfilePage() {
       }
     }
 
-    // Wait for NextAuth to load
-    if (status === 'loading') {
-      return;
+    if (status === 'loading') return;
+
+    // Admin auth (local or Google)
+    const adminUserStr = localStorage.getItem('adminUser');
+    if (adminUserStr) {
+      try {
+        const adminData = JSON.parse(adminUserStr);
+        const adminUser: UserInfo = {
+          id: adminData.id || 0,
+          username: adminData.username || adminData.email || 'Admin User',
+          email: adminData.email || '',
+          name: adminData.name || 'Admin',
+          role: 'admin',
+        };
+        setUser(adminUser);
+        setIsEmployee(false);
+        setLoading(false);
+        return;
+      } catch (err) {
+        console.error('Failed to parse admin user data:', err);
+      }
     }
 
-    // Check for admin authentication (NextAuth)
-    if (session && session.user) {
+    if (session?.user) {
       const adminUser: UserInfo = {
-        id: 0, // Google doesn't provide ID
+        id: 0,
         username: session.user.email || 'Admin User',
         email: session.user.email || '',
         name: session.user.name || 'Admin',
@@ -69,24 +83,16 @@ export default function ProfilePage() {
       return;
     }
 
-    // Not authenticated - redirect to login
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
       router.push('/auth/login');
       setLoading(false);
     }
   }, [status, session, router]);
 
   const handleLogout = async () => {
-    if (isEmployee) {
-      // Employee logout
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      router.push('/auth/employee-login');
-    } else {
-      // Admin logout
-      await signOut({ redirect: false });
-      router.push('/auth/login');
-    }
+    clearAllAuth();
+    await signOut({ redirect: false });
+    router.push('/auth/login');
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -99,7 +105,7 @@ export default function ProfilePage() {
     try {
       setPasswordLoading(true);
       setError('');
-      const token = localStorage.getItem('token');
+      const token = getAuthToken(session);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/change-password`, {
         method: 'POST',

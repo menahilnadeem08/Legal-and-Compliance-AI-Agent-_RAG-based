@@ -52,170 +52,8 @@ export interface EmailMessage {
 /**
  * Email service for sending transactional emails via Nodemailer
  * Supports both Gmail SMTP and custom SMTP (Office 365, custom domains, etc.)
- * Emails are sent from the admin's email address
  */
 export class EmailService {
-  /**
-   * Send employee invitation email
-   * @param email - Employee email address
-   * @param activationLink - Full activation URL
-   * @param invitedByName - Name of the admin who sent the invitation
-   * @param fromEmail - Admin's email address (from field)
-   */
-  static async sendInvitationEmail(
-    email: string,
-    activationLink: string,
-    invitedByName: string,
-    fromEmail: string
-  ): Promise<void> {
-    const message: EmailMessage = {
-      to: email,
-      from: fromEmail,
-      subject: 'You have been invited to Legal Compliance RAG',
-      html: `
-        <h2>Welcome to Legal Compliance RAG</h2>
-        <p>Hello,</p>
-        <p><strong>${invitedByName}</strong> has invited you to join our Legal Compliance RAG system.</p>
-        
-        <h3>Getting Started</h3>
-        <p>Click the link below to set up your account and activate your access:</p>
-        <p>
-          <a href="${activationLink}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-            Activate Your Account
-          </a>
-        </p>
-        
-        <p><strong>Note:</strong> This link expires in 24 hours.</p>
-        
-        <hr>
-        <p>If you have any questions, please contact support.</p>
-        <p style="color: #666; font-size: 12px;">This is an automated email, please do not reply.</p>
-      `
-    };
-
-    await this.sendEmail(message);
-  }
-
-  /**
-   * Send account activation confirmation email
-   * @param email - User email address
-   * @param name - User name
-   * @param fromEmail - Admin's email address
-   */
-  static async sendActivationConfirmationEmail(
-    email: string,
-    name: string,
-    fromEmail: string
-  ): Promise<void> {
-    const message: EmailMessage = {
-      to: email,
-      from: fromEmail,
-      subject: 'Your account has been activated',
-      html: `
-        <h2>Account Activated</h2>
-        <p>Hello ${name},</p>
-        <p>Your account has been successfully activated! You can now log in to Legal Compliance RAG.</p>
-        
-        <p>
-          <a href="${process.env.APP_URL || 'https://app.yourdomain.com'}/auth/login" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-            Sign In
-          </a>
-        </p>
-        
-        <hr>
-        <p style="color: #666; font-size: 12px;">If you didn't create this account, please ignore this email.</p>
-      `
-    };
-
-    await this.sendEmail(message);
-  }
-
-  /**
-   * Send invitation reminder email (on resend)
-   * @param email - Employee email address
-   * @param activationLink - Full activation URL
-   * @param fromEmail - Admin's email address
-   */
-  static async sendInvitationReminderEmail(
-    email: string,
-    activationLink: string,
-    fromEmail: string
-  ): Promise<void> {
-    const message: EmailMessage = {
-      to: email,
-      from: fromEmail,
-      subject: 'Reminder: Complete your account activation',
-      html: `
-        <h2>Activation Reminder</h2>
-        <p>Hello,</p>
-        <p>You have a pending invitation to join Legal Compliance RAG.</p>
-        
-        <p>
-          <a href="${activationLink}" style="background-color: #2196F3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-            Complete Your Activation
-          </a>
-        </p>
-        
-        <p><strong>Note:</strong> This link expires in 24 hours.</p>
-        
-        <hr>
-        <p style="color: #666; font-size: 12px;">This is an automated email, please do not reply.</p>
-      `
-    };
-
-    await this.sendEmail(message);
-  }
-
-  /**
-   * Send welcome email to new employee created directly by admin
-   * (User already has password set, not using invitation link)
-   * @param email - Employee email address
-   * @param name - Employee name
-   * @param username - Employee username for login
-   * @param adminName - Admin who created the account
-   * @param fromEmail - Admin's email address
-   */
-  static async sendEmployeeWelcomeEmail(
-    email: string,
-    name: string,
-    username: string,
-    adminName: string,
-    fromEmail: string
-  ): Promise<void> {
-    const message: EmailMessage = {
-      to: email,
-      from: fromEmail,
-      subject: 'Welcome to Legal Compliance RAG - Your account is ready',
-      html: `
-        <h2>Welcome to Legal Compliance RAG</h2>
-        <p>Hello ${name},</p>
-        <p><strong>${adminName}</strong> has created an account for you at Legal Compliance RAG.</p>
-        
-        <h3>Your Account Details</h3>
-        <ul style="line-height: 1.8;">
-          <li><strong>Username:</strong> ${username}</li>
-          <li><strong>Email:</strong> ${email}</li>
-        </ul>
-        
-        <h3>Getting Started</h3>
-        <p>Your account is ready to use! You can login immediately with your credentials:</p>
-        <p>
-          <a href="${process.env.APP_URL || 'https://app.yourdomain.com'}/auth/employee-login" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-            Log In Now
-          </a>
-        </p>
-        
-        <h3>Need Help?</h3>
-        <p>If you have any questions or issues logging in, please contact support or reach out to ${adminName}.</p>
-        
-        <hr>
-        <p style="color: #666; font-size: 12px;">This is an automated email, please do not reply.</p>
-      `
-    };
-
-    await this.sendEmail(message);
-  }
-
   /**
    * Send temporary password email for employee onboarding
    * @param email - Employee email address
@@ -284,6 +122,47 @@ export class EmailService {
             </p>
             <p style="color: #999; font-size: 11px;">
               This is an automated email, please do not reply. This temporary password was generated automatically for security purposes.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await this.sendEmail(message);
+  }
+
+  /**
+   * Send OTP verification email for admin signup
+   */
+  static async sendOtpEmail(
+    email: string,
+    otp: string,
+    name: string
+  ): Promise<void> {
+    const message: EmailMessage = {
+      to: email,
+      from: process.env.SMTP_USER || process.env.GMAIL_USER || 'noreply@yourdomain.com',
+      subject: 'Legal Compliance RAG - Verify Your Email',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">Verify Your Email</h2>
+          
+          <p>Hello <strong>${name}</strong>,</p>
+          
+          <p>Thank you for registering on Legal Compliance RAG. Please use the verification code below to complete your registration:</p>
+          
+          <div style="background-color: #f5f5f5; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; text-align: center;">
+            <p style="margin: 0 0 10px 0; color: #555;">Your verification code:</p>
+            <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; margin: 0; font-family: monospace;">${otp}</p>
+          </div>
+          
+          <p style="color: #d32f2f; font-weight: bold;">This code expires in 10 minutes.</p>
+          
+          <p style="color: #555;">If you did not request this, please ignore this email.</p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p style="color: #999; font-size: 11px;">
+              This is an automated email, please do not reply.
             </p>
           </div>
         </div>

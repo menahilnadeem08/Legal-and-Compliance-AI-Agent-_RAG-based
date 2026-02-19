@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navigation from './components/Navigation';
 import PageContainer from './components/PageContainer';
+import { getAuthToken, isEmployeeUser } from './utils/auth';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -14,37 +15,26 @@ export default function Dashboard() {
   const [isEmployee, setIsEmployee] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check authentication and user type
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-
-    // Employees are authenticated via localStorage
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       setIsEmployee(true);
       setIsLoading(false);
       return;
     }
 
-    // Wait for NextAuth to load before checking status
-    if (status === 'loading') {
-      return;
-    }
+    if (status === 'loading') return;
 
-    // Admins are authenticated via NextAuth
-    if (status === 'authenticated' && session) {
+    if (getAuthToken(session)) {
       setIsEmployee(false);
       setIsLoading(false);
       return;
     }
 
-    // Not authenticated - redirect to login
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
       router.push('/auth/login');
       setIsLoading(false);
-      return;
     }
   }, [status, session, router]);
 

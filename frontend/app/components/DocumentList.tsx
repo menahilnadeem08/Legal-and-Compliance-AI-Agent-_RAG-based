@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Link from 'next/link';
+import { getAuthToken } from '../utils/auth';
 
 interface Document {
   id: string;
@@ -21,12 +22,7 @@ export default function DocumentList() {
 
   const fetchDocuments = async () => {
     try {
-      // Get token from localStorage (employee) or session (admin Google OAuth)
-      let token = localStorage.getItem('token');
-      if (!token && session && (session.user as any)?.token) {
-        token = (session.user as any).token;
-      }
-      
+      const token = getAuthToken(session);
       const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/documents`, {
         headers: {
           'Authorization': `Bearer ${token}`,

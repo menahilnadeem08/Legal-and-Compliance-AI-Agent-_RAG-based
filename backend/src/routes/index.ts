@@ -26,7 +26,7 @@ import {
   validateDeleteDocument
 } from '../middleware/validationSchemas';
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
-import { adminSignup, adminLogin } from '../controllers/adminAuthController';
+import { adminSignup, adminLogin, verifyOtp, resendOtp } from '../controllers/adminAuthController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee, resendCredentials } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
 import { enforcePasswordChange } from '../middleware/enforcePasswordChange';
@@ -47,15 +47,16 @@ const router = express.Router();
 
 // Authentication Routes
 router.post('/auth/signin', handleGoogleSignIn as any);
-router.post('/auth/login', login as any); // Employee local login (with temp password support)
-router.post('/auth/employee-login', login as any); // Alias for employee login
+router.post('/auth/login', login as any);
 router.post('/auth/logout', authenticate as any, logout as any);
 router.get('/auth/me', authenticate as any, getCurrentUser as any);
 router.post('/auth/change-password', authenticate as any, changePassword as any);
 
 // ===== Admin Authentication Routes (separate from employee auth) =====
-router.post('/auth/admin/signup', adminSignup as any); // Admin signup with registration key
-router.post('/auth/admin/login', adminLogin as any); // Admin local login
+router.post('/auth/admin/signup', adminSignup as any);
+router.post('/auth/admin/verify-otp', verifyOtp as any);
+router.post('/auth/admin/resend-otp', resendOtp as any);
+router.post('/auth/admin/login', adminLogin as any);
 
 // ===== Admin Routes (protected with admin role) =====
 router.post('/admin/create-user', authenticate as any, requireRole('admin') as any, createEmployee as any);

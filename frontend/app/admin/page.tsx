@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import { getAuthToken } from '../utils/auth';
 
 interface Employee {
   id: number;
@@ -23,28 +24,27 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Form state
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     name: '',
   });
 
-  // Check auth and load employees
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    const token = getAuthToken(session);
+    if (status === 'loading') return;
+    if (!token && status === 'unauthenticated') {
       router.push('/auth/login');
       return;
     }
-
-    if (session?.user?.email) {
+    if (token) {
       loadEmployees();
     }
   }, [status, session, router]);
 
   const loadEmployees = async () => {
     try {
-      const token = (session?.user as any)?.token;
+      const token = getAuthToken(session);
       if (!token) {
         console.error('No authentication token available');
         return;
@@ -86,7 +86,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      const token = (session?.user as any)?.token;
+      const token = getAuthToken(session);
       if (!token) {
         setError('Authentication token not found. Please refresh and try again.');
         return;
@@ -124,7 +124,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const token = (session?.user as any)?.token;
+      const token = getAuthToken(session);
       if (!token) {
         setError('Authentication token not found');
         return;
@@ -159,7 +159,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const token = (session?.user as any)?.token;
+      const token = getAuthToken(session);
       if (!token) {
         setError('Authentication token not found');
         return;

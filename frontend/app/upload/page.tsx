@@ -7,25 +7,19 @@ import { useSession } from 'next-auth/react';
 import FileUpload from '../components/FileUpload';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import { isEmployeeUser } from '../utils/auth';
 
 export default function UploadPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
   useEffect(() => {
-    // Block employee users (local JWT login) from accessing /upload
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-
-    // If employee is logged in via localStorage, redirect to home
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       router.replace('/');
       return;
     }
-
-    // If not an employee and NextAuth is loaded but no admin session, send to admin login
-    if (status === 'unauthenticated') {
-      router.replace('/login');
+    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
+      router.replace('/auth/login');
     }
   }, [router, status]);
 

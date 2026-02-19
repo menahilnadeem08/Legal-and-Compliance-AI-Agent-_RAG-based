@@ -1,18 +1,15 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [isActivationMode, setIsActivationMode] = useState(false);
   const [isForcedPasswordChange, setIsForcedPasswordChange] = useState(false);
-  const [activationToken, setActivationToken] = useState('');
   const [authToken, setAuthToken] = useState('');
   
   const [formData, setFormData] = useState({
@@ -21,45 +18,18 @@ export default function ChangePasswordPage() {
     confirmPassword: '',
   });
 
-  // Check authentication and determine if in activation or forced password change mode
   useEffect(() => {
-    // Check for activation token in URL
-    const urlToken = searchParams.get('activation_token');
     const authTokenFromStorage = localStorage.getItem('token');
-    
-    // Check if user is forced to change password (came from temp password login)
     const forcePasswordChange = localStorage.getItem('forcePasswordChange') === 'true';
     
-    if (urlToken) {
-      // Activation mode - user is coming from /activate page
-      console.log('Activation mode detected');
-      setActivationToken(urlToken);
-      setIsActivationMode(true);
-      setIsForcedPasswordChange(false);
-      setIsAuthLoading(false);
-    } else if (authTokenFromStorage) {
-      // User is already logged in
-      console.log('User authenticated');
+    if (authTokenFromStorage) {
       setAuthToken(authTokenFromStorage);
-      
-      if (forcePasswordChange) {
-        // Forced password change mode (temp password login)
-        console.log('Forced password change mode - user logged in with temp password');
-        setIsForcedPasswordChange(true);
-      } else {
-        // Normal mode - user can change password optionally
-        console.log('Normal mode - user changing password');
-        setIsForcedPasswordChange(false);
-      }
-      
-      setIsActivationMode(false);
+      setIsForcedPasswordChange(forcePasswordChange);
       setIsAuthLoading(false);
     } else {
-      // No token and no auth - redirect to login
-      console.log('No auth or activation token found, redirecting to login');
       router.push('/auth/employee-login');
     }
-  }, [router, searchParams]);
+  }, [router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -78,7 +48,6 @@ export default function ChangePasswordPage() {
       setError('');
       setSuccess('');
 
-      // Common validation
       if (!formData.newPassword || !formData.confirmPassword) {
         setError('New password and confirm password are required');
         return;
@@ -94,7 +63,6 @@ export default function ChangePasswordPage() {
         return;
       }
 
-      // Password requirements validation
       const hasUppercase = /[A-Z]/.test(formData.newPassword);
       const hasLowercase = /[a-z]/.test(formData.newPassword);
       const hasNumber = /[0-9]/.test(formData.newPassword);
@@ -110,14 +78,7 @@ export default function ChangePasswordPage() {
         confirmPassword: formData.confirmPassword,
       };
 
-      // ACTIVATION MODE: Use activation token
-      if (isActivationMode) {
-        body.token = activationToken;
-      } else if (isForcedPasswordChange) {
-        // FORCED PASSWORD CHANGE: No current password needed, already authenticated
-        // Just send new password
-      } else {
-        // NORMAL MODE: Require current password
+      if (!isForcedPasswordChange) {
         if (!formData.currentPassword) {
           setError('Current password is required');
           return;
@@ -125,18 +86,12 @@ export default function ChangePasswordPage() {
         body.currentPassword = formData.currentPassword;
       }
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      // Add auth header for authenticated requests (both normal and forced password change)
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/change-password`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify(body),
       });
 
@@ -146,30 +101,13 @@ export default function ChangePasswordPage() {
         return;
       }
 
-      const data = await response.json();
-      
-      // ACTIVATION MODE: Store tokens and redirect to dashboard
-      if (isActivationMode && data.accessToken && data.refreshToken) {
-        localStorage.setItem('token', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        localStorage.removeItem('forcePasswordChange');
-        deleteCookie('force-password-change');
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-        }
-        setSuccess('Password set successfully! Redirecting to dashboard...');
-        setTimeout(() => {
-          router.push('/');
-        }, 1500);
-      } else {
-        localStorage.removeItem('forcePasswordChange');
-        deleteCookie('force-password-change');
-        setSuccess('Password changed successfully! Redirecting...');
-        setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setTimeout(() => {
-          router.push('/');
-        }, 2000);
-      }
+      localStorage.removeItem('forcePasswordChange');
+      deleteCookie('force-password-change');
+      setSuccess('Password changed successfully! Redirecting...');
+      setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => {
+        router.push('/');
+      }, 2000);
     } catch (err) {
       setError('An error occurred while changing password');
       console.error(err);
@@ -194,10 +132,10 @@ export default function ChangePasswordPage() {
       <div className="w-full max-w-md">
         <div className="bg-gray-900 rounded-lg shadow-2xl p-8 border border-gray-800">
           <h1 className="text-3xl font-bold text-white mb-2">
-            {isActivationMode || isForcedPasswordChange ? 'Set Your Password' : 'Change Password'}
+            {isForcedPasswordChange ? 'Set Your Password' : 'Change Password'}
           </h1>
           <p className="text-gray-400 mb-6">
-            {isActivationMode ? 'Complete your account activation by setting a password' : isForcedPasswordChange ? 'You must set a new password before continuing' : 'Set a new password for your account'}
+            {isForcedPasswordChange ? 'You must set a new password before continuing' : 'Set a new password for your account'}
           </p>
 
           {error && (
@@ -213,8 +151,7 @@ export default function ChangePasswordPage() {
           )}
 
           <form onSubmit={handleChangePassword} className="space-y-4">
-            {/* Current Password field - only show in normal password change mode */}
-            {!isActivationMode && !isForcedPasswordChange && (
+            {!isForcedPasswordChange && (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Current Password
@@ -269,7 +206,7 @@ export default function ChangePasswordPage() {
               disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
             >
-              {loading ? 'Saving Password...' : (isActivationMode ? 'Complete Activation' : 'Change Password')}
+              {loading ? 'Saving Password...' : 'Change Password'}
             </button>
           </form>
         </div>

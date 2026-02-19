@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Navigation from './Navigation';
+import { getAuthToken } from '../utils/auth';
 
 export default function FileUpload() {
   const { data: session } = useSession();
@@ -43,19 +44,11 @@ export default function FileUpload() {
     e.preventDefault();
     if (!file) return;
 
-    // Get token from localStorage (employee) or session (admin Google OAuth)
-    let token = localStorage.getItem('token');
-    if (!token && session && (session.user as any)?.token) {
-      token = (session.user as any).token;
-    }
-
+    const token = getAuthToken(session);
     if (!token) {
-      setMessage('✗ Authentication token not found. Please refresh and try again.');
-      console.log('DEBUG: No token found in localStorage or session');
+      setMessage('Authentication token not found. Please refresh and try again.');
       return;
     }
-
-    console.log('DEBUG: Token found:', token.substring(0, 20) + '...');
 
     const formData = new FormData();
     formData.append('file', file);

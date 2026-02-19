@@ -4,6 +4,7 @@ import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { setAdminAuth } from '../../utils/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,35 +13,29 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // Redirect authenticated users away from login page
   useEffect(() => {
-    // Check if user is logged in via NextAuth (admin) or localStorage (employee/admin)
-    const adminToken = localStorage.getItem('adminToken');
-    const adminUserStr = localStorage.getItem('adminUser');
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    // If NextAuth session is still loading, wait
     if (status === 'loading') {
       setIsAuthLoading(true);
       return;
     }
 
-    // If admin is authenticated via NextAuth
-    if (session && session.user) {
+    // Google OAuth admin — sync session to unified store and redirect
+    if (session?.user && (session.user as any)?.token) {
+      setAdminAuth((session.user as any).token, session.user);
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // If admin or employee is authenticated via localStorage, redirect to home
-    if ((adminToken && adminUserStr) || (token && userStr)) {
+    // Local admin or employee already authenticated
+    const adminToken = localStorage.getItem('adminToken');
+    const empToken = localStorage.getItem('token');
+    if (adminToken || empToken) {
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // No authentication found, show login page
     setIsAuthLoading(false);
   }, [session, status, router]);
 
@@ -48,20 +43,10 @@ export default function LoginPage() {
     try {
       setLoading(true);
       setError('');
-      const result = await signIn('google', {
-        redirect: false,
-        callbackUrl: '/',
-      });
-
-      if (result?.error) {
-        setError('Failed to sign in with Google');
-      } else if (result?.ok) {
-        router.push('/');
-      }
+      await signIn('google', { callbackUrl: '/auth/login' });
     } catch (err) {
       setError('An error occurred during sign in');
       console.error(err);
-    } finally {
       setLoading(false);
     }
   };
