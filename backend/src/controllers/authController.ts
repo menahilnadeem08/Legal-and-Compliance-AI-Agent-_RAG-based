@@ -5,8 +5,7 @@ import { hashPassword, comparePassword, validatePassword } from '../utils/passwo
 import { AuthenticatedRequest } from '../types';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { JWT_SECRET } from '../config/secrets';
 const JWT_EXPIRE = '7d';
 
 export async function login(req: AuthenticatedRequest, res: Response): Promise<void> {

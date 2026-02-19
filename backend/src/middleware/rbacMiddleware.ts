@@ -3,8 +3,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { AuthenticatedRequest } from '../types';
 import { logger } from '../utils/logger';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { JWT_SECRET } from '../config/secrets';
 
 // Authenticate user via JWT token
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {

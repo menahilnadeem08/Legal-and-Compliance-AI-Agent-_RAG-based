@@ -5,8 +5,7 @@ import pool from '../config/database';
 import { hashPassword, comparePassword, validatePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { JWT_SECRET } from '../config/secrets';
 const JWT_EXPIRE = '7d';
 const OTP_EXPIRY_MINUTES = 10;
 
