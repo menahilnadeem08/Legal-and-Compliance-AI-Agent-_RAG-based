@@ -139,6 +139,7 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_users_admin_id ON users(admin_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
       CREATE INDEX IF NOT EXISTS idx_documents_admin_id ON documents(admin_id);
       CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
