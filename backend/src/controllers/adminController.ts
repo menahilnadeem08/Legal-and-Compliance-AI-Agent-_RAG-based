@@ -85,9 +85,9 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       const newUser = await client.query(
         `INSERT INTO users (
           username, password_hash, email, name, role, auth_provider, admin_id, is_active,
-          is_temp_password, temp_password_expires_at, force_password_change
+          is_temp_password, temp_password_expires_at, force_password_change, email_verified
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id, username, email, name, role, is_active, created_at`,
         [
           username,
@@ -100,7 +100,8 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
           true,
           true,           // is_temp_password = true
           expiresAt,      // temp_password_expires_at
-          true            // force_password_change = true
+          true,           // force_password_change = true
+          true            // email_verified = true (admin vouches for the employee)
         ]
       );
 
