@@ -296,6 +296,31 @@ export class LegalComplianceAgent {
             required: ["document_name"]
           }
         }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "track_policy_changes",
+          description: "Track how a policy or document has evolved across all versions over time. Returns a chronological timeline of changes, what was added/removed/modified in each version, severity of changes, and AI summary of the evolution. Use when user asks 'what changed', 'how has this policy evolved', 'show me the history'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_name: {
+                type: "string",
+                description: "Name of the document to track"
+              },
+              from_version: {
+                type: "string",
+                description: "Starting version (optional, defaults to earliest)"
+              },
+              to_version: {
+                type: "string",
+                description: "Ending version (optional, defaults to latest)"
+              }
+            },
+            required: ["document_name"]
+          }
+        }
       }
     ];
   }
@@ -361,6 +386,99 @@ export class LegalComplianceAgent {
             document_name: resolvedName || args.document_name,
             versions: versions
           };
+
+        case "track_policy_changes":
+          // Find actual document name
+          const actualDocName = await this.documentService.findDocumentByName(args.document_name, adminId);
+          if (!actualDocName) {
+            throw new Error(`Document "${args.document_name}" not found`);
+          }
+
+          // Get full version history with metadata
+          const versionHistory = await this.documentService.getDocumentVersionHistory(actualDocName, adminId);
+          let versionsList = [...versionHistory.versions].sort(
+            (a: any, b: any) => new Date(a.upload_date).getTime() - new Date(b.upload_date).getTime()
+          );
+
+          // Filter by from_version/to_version if provided
+          if (args.from_version) {
+            const fromIdx = versionsList.findIndex((v: any) => v.version === args.from_version);
+            if (fromIdx === -1) throw new Error(`Version "${args.from_version}" not found`);
+            versionsList = versionsList.slice(fromIdx);
+          }
+          if (args.to_version) {
+            const toIdx = versionsList.findIndex((v: any) => v.version === args.to_version);
+            if (toIdx === -1) throw new Error(`Version "${args.to_version}" not found`);
+            versionsList = versionsList.slice(0, toIdx + 1);
+          }
+
+          // Build timeline by comparing consecutive versions
+          const timeline: any[] = [];
+          for (let i = 0; i < versionsList.length - 1; i++) {
+            const v1 = versionsList[i];
+            const v2 = versionsList[i + 1];
+
+            const comparison = await this.documentService.compareVersionsDetailed(actualDocName, v1.version, v2.version, adminId);
+
+            // Determine severity based on change statistics
+            let severity = 'low';
+            if (comparison.statistics.change_percentage > 30) severity = 'high';
+            else if (comparison.statistics.change_percentage > 10) severity = 'medium';
+
+            timeline.push({
+              from: v1.version,
+              to: v2.version,
+              date: new Date(v2.upload_date).toISOString().split('T')[0],
+              summary: comparison.summary,
+              changes_added: comparison.statistics.chunks_added,
+              changes_removed: comparison.statistics.chunks_removed,
+              changes_modified: comparison.statistics.chunks_modified,
+              change_percentage: comparison.statistics.change_percentage,
+              severity: severity,
+              impact_analysis: comparison.impact_analysis,
+              key_changes: comparison.changes
+                .filter((c: any) => c.change_type !== 'unchanged')
+                .slice(0, 5)
+                .map((c: any) => ({
+                  type: c.change_type,
+                  section: c.section_name || 'N/A',
+                  page: c.page_number
+                }))
+            });
+          }
+
+          // Generate overall evolution summary
+          if (timeline.length > 0) {
+            const timelineSummary = timeline
+              .map(t => `v${t.from} → v${t.to} (${t.date}): ${t.changes_added} added, ${t.changes_removed} removed, ${t.changes_modified} modified (${t.change_percentage.toFixed(0)}% change)`)
+              .join('\n');
+
+            const overallSummaryPrompt = `You are a legal compliance expert. Summarize the evolution of "${actualDocName}" across versions:
+
+${timelineSummary}
+
+Provide a concise executive summary (2-3 bullet points) highlighting:
+1. Major shifts and trends in the policy
+2. Key milestones in its evolution
+3. Overall direction of policy changes
+
+Be specific about business/compliance impact.`;
+
+            const overallResponse = await llm.invoke(overallSummaryPrompt);
+            const overallSummary = overallResponse.content.toString();
+
+            const result = {
+              document_name: actualDocName,
+              timeline,
+              overall_summary: overallSummary,
+              total_versions_tracked: versionsList.length
+            };
+
+            console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+            return result;
+          } else {
+            throw new Error('Only one version exists; no changes to track');
+          }
 
         default:
           throw new Error(`Unknown tool: ${toolName}`);
@@ -431,6 +549,18 @@ ${result.conflicts.map((c: any, i: number) =>
         return {
           text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`,
           citations: this.extractVersionListCitations(result)
+        };
+
+      case "track_policy_changes":
+        const timelineText = result.timeline
+          .map((t: any) => `v${t.from} → v${t.to} (${t.date}) [${t.severity}]: +${t.changes_added} -${t.changes_removed} ~${t.changes_modified}\n${t.summary}`)
+          .join('\n\n');
+        return {
+          text: `Policy Evolution Timeline for ${result.document_name}:\n\n${timelineText}\n\nOverall Evolution:\n${result.overall_summary}`,
+          citations: this.extractVersionCitations({  // Reuse version citation extractor
+            document_name: result.document_name,
+            changes: result.timeline.flatMap((t: any) => t.key_changes || [])
+          })
         };
 
       default:
