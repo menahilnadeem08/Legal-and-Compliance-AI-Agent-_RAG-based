@@ -3,9 +3,11 @@ import { Request, Response, NextFunction } from 'express';
 /**
  * Middleware to enforce password change for users with temporary passwords
  * If user has forcePasswordChange = true, only allow:
- * - POST /auth/change-password
- * - GET /auth/me
- * - POST /auth/logout
+ * - /auth/change-password
+ * - /auth/me
+ * - /auth/logout
+ * - Document compare, activate, deactivate, delete
+ * - All conversation routes
  */
 export function enforcePasswordChange(req: Request, res: Response, next: NextFunction): void {
   try {
@@ -19,8 +21,20 @@ export function enforcePasswordChange(req: Request, res: Response, next: NextFun
 
     // If user must change password, only allow specific routes
     if (authReq.user.forcePasswordChange) {
-      const allowedRoutes = ['/api/auth/change-password', '/api/auth/me', '/api/auth/logout'];
-      const isAllowed = allowedRoutes.some((route) => req.path.startsWith(route));
+      const allowedRoutes: (string | RegExp)[] = [
+        '/auth/change-password',
+        '/auth/me',
+        '/auth/logout',
+        '/documents/compare',
+        '/conversations',
+        /^\/documents\/\d+\/(activate|deactivate|delete)$/,
+      ];
+
+      const isAllowed = allowedRoutes.some((route) =>
+        typeof route === 'string'
+          ? req.path === route || req.path.startsWith(route)
+          : route.test(req.path)
+      );
 
       if (!isAllowed) {
         console.log('[ENFORCE-PASSWORD-CHANGE] ❌ User must change password before accessing', req.path);

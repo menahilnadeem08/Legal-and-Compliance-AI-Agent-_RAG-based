@@ -23,9 +23,9 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
 
     const userResult = await pool.query(
       `SELECT id, username, email, name, role, password_hash, is_active, auth_provider, admin_id,
-              is_temp_password, temp_password_expires_at, force_password_change
+              is_temp_password, temp_password_expires_at, force_password_change, email_verified
        FROM users
-       WHERE ${username ? 'username' : 'email'} = $1 AND auth_provider = 'local' AND is_active = true`,
+       WHERE ${username ? 'username' : 'email'} = $1 AND auth_provider = 'local' AND is_active = true AND role = 'employee'`,
       [loginIdentifier]
     );
 
@@ -35,6 +35,15 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
     }
 
     const user = userResult.rows[0];
+
+    // Check if email is verified for employee login
+    if (!user.email_verified) {
+      res.status(403).json({ 
+        error: 'Email verification required. Please verify your email before logging in.',
+        email_verified: false
+      });
+      return;
+    }
 
     if (user.is_temp_password) {
       try {
