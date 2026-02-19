@@ -4,7 +4,7 @@ import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { setAdminAuth } from '../../utils/auth';
+import { setAuth, getAuthToken } from '../../utils/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,16 +21,14 @@ export default function LoginPage() {
 
     // Google OAuth admin — sync session to unified store and redirect
     if (session?.user && (session.user as any)?.token) {
-      setAdminAuth((session.user as any).token, session.user);
+      setAuth((session.user as any).token, { ...session.user, role: 'admin' });
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // Local admin or employee already authenticated
-    const adminToken = localStorage.getItem('adminToken');
-    const empToken = localStorage.getItem('token');
-    if (adminToken || empToken) {
+    // Already authenticated
+    if (getAuthToken()) {
       setIsAuthLoading(false);
       router.push('/');
       return;

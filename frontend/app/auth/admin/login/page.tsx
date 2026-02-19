@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { setAdminAuth } from '../../../utils/auth';
+import { setAuth, getAuthToken } from '../../../utils/auth';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -16,19 +16,10 @@ export default function AdminLoginPage() {
 
   // Redirect authenticated users away from login page
   useEffect(() => {
-    // Check if admin is logged in via localStorage
-    const adminToken = localStorage.getItem('adminToken');
-    const adminUserStr = localStorage.getItem('adminUser');
-    
-    // Check if employee is logged in via localStorage
-    const empToken = localStorage.getItem('token');
-    const empUserStr = localStorage.getItem('user');
-
-    if ((adminToken && adminUserStr) || (empToken && empUserStr)) {
+    if (getAuthToken()) {
       router.push('/');
       return;
     }
-
     setIsAuthLoading(false);
   }, [router]);
 
@@ -73,7 +64,7 @@ export default function AdminLoginPage() {
 
       const data = await response.json();
       
-      setAdminAuth(data.token, data.user);
+      setAuth(data.token, data.user);
       router.push('/');
     } catch (err) {
       setError('An error occurred during login');

@@ -19,11 +19,11 @@ export default function ChangePasswordPage() {
   });
 
   useEffect(() => {
-    const authTokenFromStorage = localStorage.getItem('token');
+    const storedToken = localStorage.getItem('authToken');
     const forcePasswordChange = localStorage.getItem('forcePasswordChange') === 'true';
     
-    if (authTokenFromStorage) {
-      setAuthToken(authTokenFromStorage);
+    if (storedToken) {
+      setAuthToken(storedToken);
       setIsForcedPasswordChange(forcePasswordChange);
       setIsAuthLoading(false);
     } else {

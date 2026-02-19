@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { isEmployeeUser, clearAllAuth } from '../utils/auth';
+import { isEmployeeUser, clearAllAuth, getAuthToken, getAuthUser } from '../utils/auth';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -17,12 +17,8 @@ export default function Navigation() {
 
     if (isEmployeeUser()) {
       setIsEmployee(true);
-      try {
-        const userData = JSON.parse(localStorage.getItem('user') || '{}');
-        setUserName(userData.username || userData.name || 'Employee');
-      } catch {
-        setUserName('Employee');
-      }
+      const user = getAuthUser();
+      setUserName(user?.username || user?.name || 'Employee');
     } else {
       setIsEmployee(false);
     }
@@ -48,17 +44,16 @@ export default function Navigation() {
 
   const handleLogout = async () => {
     try {
-      // Call backend to invalidate session
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const token = getAuthToken();
+      if (token) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      }
     } catch (error) {
       console.error('Logout API call failed:', error);
-      // Continue with local cleanup even if API fails
     }
-    
-    // Clear local auth state
     clearAllAuth();
     await signOut({ redirect: false });
     router.push('/auth/login');

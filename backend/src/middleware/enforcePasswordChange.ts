@@ -1,50 +1,36 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * Middleware to enforce password change for users with temporary passwords
- * If user has forcePasswordChange = true, only allow:
- * - /auth/change-password
- * - /auth/me
- * - /auth/logout
- * - Document compare, activate, deactivate, delete
- * - All conversation routes
+ * Global middleware — applied via router.use() after auth routes.
+ * If the authenticated user has forcePasswordChange = true,
+ * only these paths are allowed through:
  */
+const ALLOWED_PATHS = [
+  '/auth/change-password',
+  '/auth/me',
+  '/auth/logout',
+];
+
 export function enforcePasswordChange(req: Request, res: Response, next: NextFunction): void {
   try {
     const authReq = req as any;
 
-    // Only check if user is authenticated
-    if (!authReq.user) {
+    if (!authReq.user || !authReq.user.forcePasswordChange) {
       next();
       return;
     }
 
-    // If user must change password, only allow specific routes
-    if (authReq.user.forcePasswordChange) {
-      const allowedRoutes: (string | RegExp)[] = [
-        '/auth/change-password',
-        '/auth/me',
-        '/auth/logout',
-        '/documents/compare',
-        '/conversations',
-        /^\/documents\/\d+\/(activate|deactivate|delete)$/,
-      ];
+    const isAllowed = ALLOWED_PATHS.some(
+      (path) => req.path === path
+    );
 
-      const isAllowed = allowedRoutes.some((route) =>
-        typeof route === 'string'
-          ? req.path === route || req.path.startsWith(route)
-          : route.test(req.path)
-      );
-
-      if (!isAllowed) {
-        console.log('[ENFORCE-PASSWORD-CHANGE] ❌ User must change password before accessing', req.path);
-        res.status(403).json({
-          error: 'You must change your password before accessing other features',
-          code: 'FORCE_PASSWORD_CHANGE',
-          redirectUrl: '/auth/change-password',
-        });
-        return;
-      }
+    if (!isAllowed) {
+      res.status(403).json({
+        error: 'You must change your password before accessing other features',
+        code: 'FORCE_PASSWORD_CHANGE',
+        redirectUrl: '/auth/change-password',
+      });
+      return;
     }
 
     next();

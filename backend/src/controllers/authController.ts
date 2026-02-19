@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from '../types';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
 import { JWT_SECRET } from '../config/secrets';
+import { createSession } from '../helpers/sessionHelper';
 const JWT_EXPIRE = '7d';
 
 export async function login(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -83,10 +84,7 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
           { expiresIn: JWT_EXPIRE }
         );
 
-        await pool.query(
-          'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-          [user.id, token]
-        );
+        await createSession(user.id, token);
 
         res.json({
           message: 'Login successful. Please change your password.',
@@ -123,10 +121,7 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
       { expiresIn: JWT_EXPIRE }
     );
 
-    await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-      [user.id, token]
-    );
+    await createSession(user.id, token);
 
     res.json({
       token,
@@ -214,10 +209,7 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
         { expiresIn: JWT_EXPIRE }
       );
 
-      await client.query(
-        'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-        [user.id, token]
-      );
+      await createSession(user.id, token, client);
 
       res.json({
         token,

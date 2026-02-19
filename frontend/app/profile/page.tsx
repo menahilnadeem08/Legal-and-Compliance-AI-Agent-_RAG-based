@@ -5,7 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
-import { getAuthToken, isEmployeeUser, clearAllAuth } from '../utils/auth';
+import { getAuthToken, getAuthUser, isEmployeeUser, clearAllAuth } from '../utils/auth';
 
 interface UserInfo {
   id: number;
@@ -34,56 +34,39 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (isEmployeeUser()) {
-      try {
-        const userData = JSON.parse(localStorage.getItem('user') || '{}');
-        setUser(userData);
-        setIsEmployee(true);
-        setLoading(false);
-        return;
-      } catch (err) {
-        console.error('Failed to parse user data:', err);
-      }
+    const storedUser = getAuthUser();
+
+    if (storedUser) {
+      const userInfo: UserInfo = {
+        id: storedUser.id || 0,
+        username: storedUser.username || storedUser.email || 'User',
+        email: storedUser.email || '',
+        name: storedUser.name || storedUser.username || '',
+        role: storedUser.role || 'admin',
+      };
+      setUser(userInfo);
+      setIsEmployee(storedUser.role === 'employee');
+      setLoading(false);
+      return;
     }
 
     if (status === 'loading') return;
 
-    // Admin auth (local or Google)
-    const adminUserStr = localStorage.getItem('adminUser');
-    if (adminUserStr) {
-      try {
-        const adminData = JSON.parse(adminUserStr);
-        const adminUser: UserInfo = {
-          id: adminData.id || 0,
-          username: adminData.username || adminData.email || 'Admin User',
-          email: adminData.email || '',
-          name: adminData.name || 'Admin',
-          role: 'admin',
-        };
-        setUser(adminUser);
-        setIsEmployee(false);
-        setLoading(false);
-        return;
-      } catch (err) {
-        console.error('Failed to parse admin user data:', err);
-      }
-    }
-
     if (session?.user) {
-      const adminUser: UserInfo = {
+      const sessionUser: UserInfo = {
         id: 0,
         username: session.user.email || 'Admin User',
         email: session.user.email || '',
         name: session.user.name || 'Admin',
         role: 'admin',
       };
-      setUser(adminUser);
+      setUser(sessionUser);
       setIsEmployee(false);
       setLoading(false);
       return;
     }
 
-    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
+    if (status === 'unauthenticated' && !getAuthToken()) {
       router.push('/auth/login');
       setLoading(false);
     }
@@ -91,17 +74,16 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     try {
-      // Call backend to invalidate session
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const token = getAuthToken(session);
+      if (token) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      }
     } catch (error) {
       console.error('Logout API call failed:', error);
-      // Continue with local cleanup even if API fails
     }
-    
-    // Clear local auth state
     clearAllAuth();
     await signOut({ redirect: false });
     router.push('/auth/login');

@@ -6,6 +6,7 @@ import { hashPassword, comparePassword, validatePassword } from '../utils/passwo
 import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { JWT_SECRET } from '../config/secrets';
+import { createSession } from '../helpers/sessionHelper';
 const JWT_EXPIRE = '7d';
 const OTP_EXPIRY_MINUTES = 10;
 
@@ -157,10 +158,7 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
       { expiresIn: JWT_EXPIRE }
     );
 
-    await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-      [user.id, token]
-    );
+    await createSession(user.id, token);
 
     res.json({
       message: 'Admin login successful',
@@ -234,10 +232,7 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
       { expiresIn: JWT_EXPIRE }
     );
 
-    await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-      [user.id, token]
-    );
+    await createSession(user.id, token);
 
     res.json({
       message: 'Email verified successfully',

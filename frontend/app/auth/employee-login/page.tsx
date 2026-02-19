@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
+import { setAuth, getAuthUser } from '../../utils/auth';
 
 export default function EmployeeLoginPage() {
   const router = useRouter();
@@ -16,34 +17,20 @@ export default function EmployeeLoginPage() {
   // Redirect only if employee is already logged in via localStorage
   // Allow this page even if admin is logged in (admin can help employee login)
   useEffect(() => {
-    // Check if user is logged in via localStorage (employee)
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    // If NextAuth session is still loading, wait
     if (status === 'loading') {
       setIsAuthLoading(true);
       return;
     }
 
-    // If employee is authenticated via localStorage, redirect to home
-    if (token && userStr) {
+    const user = getAuthUser();
+    if (user && user.role === 'employee') {
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // Otherwise show login page (even if admin is logged in)
     setIsAuthLoading(false);
   }, [status, router]);
-
-  const setCookie = (name: string, value: string, maxAgeSec: number) => {
-    document.cookie = `${name}=${value}; path=/; max-age=${maxAgeSec}; SameSite=Lax`;
-  };
-
-  const deleteCookie = (name: string) => {
-    document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,9 +45,7 @@ export default function EmployeeLoginPage() {
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
 
@@ -71,21 +56,14 @@ export default function EmployeeLoginPage() {
       }
 
       const data = await response.json();
-
-      const authToken = data.token || data.accessToken;
-      localStorage.setItem('token', authToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      const sevenDays = 7 * 24 * 60 * 60;
-      setCookie('employee-token', authToken, sevenDays);
+      const token = data.token || data.accessToken;
+      setAuth(token, data.user);
 
       if (data.forcePasswordChange) {
         localStorage.setItem('forcePasswordChange', 'true');
-        setCookie('force-password-change', 'true', sevenDays);
+        document.cookie = `force-password-change=true; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
         router.push('/auth/change-password');
       } else {
-        localStorage.removeItem('forcePasswordChange');
-        deleteCookie('force-password-change');
         router.push('/');
       }
     } catch (err) {

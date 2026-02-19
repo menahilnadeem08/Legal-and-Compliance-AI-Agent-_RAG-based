@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react';
 import FileUpload from '../components/FileUpload';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
-import { isEmployeeUser } from '../utils/auth';
+import { isEmployeeUser, getAuthToken } from '../utils/auth';
 
 export default function UploadPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function UploadPage() {
       router.replace('/');
       return;
     }
-    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
+    if (status === 'unauthenticated' && !getAuthToken()) {
       router.replace('/auth/login');
     }
   }, [router, status]);

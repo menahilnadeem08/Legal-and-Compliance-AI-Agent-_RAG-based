@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { setAdminAuth } from '../../../utils/auth';
+import { setAuth, getAuthToken } from '../../../utils/auth';
 
 type Step = 'signup' | 'otp';
 
@@ -30,14 +30,10 @@ export default function AdminSignupPage() {
   });
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-
-    if (token && userStr) {
+    if (getAuthToken()) {
       router.push('/');
       return;
     }
-
     setIsAuthLoading(false);
   }, [router]);
 
@@ -175,7 +171,7 @@ export default function AdminSignupPage() {
         return;
       }
 
-      setAdminAuth(data.token, data.user);
+      setAuth(data.token, data.user);
       router.push('/');
     } catch (err) {
       setError('An error occurred during verification');

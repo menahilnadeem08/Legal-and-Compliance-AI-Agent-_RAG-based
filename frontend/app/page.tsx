@@ -32,7 +32,7 @@ export default function Dashboard() {
       return;
     }
 
-    if (status === 'unauthenticated' && !localStorage.getItem('adminToken')) {
+    if (status === 'unauthenticated' && !getAuthToken()) {
       router.push('/auth/login');
       setIsLoading(false);
     }
