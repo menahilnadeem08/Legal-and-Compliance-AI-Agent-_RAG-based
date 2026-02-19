@@ -2,12 +2,6 @@ import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 10;
 
-// Password validation requirements:
-// - Minimum 8 characters
-// - At least one uppercase letter
-// - At least one special character
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])(?=.{8,})/;
-
 export function validatePassword(password: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -22,6 +16,10 @@ export function validatePassword(password: string): { valid: boolean; errors: st
 
   if (!/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter');
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number');
   }
 
   if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
