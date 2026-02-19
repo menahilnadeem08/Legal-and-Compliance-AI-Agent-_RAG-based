@@ -208,8 +208,9 @@ export async function getEmployees(req: AuthenticatedRequest, res: Response): Pr
     const result = await pool.query(
       `SELECT id, username, email, name, role, is_active, created_at, updated_at
        FROM users
-       WHERE role = 'employee' AND auth_provider = 'local'
-       ORDER BY created_at DESC`
+       WHERE role = 'employee' AND auth_provider = 'local' AND admin_id = $1
+       ORDER BY created_at DESC`,
+      [req.user.id]
     );
 
     res.json({ employees: result.rows });
@@ -230,8 +231,8 @@ export async function deactivateEmployee(req: AuthenticatedRequest, res: Respons
     const { id } = req.params;
 
     const result = await pool.query(
-      'UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND role = $2 RETURNING id, username, is_active',
-      [id, 'employee']
+      'UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND role = $2 AND admin_id = $3 RETURNING id, username, is_active',
+      [id, 'employee', req.user.id]
     );
 
     if (result.rows.length === 0) {
@@ -258,8 +259,8 @@ export async function resendCredentials(req: AuthenticatedRequest, res: Response
     const adminId = req.user.id;
 
     const employeeResult = await pool.query(
-      'SELECT id, username, email, name FROM users WHERE id = $1 AND role = $2',
-      [id, 'employee']
+      'SELECT id, username, email, name FROM users WHERE id = $1 AND role = $2 AND admin_id = $3',
+      [id, 'employee', adminId]
     );
 
     if (employeeResult.rows.length === 0) {
@@ -345,8 +346,8 @@ export async function activateEmployee(req: AuthenticatedRequest, res: Response)
     const { id } = req.params;
 
     const result = await pool.query(
-      'UPDATE users SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND role = $2 RETURNING id, username, is_active',
-      [id, 'employee']
+      'UPDATE users SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND role = $2 AND admin_id = $3 RETURNING id, username, is_active',
+      [id, 'employee', req.user.id]
     );
 
     if (result.rows.length === 0) {
