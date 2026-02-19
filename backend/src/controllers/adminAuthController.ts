@@ -7,14 +7,18 @@ import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { JWT_SECRET } from '../config/secrets';
 import { createSession } from '../helpers/sessionHelper';
-const JWT_EXPIRE = '7d';
+
+const ACCESS_TOKEN_EXPIRE = '15m';
 const OTP_EXPIRY_MINUTES = 10;
 
 function generateOtp(): string {
   return crypto.randomInt(100000, 999999).toString();
 }
 
-// Admin Signup - Create user with email_verified=false, send OTP
+function generateAccessToken(payload: object): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRE });
+}
+
 export async function adminSignup(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { username, email, password, confirmPassword, companyName } = req.body;
@@ -61,7 +65,6 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
           res.status(409).json({ error: 'Email already exists' });
           return;
         }
-        // Unverified account with same email — remove it so user can re-register
         await client.query('DELETE FROM users WHERE id = $1', [existingEmail.rows[0].id]);
       }
 
@@ -98,9 +101,6 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
   }
 }
 
-// Admin Login - Local login for admin users
-// Supports username or email login
-// Blocks password login for Google-only accounts
 export async function adminLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { username, email, password } = req.body;
@@ -126,7 +126,7 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     const user = userResult.rows[0];
 
     if (user.auth_provider === 'google' || !user.password_hash) {
-      res.status(403).json({ 
+      res.status(403).json({
         error: 'This account uses Google OAuth. Please sign in with Google.',
         auth_provider: 'google'
       });
@@ -134,7 +134,7 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     }
 
     if (!user.email_verified) {
-      res.status(403).json({ 
+      res.status(403).json({
         error: 'Email verification required. Please check your email.',
         email_verified: false
       });
@@ -147,22 +147,14 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRE }
-    );
-
-    await createSession(user.id, token);
+    const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = await createSession(user.id);
 
     res.json({
       message: 'Admin login successful',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -178,7 +170,6 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
   }
 }
 
-// Verify OTP after admin signup
 export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { email, otp } = req.body;
@@ -218,7 +209,6 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
       return;
     }
 
-    // OTP verified — mark email as verified and clear OTP fields
     await pool.query(
       `UPDATE users 
        SET email_verified = true, email_verified_at = NOW(), otp_code = NULL, otp_expires_at = NULL, updated_at = CURRENT_TIMESTAMP 
@@ -226,17 +216,14 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
       [user.id]
     );
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRE }
-    );
-
-    await createSession(user.id, token);
+    const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = await createSession(user.id);
 
     res.json({
       message: 'Email verified successfully',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -251,7 +238,6 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
   }
 }
 
-// Resend OTP for admin signup
 export async function resendOtp(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { email } = req.body;

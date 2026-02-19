@@ -17,6 +17,7 @@ async function startServer() {
     console.log('Database initialized');
   } catch (error) {
     console.error('Failed to initialize database:', error);
+    process.exit(1);
   }
 
   // Middleware

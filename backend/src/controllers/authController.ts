@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { hashPassword, comparePassword, validatePassword } from '../utils/passwordUtils';
@@ -6,8 +6,19 @@ import { AuthenticatedRequest } from '../types';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
 import { JWT_SECRET } from '../config/secrets';
-import { createSession } from '../helpers/sessionHelper';
-const JWT_EXPIRE = '7d';
+import {
+  createSession,
+  validateRefreshToken,
+  rotateRefreshToken,
+  revokeSession,
+  revokeAllUserSessions,
+} from '../helpers/sessionHelper';
+
+const ACCESS_TOKEN_EXPIRE = '15m';
+
+function generateAccessToken(payload: object): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRE });
+}
 
 export async function login(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -37,9 +48,8 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
 
     const user = userResult.rows[0];
 
-    // Check if email is verified for employee login
     if (!user.email_verified) {
-      res.status(403).json({ 
+      res.status(403).json({
         error: 'Email verification required. Please verify your email before logging in.',
         email_verified: false
       });
@@ -72,29 +82,15 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
           }
         }
 
-        const token = jwt.sign(
-          {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            role: user.role,
-            forcePasswordChange: true,
-          },
-          JWT_SECRET,
-          { expiresIn: JWT_EXPIRE }
-        );
-
-        await createSession(user.id, token);
+        const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role, forcePasswordChange: true };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = await createSession(user.id);
 
         res.json({
           message: 'Login successful. Please change your password.',
-          token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            role: user.role,
-          },
+          accessToken,
+          refreshToken,
+          user: { id: user.id, username: user.username, email: user.email, role: user.role },
           forcePasswordChange: true,
         });
         return;
@@ -110,28 +106,14 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
       return;
     }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRE }
-    );
-
-    await createSession(user.id, token);
+    const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = await createSession(user.id);
 
     res.json({
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      },
+      accessToken,
+      refreshToken,
+      user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role },
       forcePasswordChange: false,
     });
   } catch (error) {
@@ -149,13 +131,10 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    // Google OAuth always creates/authenticates as admin
-    // Employees are created directly by admin
     const userRole = 'admin';
     const client = await pool.connect();
 
     try {
-      // Check if email already exists with different auth provider
       const existingbyEmail = await client.query(
         'SELECT id, email, auth_provider FROM users WHERE email = $1',
         [email]
@@ -174,7 +153,6 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
         }
       }
 
-      // Check for existing Google user by google_id
       const existingByGoogleId = await client.query(
         'SELECT * FROM users WHERE google_id = $1',
         [googleId]
@@ -198,28 +176,14 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
         user = newUser.rows[0];
       }
 
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          googleId: user.google_id,
-          role: user.role
-        },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRE }
-      );
-
-      await createSession(user.id, token, client);
+      const tokenPayload = { id: user.id, email: user.email, googleId: user.google_id, role: user.role };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = await createSession(user.id, client);
 
       res.json({
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          role: user.role
-        }
+        accessToken,
+        refreshToken,
+        user: { id: user.id, email: user.email, name: user.name, picture: user.picture, role: user.role }
       });
     } finally {
       client.release();
@@ -230,13 +194,12 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
   }
 }
 
-// Logout
 export async function logout(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const { refreshToken } = req.body;
 
-    if (token) {
-      await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+    if (refreshToken) {
+      await revokeSession(refreshToken);
     }
 
     res.json({ message: 'Logged out successfully' });
@@ -246,7 +209,6 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
   }
 }
 
-// Get current user
 export async function getCurrentUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user) {
@@ -254,7 +216,10 @@ export async function getCurrentUser(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    const userResult = await pool.query('SELECT id, email, name, picture FROM users WHERE id = $1', [req.user.id]);
+    const userResult = await pool.query(
+      'SELECT id, email, name, picture, role, username FROM users WHERE id = $1',
+      [req.user.id]
+    );
 
     if (userResult.rows.length === 0) {
       res.status(404).json({ error: 'User not found' });
@@ -267,7 +232,7 @@ export async function getCurrentUser(req: AuthenticatedRequest, res: Response): 
     res.status(500).json({ error: 'Failed to get user' });
   }
 }
-// Change password (protected route, requires JWT)
+
 export async function changePassword(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { currentPassword, newPassword, confirmPassword } = req.body;
@@ -284,7 +249,7 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
 
     const passwordValidation = validatePassword(newPassword);
     if (!passwordValidation.valid) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: 'New password does not meet requirements',
         details: passwordValidation.errors
       });
@@ -313,7 +278,6 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    // If not forced change, require current password
     if (!user.force_password_change) {
       if (!currentPassword) {
         res.status(400).json({ error: 'Current password is required' });
@@ -329,12 +293,14 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
 
     const newPasswordHash = await hashPassword(newPassword);
 
+    // Update password + revoke all existing sessions
     await pool.query(
       `UPDATE users 
        SET password_hash = $1, 
            is_temp_password = false,
            temp_password_expires_at = NULL,
            force_password_change = false,
+           sessions_revoked_at = NOW(),
            updated_at = CURRENT_TIMESTAMP 
        WHERE id = $2`,
       [newPasswordHash, req.user.id]
@@ -344,9 +310,75 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
       await TempPasswordService.clearTempPassword(req.user.id);
     }
 
-    res.json({ message: 'Password changed successfully' });
+    // Delete all sessions (invalidates all refresh tokens)
+    await revokeAllUserSessions(req.user.id);
+
+    // Issue a fresh token pair so the current device stays logged in
+    const tokenPayload = { id: req.user.id, username: req.user.username, email: req.user.email, role: req.user.role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = await createSession(req.user.id);
+
+    res.json({
+      message: 'Password changed successfully',
+      accessToken,
+      refreshToken,
+    });
   } catch (error) {
     console.error('[CHANGE-PASSWORD] Error:', error);
     res.status(500).json({ error: 'Failed to change password' });
+  }
+}
+
+/**
+ * POST /auth/refresh — public endpoint (no authenticate middleware).
+ * Accepts a refresh token, validates it, rotates it, returns new access + refresh tokens.
+ */
+export async function refresh(req: Request, res: Response): Promise<void> {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({ error: 'Refresh token is required' });
+      return;
+    }
+
+    const session = await validateRefreshToken(refreshToken);
+    if (!session) {
+      res.status(401).json({ error: 'Invalid or expired refresh token' });
+      return;
+    }
+
+    const userResult = await pool.query(
+      'SELECT id, username, email, role, is_active, sessions_revoked_at FROM users WHERE id = $1',
+      [session.user_id]
+    );
+
+    if (userResult.rows.length === 0 || !userResult.rows[0].is_active) {
+      await revokeSession(refreshToken);
+      res.status(401).json({ error: 'User not found or inactive' });
+      return;
+    }
+
+    const user = userResult.rows[0];
+
+    // If sessions were revoked after this session was created, reject it
+    if (user.sessions_revoked_at) {
+      const sessionCreatedAt = new Date(session.created_at).getTime();
+      const revokedAt = new Date(user.sessions_revoked_at).getTime();
+      if (sessionCreatedAt < revokedAt) {
+        await revokeSession(refreshToken);
+        res.status(401).json({ error: 'Session revoked. Please log in again.' });
+        return;
+      }
+    }
+
+    const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
+    const newAccessToken = generateAccessToken(tokenPayload);
+    const newRefreshToken = await rotateRefreshToken(session.id);
+
+    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+  } catch (error) {
+    console.error('[REFRESH] Error:', error);
+    res.status(500).json({ error: 'Token refresh failed' });
   }
 }

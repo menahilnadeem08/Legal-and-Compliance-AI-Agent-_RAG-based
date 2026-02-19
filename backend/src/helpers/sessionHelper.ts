@@ -1,30 +1,71 @@
+import crypto from 'crypto';
 import pool from '../config/database';
 
-const SESSION_DURATION = '7 days';
-const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const REFRESH_TOKEN_DURATION = '7 days';
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Create a session record in the database.
- * @param userId - The user's ID
- * @param token - The JWT token to store
- * @param client - Optional DB client (use inside existing transactions)
- */
-export async function createSession(
-  userId: number,
-  token: string,
-  client?: { query: typeof pool.query }
-): Promise<void> {
-  const db = client || pool;
-  await db.query(
-    `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL '${SESSION_DURATION}')`,
-    [userId, token]
-  );
+function generateRefreshToken(): string {
+  return crypto.randomBytes(40).toString('hex');
 }
 
 /**
- * Delete all sessions whose expires_at is in the past.
- * Safe to call at any time — only removes already-invalid rows.
+ * Create a session with a new refresh token. Returns the refresh token.
  */
+export async function createSession(
+  userId: number,
+  client?: { query: typeof pool.query }
+): Promise<string> {
+  const refreshToken = generateRefreshToken();
+  const db = client || pool;
+  await db.query(
+    `INSERT INTO sessions (user_id, token, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '${REFRESH_TOKEN_DURATION}')`,
+    [userId, refreshToken]
+  );
+  return refreshToken;
+}
+
+/**
+ * Validate a refresh token. Returns the session row or null.
+ */
+export async function validateRefreshToken(
+  refreshToken: string
+): Promise<{ id: number; user_id: number; created_at: Date } | null> {
+  const result = await pool.query(
+    'SELECT id, user_id, created_at FROM sessions WHERE token = $1 AND expires_at > NOW()',
+    [refreshToken]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Replace the old refresh token with a new one (rotation).
+ * Returns the new refresh token.
+ */
+export async function rotateRefreshToken(sessionId: number): Promise<string> {
+  const newToken = generateRefreshToken();
+  await pool.query(
+    `UPDATE sessions SET token = $1, expires_at = NOW() + INTERVAL '${REFRESH_TOKEN_DURATION}' WHERE id = $2`,
+    [newToken, sessionId]
+  );
+  return newToken;
+}
+
+/**
+ * Delete a single session by its refresh token.
+ */
+export async function revokeSession(refreshToken: string): Promise<void> {
+  await pool.query('DELETE FROM sessions WHERE token = $1', [refreshToken]);
+}
+
+/**
+ * Delete ALL sessions for a user (forces re-login on every device).
+ */
+export async function revokeAllUserSessions(userId: number): Promise<number> {
+  const result = await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  return result.rowCount ?? 0;
+}
+
 export async function cleanExpiredSessions(): Promise<number> {
   const result = await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
   const count = result.rowCount ?? 0;
@@ -34,10 +75,6 @@ export async function cleanExpiredSessions(): Promise<number> {
   return count;
 }
 
-/**
- * Run an immediate cleanup, then schedule recurring cleanup every 24 hours.
- * Returns the interval handle so the caller can clear it on shutdown.
- */
 export function startSessionCleanupScheduler(): NodeJS.Timeout {
   cleanExpiredSessions().catch((err) =>
     console.error('[SESSION-CLEANUP] Initial cleanup failed:', err)

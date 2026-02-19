@@ -25,7 +25,7 @@ import {
   validateCompareVersionsDetailed,
   validateDeleteDocument
 } from '../middleware/validationSchemas';
-import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
+import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword, refresh } from '../controllers/authController';
 import { adminSignup, adminLogin, verifyOtp, resendOtp } from '../controllers/adminAuthController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee, resendCredentials } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
@@ -52,6 +52,7 @@ router.post('/auth/admin/signup', adminSignup as any);
 router.post('/auth/admin/verify-otp', verifyOtp as any);
 router.post('/auth/admin/resend-otp', resendOtp as any);
 router.post('/auth/admin/login', adminLogin as any);
+router.post('/auth/refresh', refresh as any);
 
 router.get('/health', (req: any, res: any) => {
   res.json({

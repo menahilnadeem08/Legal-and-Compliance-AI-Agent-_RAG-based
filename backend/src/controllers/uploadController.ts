@@ -1,23 +1,13 @@
 import { Request, Response } from 'express';
 import { UploadService } from '../services/uploadService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
+import { AuthenticatedRequest } from '../types';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
 const upload = multer({ dest: 'uploads/' });
 const uploadService = new UploadService();
-
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    email?: string;
-    username?: string;
-    name?: string;
-    picture?: string;
-    role?: string;
-  };
-}
 
 export const uploadMiddleware = upload.single('file');
 

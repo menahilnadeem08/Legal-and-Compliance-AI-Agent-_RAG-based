@@ -303,10 +303,10 @@ export class DocumentService {
   /**
    * Check if a document has a newer version available
    */
-  async checkForNewerVersion(documentId: string): Promise<{ hasNewer: boolean; newer?: DocumentVersion }> {
+  async checkForNewerVersion(documentId: string, adminId: number): Promise<{ hasNewer: boolean; newer?: DocumentVersion }> {
     const currentDoc = await pool.query(
-      'SELECT name, version, upload_date FROM documents WHERE id = $1',
-      [documentId]
+      'SELECT name, version, upload_date FROM documents WHERE id = $1 AND admin_id = $2',
+      [documentId, adminId]
     );
 
     if (currentDoc.rows.length === 0) {
@@ -318,10 +318,10 @@ export class DocumentService {
     const newerResult = await pool.query(
       `SELECT id, name, type, version, upload_date, is_latest
        FROM documents
-       WHERE name = $1 AND upload_date > $2
+       WHERE name = $1 AND admin_id = $2 AND upload_date > $3
        ORDER BY upload_date DESC
        LIMIT 1`,
-      [name, upload_date]
+      [name, adminId, upload_date]
     );
 
     return {
@@ -330,15 +330,14 @@ export class DocumentService {
     };
   }
 
-  async deleteDocument(documentId: string) {
+  async deleteDocument(documentId: string, adminId: number) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Get the document being deleted
       const docResult = await client.query(
-        'SELECT name, type, is_latest FROM documents WHERE id = $1',
-        [documentId]
+        'SELECT name, type, is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        [documentId, adminId]
       );
 
       if (docResult.rows.length === 0) {
@@ -347,25 +346,23 @@ export class DocumentService {
 
       const { name, type, is_latest } = docResult.rows[0];
 
-      // Delete the document
-      await client.query('DELETE FROM documents WHERE id = $1', [documentId]);
+      await client.query('DELETE FROM documents WHERE id = $1 AND admin_id = $2', [documentId, adminId]);
 
       let activatedVersionId = null;
 
-      // If the deleted document was active (is_latest = true), activate the most recent inactive version
       if (is_latest) {
         const inactiveVersion = await client.query(
           `SELECT id FROM documents 
-           WHERE name = $1 AND type = $2 AND is_latest = false 
+           WHERE name = $1 AND type = $2 AND admin_id = $3 AND is_latest = false 
            ORDER BY upload_date DESC 
            LIMIT 1`,
-          [name, type]
+          [name, type, adminId]
         );
 
         if (inactiveVersion.rows.length > 0) {
           await client.query(
-            'UPDATE documents SET is_latest = true WHERE id = $1',
-            [inactiveVersion.rows[0].id]
+            'UPDATE documents SET is_latest = true WHERE id = $1 AND admin_id = $2',
+            [inactiveVersion.rows[0].id, adminId]
           );
           activatedVersionId = inactiveVersion.rows[0].id;
         }
@@ -734,15 +731,14 @@ Be specific and actionable. Focus on business/legal impact.`;
    * Activate a document version
    * Only allows activation if no other document with same name and type is already active
    */
-  async activateDocument(documentId: string) {
+  async activateDocument(documentId: string, adminId: number) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Get the document to activate
       const docResult = await client.query(
-        'SELECT name, type, is_latest FROM documents WHERE id = $1',
-        [documentId]
+        'SELECT name, type, is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        [documentId, adminId]
       );
 
       if (docResult.rows.length === 0) {
@@ -751,7 +747,6 @@ Be specific and actionable. Focus on business/legal impact.`;
 
       const { name, type, is_latest } = docResult.rows[0];
 
-      // If already active, return early
       if (is_latest) {
         await client.query('COMMIT');
         return { 
@@ -760,11 +755,10 @@ Be specific and actionable. Focus on business/legal impact.`;
         };
       }
 
-      // Check if another document with same name and type is already active
       const activeDoc = await client.query(
         `SELECT id, version FROM documents 
-         WHERE name = $1 AND type = $2 AND is_latest = true`,
-        [name, type]
+         WHERE name = $1 AND type = $2 AND admin_id = $3 AND is_latest = true`,
+        [name, type, adminId]
       );
 
       if (activeDoc.rows.length > 0) {
@@ -772,10 +766,9 @@ Be specific and actionable. Focus on business/legal impact.`;
         throw new Error(`Cannot activate: Another version (${activeDoc.rows[0].version}) of this document is already active`);
       }
 
-      // Activate the document
       await client.query(
-        'UPDATE documents SET is_latest = true WHERE id = $1',
-        [documentId]
+        'UPDATE documents SET is_latest = true WHERE id = $1 AND admin_id = $2',
+        [documentId, adminId]
       );
 
       await client.query('COMMIT');
@@ -794,15 +787,14 @@ Be specific and actionable. Focus on business/legal impact.`;
   /**
    * Deactivate a document version
    */
-  async deactivateDocument(documentId: string) {
+  async deactivateDocument(documentId: string, adminId: number) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Get the document to deactivate
       const docResult = await client.query(
-        'SELECT is_latest FROM documents WHERE id = $1',
-        [documentId]
+        'SELECT is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        [documentId, adminId]
       );
 
       if (docResult.rows.length === 0) {
@@ -811,7 +803,6 @@ Be specific and actionable. Focus on business/legal impact.`;
 
       const { is_latest } = docResult.rows[0];
 
-      // If already inactive, return early
       if (!is_latest) {
         await client.query('COMMIT');
         return { 
@@ -820,10 +811,9 @@ Be specific and actionable. Focus on business/legal impact.`;
         };
       }
 
-      // Deactivate the document
       await client.query(
-        'UPDATE documents SET is_latest = false WHERE id = $1',
-        [documentId]
+        'UPDATE documents SET is_latest = false WHERE id = $1 AND admin_id = $2',
+        [documentId, adminId]
       );
 
       await client.query('COMMIT');
