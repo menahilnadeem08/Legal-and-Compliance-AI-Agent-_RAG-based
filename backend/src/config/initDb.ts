@@ -118,19 +118,20 @@ export async function initializeAuthTables() {
       )
     `);
 
-    // Verify foreign key relationship exists
+    // Ensure foreign key relationship exists
     await client.query(`
-      ALTER TABLE messages
-      DROP CONSTRAINT IF EXISTS messages_conversation_id_fkey
-    `).catch(() => {});
-
-    await client.query(`
-      ALTER TABLE messages
-      ADD CONSTRAINT messages_conversation_id_fkey
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-    `).catch(() => {
-      // Constraint might already exist
-    });
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'messages_conversation_id_fkey'
+        ) THEN
+          ALTER TABLE messages
+            ADD CONSTRAINT messages_conversation_id_fkey
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE;
+        END IF;
+      END
+      $$;
+    `);
 
     // Create indexes
     await client.query(`
@@ -171,7 +172,8 @@ export async function initializeAuthTables() {
       ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP,
       ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS otp_code VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP
+      ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS sessions_revoked_at TIMESTAMP
     `);
 
     // Create indexes for audit_logs
