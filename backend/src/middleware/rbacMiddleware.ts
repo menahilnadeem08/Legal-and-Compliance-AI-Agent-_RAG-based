@@ -33,7 +33,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     logger.success('AUTH', 'Session found in database');
 
     const userResult = await pool.query(
-      'SELECT id, username, email, name, role, admin_id FROM users WHERE id = $1',
+      'SELECT id, username, email, name, role, admin_id, force_password_change FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -50,7 +50,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       username: user.username,
       email: user.email,
       role: user.role,
-      admin_id: user.admin_id
+      admin_id: user.admin_id,
+      forcePasswordChange: user.force_password_change || false,
     };
 
     next();

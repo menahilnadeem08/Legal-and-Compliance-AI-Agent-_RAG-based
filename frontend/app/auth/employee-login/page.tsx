@@ -13,9 +13,10 @@ export default function EmployeeLoginPage() {
   const [password, setPassword] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // Redirect authenticated users away from login page
+  // Redirect only if employee is already logged in via localStorage
+  // Allow this page even if admin is logged in (admin can help employee login)
   useEffect(() => {
-    // Check if user is logged in via NextAuth (admin) or localStorage (employee)
+    // Check if user is logged in via localStorage (employee)
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
     
@@ -25,23 +26,24 @@ export default function EmployeeLoginPage() {
       return;
     }
 
-    // If admin is authenticated via NextAuth
-    if (session && session.user) {
-      setIsAuthLoading(false);
-      router.push('/');
-      return;
-    }
-
-    // If employee is authenticated via localStorage
+    // If employee is authenticated via localStorage, redirect to home
     if (token && userStr) {
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // No authentication found, show login page
+    // Otherwise show login page (even if admin is logged in)
     setIsAuthLoading(false);
-  }, [session, status, router]);
+  }, [status, router]);
+
+  const setCookie = (name: string, value: string, maxAgeSec: number) => {
+    document.cookie = `${name}=${value}; path=/; max-age=${maxAgeSec}; SameSite=Lax`;
+  };
+
+  const deleteCookie = (name: string) => {
+    document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,13 +71,23 @@ export default function EmployeeLoginPage() {
       }
 
       const data = await response.json();
-      
-      // Store token and user info in localStorage
-      localStorage.setItem('token', data.token);
+
+      const authToken = data.token || data.accessToken;
+      localStorage.setItem('token', authToken);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Redirect to home page
-      router.push('/');
+      const sevenDays = 7 * 24 * 60 * 60;
+      setCookie('employee-token', authToken, sevenDays);
+
+      if (data.forcePasswordChange) {
+        localStorage.setItem('forcePasswordChange', 'true');
+        setCookie('force-password-change', 'true', sevenDays);
+        router.push('/auth/change-password');
+      } else {
+        localStorage.removeItem('forcePasswordChange');
+        deleteCookie('force-password-change');
+        router.push('/');
+      }
     } catch (err) {
       setError('An error occurred during login');
       console.error(err);

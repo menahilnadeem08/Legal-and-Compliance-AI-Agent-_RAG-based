@@ -1,37 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const token = req.cookies.get("__Secure-next-auth.session-token")?.value ||
-                req.cookies.get("next-auth.session-token")?.value;
-  
-  // If there's a NextAuth token (admin), allow access
-  if (token) {
-    return NextResponse.next();
-  }
-
-  // For public routes, allow access (auth routes)
   const pathname = req.nextUrl.pathname;
-  const publicRoutes = ["/auth"];
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
+
+  const nextAuthToken =
+    req.cookies.get("__Secure-next-auth.session-token")?.value ||
+    req.cookies.get("next-auth.session-token")?.value;
+
+  const employeeToken = req.cookies.get("employee-token")?.value;
+  const forcePasswordChange =
+    req.cookies.get("force-password-change")?.value === "true";
+
+  // All /auth/* routes are public (login, signup, activation, change-password)
+  if (pathname.startsWith("/auth")) {
+    if (employeeToken) {
+      if (forcePasswordChange) {
+        // Must change password — only allow change-password page
+        if (!pathname.startsWith("/auth/change-password")) {
+          return NextResponse.redirect(
+            new URL("/auth/change-password", req.url)
+          );
+        }
+      } else if (pathname.startsWith("/auth/change-password")) {
+        // Already changed password — block access to change-password
+        return NextResponse.redirect(new URL("/", req.url));
+      }
+    }
     return NextResponse.next();
   }
 
-  // Only truly admin-only routes require NextAuth token
-  // Home page (/) handles both admin and employee auth client-side
-  // Employee routes (/profile, /documents, /chat) handle auth client-side
-  const adminRoutes = ["/upload", "/admin"];
-  if (adminRoutes.some(route => pathname === route || pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+  // Admin authenticated via NextAuth — allow everything
+  if (nextAuthToken) {
+    return NextResponse.next();
   }
 
-  return NextResponse.next();
+  // Employee authenticated via JWT cookie
+  if (employeeToken) {
+    if (forcePasswordChange) {
+      return NextResponse.redirect(new URL("/auth/change-password", req.url));
+    }
+
+    // Admin-only routes — block employees
+    const adminOnlyRoutes = ["/upload", "/admin"];
+    if (
+      adminOnlyRoutes.some(
+        (route) => pathname === route || pathname.startsWith(route + "/")
+      )
+    ) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+
+    return NextResponse.next();
+  }
+
+  // No authentication at all — redirect to login
+  return NextResponse.redirect(new URL("/auth/login", req.url));
 }
 
 export const config = {
   matcher: [
-    "/upload",
-    "/admin",
-    "/",
-    "/((?!auth|profile|document|chat|api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon\\.ico).*)",
   ],
 };

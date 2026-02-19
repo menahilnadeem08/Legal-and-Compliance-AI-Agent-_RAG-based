@@ -26,7 +26,6 @@ export default function AdminDashboard() {
   // Form state
   const [formData, setFormData] = useState({
     username: '',
-    password: '',
     email: '',
     name: '',
   });
@@ -82,13 +81,8 @@ export default function AdminDashboard() {
       setError('');
       setSuccessMessage('');
 
-      if (!formData.username || !formData.password || !formData.email) {
-        setError('Username, password, and email are required');
-        return;
-      }
-
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters');
+      if (!formData.username || !formData.email) {
+        setError('Username and email are required');
         return;
       }
 
@@ -113,8 +107,8 @@ export default function AdminDashboard() {
         return;
       }
 
-      setSuccessMessage('Employee created successfully!');
-      setFormData({ username: '', password: '', email: '', name: '' });
+      setSuccessMessage('Employee created successfully! A temporary password has been sent to their email.');
+      setFormData({ username: '', email: '', name: '' });
       await loadEmployees();
     } catch (err) {
       setError('An error occurred while creating employee');
@@ -278,22 +272,6 @@ export default function AdminDashboard() {
                       value={formData.name}
                       onChange={handleInputChange}
                       placeholder="John Doe"
-                      disabled={loading}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="password" className="block text-sm font-semibold text-gray-300 mb-3">
-                      Password
-                    </label>
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Minimum 6 characters"
                       disabled={loading}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
                     />

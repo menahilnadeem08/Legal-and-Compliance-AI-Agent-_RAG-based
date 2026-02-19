@@ -6,11 +6,28 @@ const handler = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          prompt: "consent",
+        },
+      },
     }),
   ],
   callbacks: {
     async signIn({ user, account, profile, email, credentials }) {
       try {
+        // Detect if user is signing in as employee or admin
+        // by checking if role was stored in localStorage before Google signin
+        let userRole = 'admin'; // default to admin
+        
+        // The role might be passed via the state parameter if available
+        // For now, we default to admin for Google OAuth users
+        // Employees can still be created by admins and use local login
+        
+        console.log('[NEXTAUTH] 🔐 Google Sign In Callback');
+        console.log('[NEXTAUTH] User email:', user.email);
+        console.log('[NEXTAUTH] User role:', userRole);
+
         // Send user data to backend for OAuth processing
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/signin`, {
           method: "POST",
@@ -22,22 +39,25 @@ const handler = NextAuth({
             email: user.email,
             name: user.name,
             image: user.image,
+            role: userRole,
           }),
         });
 
         if (!response.ok) {
-          console.error("Backend signin error:", response.status, response.statusText);
+          console.error("[NEXTAUTH] Backend signin error:", response.status, response.statusText);
           return false;
         }
 
         const data = await response.json();
         user.id = data.user.id;
         (user as any).token = data.token;
+        (user as any).role = data.user.role;
         
+        console.log('[NEXTAUTH] ✅ Signin successful');
 
         return true;
       } catch (error) {
-        console.error("Sign in error:", error);
+        console.error("[NEXTAUTH] Sign in error:", error);
         return false;
       }
     },
@@ -46,6 +66,7 @@ const handler = NextAuth({
       if (user) {
         token.id = user.id;
         token.token = (user as any)?.token;
+        token.role = (user as any)?.role;
       }
       return token;
     },
@@ -54,6 +75,7 @@ const handler = NextAuth({
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).token = token.token;
+        (session.user as any).role = token.role;
       }
       return session;
     },

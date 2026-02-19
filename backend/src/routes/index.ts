@@ -26,8 +26,11 @@ import {
   validateDeleteDocument
 } from '../middleware/validationSchemas';
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword } from '../controllers/authController';
-import { createEmployee, getEmployees, deactivateEmployee, activateEmployee } from '../controllers/adminController';
+import { adminSignup, adminLogin } from '../controllers/adminAuthController';
+import { createEmployee, getEmployees, deactivateEmployee, activateEmployee, resendCredentials } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
+import { enforcePasswordChange } from '../middleware/enforcePasswordChange';
+
 import {
   createConversation,
   listConversations,
@@ -42,18 +45,24 @@ import {
 
 const router = express.Router();
 
-// ===== Authentication Routes =====
+// Authentication Routes
 router.post('/auth/signin', handleGoogleSignIn as any);
-router.post('/auth/login', login as any); // Employee local login
+router.post('/auth/login', login as any); // Employee local login (with temp password support)
+router.post('/auth/employee-login', login as any); // Alias for employee login
 router.post('/auth/logout', authenticate as any, logout as any);
 router.get('/auth/me', authenticate as any, getCurrentUser as any);
 router.post('/auth/change-password', authenticate as any, changePassword as any);
+
+// ===== Admin Authentication Routes (separate from employee auth) =====
+router.post('/auth/admin/signup', adminSignup as any); // Admin signup with registration key
+router.post('/auth/admin/login', adminLogin as any); // Admin local login
 
 // ===== Admin Routes (protected with admin role) =====
 router.post('/admin/create-user', authenticate as any, requireRole('admin') as any, createEmployee as any);
 router.get('/admin/employees', authenticate as any, requireRole('admin') as any, getEmployees as any);
 router.put('/admin/employees/:id/deactivate', authenticate as any, requireRole('admin') as any, deactivateEmployee as any);
 router.put('/admin/employees/:id/activate', authenticate as any, requireRole('admin') as any, activateEmployee as any);
+router.post('/admin/employees/:id/resend-credentials', authenticate as any, requireRole('admin') as any, resendCredentials as any);
 
 // ===== Health Check / Connection Test =====
 router.get('/health', (req: any, res: any) => {
@@ -68,6 +77,7 @@ router.get('/health', (req: any, res: any) => {
 // ===== Agent/Query Endpoint (requires authentication) =====
 router.post('/query', 
   authenticate as any,
+  enforcePasswordChange as any,
   validateAgentQuery,
   handleValidationErrors,
   agentQuery as any
@@ -76,16 +86,18 @@ router.post('/query',
 // ===== Streaming Query Endpoint (with real-time logs) =====
 router.post('/query/stream', 
   authenticate as any,
+  enforcePasswordChange as any,
   validateAgentQuery,
   handleValidationErrors,
   queryStreamController as any
 );
 
 // Clear short-term session memory for the given sessionId
-router.post('/session/clear', authenticate as any, clearSessionController as any);
+router.post('/session/clear', authenticate as any, enforcePasswordChange as any, clearSessionController as any);
 // ===== Document Upload (only admins) =====
 router.post('/upload', 
   authenticate as any,
+  enforcePasswordChange as any,
   requireRole('admin') as any,
   uploadMiddleware,
   validateDocumentUpload,
@@ -95,13 +107,14 @@ router.post('/upload',
 );
 
 // ===== Document Management (requires authentication) =====
-router.get('/documents', authenticate as any, listDocuments as any);
-router.get('/documents/outdated', authenticate as any, getOutdatedDocuments as any);
-router.get('/documents/suggestions', authenticate as any, getSuggestions as any);
+router.get('/documents', authenticate as any, enforcePasswordChange as any, listDocuments as any);
+router.get('/documents/outdated', authenticate as any, enforcePasswordChange as any, getOutdatedDocuments as any);
+router.get('/documents/suggestions', authenticate as any, enforcePasswordChange as any, getSuggestions as any);
 
 // Version history endpoint (must come before other :name routes)
 router.get('/documents/versions/:name',
   authenticate as any,
+  enforcePasswordChange as any,
   validateGetVersionHistory,
   handleValidationErrors,
   getDocumentVersionHistory as any

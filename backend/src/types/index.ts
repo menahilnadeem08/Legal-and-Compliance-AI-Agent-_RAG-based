@@ -9,6 +9,9 @@ export interface AuthenticatedRequest extends Request {
     picture?: string;
     role?: string;
     admin_id?: number;
+    auth_provider?: string;
+    email_verified?: boolean;
+    forcePasswordChange?: boolean;
   };
   document?: {
     id: string;
@@ -52,4 +55,17 @@ export interface Document {
     content: string;             // Quote from the document
     relevance_score?: number;    // How relevant this citation is (0-1)
     search_method?: string;      // 'vector', 'keyword', or 'both'
+  }
+
+  export interface AuditLog {
+    id: number;
+    admin_id: number;
+    actor_id?: number;
+    action: string;
+    resource_type?: string;
+    resource_id?: string;
+    metadata: Record<string, any>;
+    ip_address?: string;
+    user_agent?: string;
+    created_at: Date;
   }
