@@ -156,7 +156,7 @@ export async function refreshAccessToken(): Promise<string | null> {
  * Drop-in replacement for fetch() that:
  *   1. Attaches Authorization: Bearer <accessToken>
  *   2. On 401, tries to refresh the token and retries the request once
- *   3. If refresh fails, clears auth and redirects to /auth/login
+ *   3. If refresh fails, clears auth, logs reason, and redirects to /auth/login
  */
 export async function apiFetch(
   input: string,
@@ -172,10 +172,24 @@ export async function apiFetch(
   let res = await doFetch(token);
 
   if (res.status === 401) {
+    try {
+      const errorData = await res.clone().json();
+      
+      // If user was deleted/deactivated from DB, log it explicitly
+      if (errorData.error === 'User not found') {
+        console.warn('🔐 User account no longer exists. Logging out...');
+      } else if (errorData.error === 'Account has been deactivated') {
+        console.warn('🔐 User account has been deactivated. Logging out...');
+      }
+    } catch {
+      // If response body isn't JSON, silently continue
+    }
+
     const newToken = await refreshAccessToken();
     if (newToken) {
       res = await doFetch(newToken);
     } else if (typeof window !== 'undefined') {
+      clearAllAuth();
       window.location.href = '/auth/login';
     }
   }

@@ -17,7 +17,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     const decoded = jwt.verify(token, JWT_SECRET) as any;
 
     const userResult = await pool.query(
-      'SELECT id, username, email, name, role, admin_id, force_password_change, sessions_revoked_at FROM users WHERE id = $1',
+      'SELECT id, username, email, name, role, admin_id, force_password_change, sessions_revoked_at, is_active FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -27,6 +27,12 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     const user = userResult.rows[0];
+
+    // Check if user account is active (not deactivated)
+    if (!user.is_active) {
+      logger.warn('AUTH', 'Attempt to login with deactivated account', `${user.username}`);
+      return res.status(401).json({ error: 'Account has been deactivated' });
+    }
 
     // Reject access tokens issued before the last session revocation
     if (user.sessions_revoked_at) {
