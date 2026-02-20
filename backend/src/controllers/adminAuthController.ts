@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { JWT_SECRET } from '../config/secrets';
 import { createSession } from '../helpers/sessionHelper';
+import { authError, authSuccess, isDbError, lockedMessage, ERROR_CODES } from '../utils/authErrors';
 
 const ACCESS_TOKEN_EXPIRE = '15m';
 const OTP_EXPIRY_MINUTES = 10;
@@ -24,21 +25,29 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
     const { username, email, password, confirmPassword, companyName } = req.body;
 
     if (!username || !email || !password || !confirmPassword) {
-      res.status(400).json({ error: 'Username, email, password, and confirm password are required' });
+      console.error('[ADMIN:adminSignup] Missing required fields');
+      authError(res, 400, 'Name, email, and password are required', ERROR_CODES.MISSING_FIELDS);
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.error('[ADMIN:adminSignup] Invalid email format');
+      authError(res, 400, 'Please enter a valid email address', ERROR_CODES.INVALID_EMAIL_FORMAT);
       return;
     }
 
     if (password !== confirmPassword) {
-      res.status(400).json({ error: 'Passwords do not match' });
+      console.error('[ADMIN:adminSignup] Passwords do not match');
+      authError(res, 400, 'Passwords do not match', ERROR_CODES.MISSING_FIELDS);
       return;
     }
 
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.valid) {
-      res.status(400).json({
-        error: 'Password does not meet requirements',
-        details: passwordValidation.errors
-      });
+      console.error('[ADMIN:adminSignup] Weak password');
+      authError(res, 400, 'Password must be at least 8 characters with uppercase, number, and special character', ERROR_CODES.WEAK_PASSWORD);
       return;
     }
 
@@ -51,7 +60,9 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
       );
 
       if (existingUsername.rows.length > 0) {
-        res.status(409).json({ error: 'Username already exists' });
+        client.release();
+        console.warn(`[ADMIN:adminSignup] Username exists: ${username}`);
+        authError(res, 409, 'An account with this email already exists', ERROR_CODES.EMAIL_EXISTS);
         return;
       }
 
@@ -62,7 +73,9 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
 
       if (existingEmail.rows.length > 0) {
         if (existingEmail.rows[0].email_verified) {
-          res.status(409).json({ error: 'Email already exists' });
+          client.release();
+          console.warn(`[ADMIN:adminSignup] Email exists (verified): ${email}`);
+          authError(res, 409, 'An account with this email already exists', ERROR_CODES.EMAIL_EXISTS);
           return;
         }
         await client.query('DELETE FROM users WHERE id = $1', [existingEmail.rows[0].id]);
@@ -82,11 +95,18 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
 
       const user = newUser.rows[0];
 
-      await EmailService.sendOtpEmail(email, otp, user.name || username);
+      try {
+        await EmailService.sendOtpEmail(email, otp, user.name || username);
+      } catch (emailError) {
+        console.error('[ADMIN:adminSignup] Email send failed:', emailError);
+        client.release();
+        authError(res, 500, 'Account created but verification email failed to send. Contact support', ERROR_CODES.UNEXPECTED_ERROR);
+        return;
+      }
 
       client.release();
 
-      res.status(201).json({
+      authSuccess(res, 201, {
         message: 'Account created. Please verify your email with the OTP sent to your inbox.',
         requiresVerification: true,
         email: user.email
@@ -96,8 +116,12 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
       throw error;
     }
   } catch (error) {
-    console.error('[ADMIN-SIGNUP] Error:', error);
-    res.status(500).json({ error: 'Admin signup failed' });
+    console.error('[ADMIN:adminSignup]', error);
+    if (isDbError(error)) {
+      authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
+    }
+    authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
 }
 
@@ -107,43 +131,59 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     const loginIdentifier = username || email;
 
     if (!loginIdentifier || !password) {
-      res.status(400).json({ error: 'Username/email and password are required' });
+      console.error('[ADMIN:adminLogin] Missing credentials');
+      authError(res, 400, 'Email and password are required', ERROR_CODES.MISSING_FIELDS);
       return;
     }
 
     const userResult = await pool.query(
-      `SELECT id, username, email, name, role, password_hash, is_active, auth_provider, email_verified
+      `SELECT id, username, email, name, role, password_hash, is_active, auth_provider, email_verified, locked_until
        FROM users
-       WHERE ${username ? 'username' : 'email'} = $1 AND role = 'admin' AND is_active = true`,
+       WHERE ${username ? 'username' : 'email'} = $1 AND role = 'admin'`,
       [loginIdentifier]
     );
 
     if (userResult.rows.length === 0) {
-      res.status(401).json({ error: 'Invalid credentials' });
+      console.error('[ADMIN:adminLogin] User not found');
+      authError(res, 401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
       return;
     }
 
     const user = userResult.rows[0];
 
+    // Check if account is locked
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      console.warn(`[ADMIN:adminLogin] Account locked: ${user.email}`);
+      authError(res, 423, lockedMessage(new Date(user.locked_until)), ERROR_CODES.ACCOUNT_LOCKED);
+      return;
+    }
+
+    // Check if account is inactive
+    if (!user.is_active) {
+      console.warn(`[ADMIN:adminLogin] Inactive account: ${user.email}`);
+      authError(res, 403, 'Account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
+      return;
+    }
+
+    // Check if using Google OAuth
     if (user.auth_provider === 'google' || !user.password_hash) {
-      res.status(403).json({
-        error: 'This account uses Google OAuth. Please sign in with Google.',
-        auth_provider: 'google'
-      });
+      console.warn(`[ADMIN:adminLogin] Google OAuth account: ${user.email}`);
+      authError(res, 403, 'This account uses Google Sign-In. Please use the Google login button', ERROR_CODES.GOOGLE_ACCOUNT);
       return;
     }
 
+    // Check email verification
     if (!user.email_verified) {
-      res.status(403).json({
-        error: 'Email verification required. Please check your email.',
-        email_verified: false
-      });
+      console.warn(`[ADMIN:adminLogin] Unverified email: ${user.email}`);
+      authError(res, 403, 'Please verify your email. Check your inbox for the verification code', ERROR_CODES.EMAIL_UNVERIFIED);
       return;
     }
 
+    // Check password
     const passwordMatch = await comparePassword(password, user.password_hash);
     if (!passwordMatch) {
-      res.status(401).json({ error: 'Invalid credentials' });
+      console.error(`[ADMIN:adminLogin] Invalid password: ${user.email}`);
+      authError(res, 401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
       return;
     }
 
@@ -151,7 +191,7 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
-    res.json({
+    authSuccess(res, 200, {
       message: 'Admin login successful',
       accessToken,
       refreshToken,
@@ -165,8 +205,12 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
       }
     });
   } catch (error) {
-    console.error('[ADMIN-LOGIN] Error:', error);
-    res.status(500).json({ error: 'Admin login failed' });
+    console.error('[ADMIN:adminLogin]', error);
+    if (isDbError(error)) {
+      authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
+    }
+    authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
 }
 
@@ -175,43 +219,70 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
     const { email, otp } = req.body;
 
     if (!email || !otp) {
-      res.status(400).json({ error: 'Email and OTP are required' });
+      console.error('[ADMIN:verifyOtp] Missing email or OTP');
+      authError(res, 400, 'Email and OTP are required', ERROR_CODES.MISSING_FIELDS);
       return;
     }
 
     const userResult = await pool.query(
-      `SELECT id, username, email, name, role, otp_code, otp_expires_at
+      `SELECT id, username, email, name, role, otp_code, otp_expires_at, otp_failed_attempts
        FROM users
        WHERE email = $1 AND role = 'admin' AND email_verified = false`,
       [email]
     );
 
     if (userResult.rows.length === 0) {
-      res.status(404).json({ error: 'No pending verification found for this email' });
+      console.error(`[ADMIN:verifyOtp] Email not found: ${email}`);
+      authError(res, 404, 'No account found with this email', ERROR_CODES.NOT_FOUND);
       return;
     }
 
     const user = userResult.rows[0];
 
+    // Check if already verified
+    if (user.email_verified) {
+      console.warn(`[ADMIN:verifyOtp] Already verified: ${email}`);
+      authError(res, 409, 'Email already verified. Please login', ERROR_CODES.OTP_ALREADY_VERIFIED);
+      return;
+    }
+
     if (!user.otp_code || !user.otp_expires_at) {
-      res.status(400).json({ error: 'No OTP found. Please request a new one.' });
+      console.error(`[ADMIN:verifyOtp] No OTP found: ${email}`);
+      authError(res, 400, 'No OTP found. Please request a new one', ERROR_CODES.MISSING_FIELDS);
       return;
     }
 
+    // Check if OTP expired
     if (new Date() > new Date(user.otp_expires_at)) {
-      res.status(401).json({ error: 'OTP has expired. Please request a new one.' });
+      console.error(`[ADMIN:verifyOtp] OTP expired: ${email}`);
+      authError(res, 410, 'OTP has expired. Please request a new one', ERROR_CODES.OTP_EXPIRED);
       return;
     }
 
+    // Check failed attempts (max 5)
+    if (user.otp_failed_attempts && user.otp_failed_attempts >= 5) {
+      console.warn(`[ADMIN:verifyOtp] Too many failed attempts: ${email}`);
+      authError(res, 429, 'Too many failed attempts. Please request a new OTP', ERROR_CODES.TOO_MANY_ATTEMPTS);
+      return;
+    }
+
+    // Verify OTP
     const otpMatch = await comparePassword(otp, user.otp_code);
     if (!otpMatch) {
-      res.status(401).json({ error: 'Invalid OTP' });
+      console.error(`[ADMIN:verifyOtp] Invalid OTP: ${email}`);
+      // Increment failed attempts
+      await pool.query(
+        'UPDATE users SET otp_failed_attempts = COALESCE(otp_failed_attempts, 0) + 1 WHERE id = $1',
+        [user.id]
+      );
+      authError(res, 401, 'Invalid OTP. Please check and try again', ERROR_CODES.OTP_INVALID);
       return;
     }
 
+    // Clear OTP and mark as verified
     await pool.query(
       `UPDATE users 
-       SET email_verified = true, email_verified_at = NOW(), otp_code = NULL, otp_expires_at = NULL, updated_at = CURRENT_TIMESTAMP 
+       SET email_verified = true, email_verified_at = NOW(), otp_code = NULL, otp_expires_at = NULL, otp_failed_attempts = 0, updated_at = CURRENT_TIMESTAMP 
        WHERE id = $1`,
       [user.id]
     );
@@ -220,7 +291,7 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
-    res.json({
+    authSuccess(res, 200, {
       message: 'Email verified successfully',
       accessToken,
       refreshToken,
@@ -233,8 +304,12 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
       }
     });
   } catch (error) {
-    console.error('[VERIFY-OTP] Error:', error);
-    res.status(500).json({ error: 'OTP verification failed' });
+    console.error('[ADMIN:verifyOtp]', error);
+    if (isDbError(error)) {
+      authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
+    }
+    authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
 }
 
@@ -243,36 +318,55 @@ export async function resendOtp(req: AuthenticatedRequest, res: Response): Promi
     const { email } = req.body;
 
     if (!email) {
-      res.status(400).json({ error: 'Email is required' });
+      console.error('[ADMIN:resendOtp] Missing email');
+      authError(res, 400, 'Email is required', ERROR_CODES.MISSING_FIELDS);
       return;
     }
 
     const userResult = await pool.query(
-      `SELECT id, name, email FROM users WHERE email = $1 AND role = 'admin' AND email_verified = false`,
+      `SELECT id, name, email, email_verified FROM users WHERE email = $1 AND role = 'admin'`,
       [email]
     );
 
     if (userResult.rows.length === 0) {
-      res.status(404).json({ error: 'No pending verification found for this email' });
+      console.error(`[ADMIN:resendOtp] Email not found: ${email}`);
+      authError(res, 404, 'No account found with this email', ERROR_CODES.NOT_FOUND);
       return;
     }
 
     const user = userResult.rows[0];
+
+    // Check if already verified
+    if (user.email_verified) {
+      console.warn(`[ADMIN:resendOtp] Already verified: ${email}`);
+      authError(res, 409, 'Email already verified. Please login', ERROR_CODES.OTP_ALREADY_VERIFIED);
+      return;
+    }
 
     const otp = generateOtp();
     const otpHash = await hashPassword(otp);
     const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await pool.query(
-      'UPDATE users SET otp_code = $1, otp_expires_at = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+      'UPDATE users SET otp_code = $1, otp_expires_at = $2, otp_failed_attempts = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
       [otpHash, otpExpiresAt, user.id]
     );
 
-    await EmailService.sendOtpEmail(email, otp, user.name || email);
+    try {
+      await EmailService.sendOtpEmail(email, otp, user.name || email);
+    } catch (emailError) {
+      console.error('[ADMIN:resendOtp] Email send failed:', emailError);
+      authError(res, 500, 'Failed to send OTP. Please try again', ERROR_CODES.UNEXPECTED_ERROR);
+      return;
+    }
 
-    res.json({ message: 'A new OTP has been sent to your email' });
+    authSuccess(res, 200, { message: 'A new OTP has been sent to your email' });
   } catch (error) {
-    console.error('[RESEND-OTP] Error:', error);
-    res.status(500).json({ error: 'Failed to resend OTP' });
+    console.error('[ADMIN:resendOtp]', error);
+    if (isDbError(error)) {
+      authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
+    }
+    authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
 }
