@@ -49,9 +49,9 @@ export class UploadService {
       // Create new document record with auto-assigned version and is_active = true
       const documentId = uuidv4();
       await client.query(
-        `INSERT INTO documents (id, admin_id, name, category, version, is_active, metadata, upload_date) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [documentId, adminId, fileName, category, nextVersion, true, JSON.stringify(parsed.metadata), new Date()]
+        `INSERT INTO documents (id, admin_id, name, filename, filepath, category, version, is_active, metadata, upload_date) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [documentId, adminId, fileName, fileName, filePath, category, nextVersion, true, JSON.stringify(parsed.metadata), new Date()]
       );
 
       // Generate embeddings and store chunks with metadata

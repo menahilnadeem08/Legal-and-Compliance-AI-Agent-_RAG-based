@@ -84,8 +84,8 @@ export default function DocumentsPage() {
 
     setDeleting(id);
     try {
-      // Get token from session (admin Google OAuth)
-      const token = session && (session.user as any)?.token;
+      // Get token using the proper helper function
+      const token = getAuthToken(session);
 
       if (!token) {
         alert('Authentication required to delete documents.');
@@ -122,8 +122,8 @@ export default function DocumentsPage() {
 
     setToggling(id);
     try {
-      // Get token from session (admin Google OAuth)
-      const token = session && (session.user as any)?.token;
+      // Get token using the proper helper function
+      const token = getAuthToken(session);
 
       if (!token) {
         alert('Authentication required to update document status.');
@@ -303,7 +303,6 @@ export default function DocumentsPage() {
           {documents.length > 0 && (
             <> • <span className="text-green-400">{documents.filter(d => d.is_active).length}</span> active</>
           )}
-        </div>
         </div>
       </div>
       </PageContainer>

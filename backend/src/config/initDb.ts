@@ -88,6 +88,19 @@ export async function initializeAuthTables() {
       ADD COLUMN IF NOT EXISTS upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     `);
 
+    // Drop type column if it exists (migration from old schema)
+    await client.query(`
+      ALTER TABLE documents
+      DROP COLUMN IF EXISTS type
+    `);
+
+    // Add filename and filepath columns if they don't exist (migration)
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS filename VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS filepath VARCHAR(512)
+    `);
+
     // Create conversations table for chat history
     await client.query(`
       CREATE TABLE IF NOT EXISTS conversations (
