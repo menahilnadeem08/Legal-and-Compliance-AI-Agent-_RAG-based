@@ -11,7 +11,7 @@ import { isEmployeeUser, getAuthToken } from '../utils/auth';
 
 export default function UploadPage() {
   const router = useRouter();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
 
   useEffect(() => {
     if (isEmployeeUser()) {
@@ -36,7 +36,7 @@ export default function UploadPage() {
   }
 
   // Don't render if not authenticated
-  if (!session) {
+  if (!session && !getAuthToken()) {
     return null;
   }
 
