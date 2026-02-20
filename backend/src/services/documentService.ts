@@ -190,7 +190,7 @@ export class DocumentService {
   }
 
   async listDocuments(adminId?: number) {
-    let query = `SELECT id, name, type, version, upload_date, is_latest 
+    let query = `SELECT id, name, category, version, is_active, upload_date 
        FROM documents`;
     
     if (adminId) {
@@ -344,7 +344,7 @@ export class DocumentService {
       await client.query('BEGIN');
 
       const docResult = await client.query(
-        'SELECT name, type, is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        'SELECT name FROM documents WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 
@@ -352,34 +352,15 @@ export class DocumentService {
         throw new Error('Document not found');
       }
 
-      const { name, type, is_latest } = docResult.rows[0];
+      // Delete chunks first (foreign key constraint)
+      await client.query('DELETE FROM chunks WHERE document_id = $1', [documentId]);
 
+      // Delete document
       await client.query('DELETE FROM documents WHERE id = $1 AND admin_id = $2', [documentId, adminId]);
-
-      let activatedVersionId = null;
-
-      if (is_latest) {
-        const inactiveVersion = await client.query(
-          `SELECT id FROM documents 
-           WHERE name = $1 AND type = $2 AND admin_id = $3 AND is_latest = false 
-           ORDER BY upload_date DESC 
-           LIMIT 1`,
-          [name, type, adminId]
-        );
-
-        if (inactiveVersion.rows.length > 0) {
-          await client.query(
-            'UPDATE documents SET is_latest = true WHERE id = $1 AND admin_id = $2',
-            [inactiveVersion.rows[0].id, adminId]
-          );
-          activatedVersionId = inactiveVersion.rows[0].id;
-        }
-      }
 
       await client.query('COMMIT');
       return { 
-        message: 'Document deleted successfully',
-        activated_version: activatedVersionId
+        message: 'Document deleted successfully'
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -745,7 +726,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       await client.query('BEGIN');
 
       const docResult = await client.query(
-        'SELECT name, type, is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        'SELECT category, is_active FROM documents WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 
@@ -753,9 +734,9 @@ Be specific and actionable. Focus on business/legal impact.`;
         throw new Error('Document not found');
       }
 
-      const { name, type, is_latest } = docResult.rows[0];
+      const { category, is_active } = docResult.rows[0];
 
-      if (is_latest) {
+      if (is_active) {
         await client.query('COMMIT');
         return { 
           message: 'Document is already active',
@@ -763,19 +744,15 @@ Be specific and actionable. Focus on business/legal impact.`;
         };
       }
 
-      const activeDoc = await client.query(
-        `SELECT id, version FROM documents 
-         WHERE name = $1 AND type = $2 AND admin_id = $3 AND is_latest = true`,
-        [name, type, adminId]
+      // Deactivate all other documents with the same category
+      await client.query(
+        `UPDATE documents SET is_active = false WHERE category = $1 AND admin_id = $2 AND id != $3`,
+        [category, adminId, documentId]
       );
 
-      if (activeDoc.rows.length > 0) {
-        await client.query('ROLLBACK');
-        throw new Error(`Cannot activate: Another version (${activeDoc.rows[0].version}) of this document is already active`);
-      }
-
+      // Activate the specified document
       await client.query(
-        'UPDATE documents SET is_latest = true WHERE id = $1 AND admin_id = $2',
+        'UPDATE documents SET is_active = true WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 
@@ -801,7 +778,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       await client.query('BEGIN');
 
       const docResult = await client.query(
-        'SELECT is_latest FROM documents WHERE id = $1 AND admin_id = $2',
+        'SELECT is_active FROM documents WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 
@@ -809,9 +786,9 @@ Be specific and actionable. Focus on business/legal impact.`;
         throw new Error('Document not found');
       }
 
-      const { is_latest } = docResult.rows[0];
+      const { is_active } = docResult.rows[0];
 
-      if (!is_latest) {
+      if (!is_active) {
         await client.query('COMMIT');
         return { 
           message: 'Document is already inactive',
@@ -820,7 +797,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       }
 
       await client.query(
-        'UPDATE documents SET is_latest = false WHERE id = $1 AND admin_id = $2',
+        'UPDATE documents SET is_active = false WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 

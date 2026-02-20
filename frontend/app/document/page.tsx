@@ -12,10 +12,10 @@ import { getAuthToken, isEmployeeUser } from '../utils/auth';
 interface Document {
   id: string;
   name: string;
-  type: string;
-  version: string;
+  category: string;
+  version: number;
+  is_active: boolean;
   upload_date: string;
-  is_latest: boolean;
 }
 
 export default function DocumentsPage() {
@@ -25,7 +25,6 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'latest' | 'outdated'>('all');
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEmployee, setIsEmployee] = useState(false);
@@ -114,7 +113,7 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleToggleActive = async (id: string, makeActive: boolean) => {
+  const handleToggleActive = async (id: string, shouldActivate: boolean) => {
     // Only admins can toggle document status
     if (!isAdmin) {
       alert('You do not have permission to change document status.');
@@ -131,7 +130,7 @@ export default function DocumentsPage() {
         return;
       }
 
-      const action = makeActive ? 'activate' : 'deactivate';
+      const action = shouldActivate ? 'activate' : 'deactivate';
       await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/api/documents/${id}/${action}`,
         {},
@@ -163,66 +162,35 @@ export default function DocumentsPage() {
     fetchDocuments();
   }, [status, session]);
 
-  const getDocumentIcon = (type: string) => {
-    switch (type) {
-      case 'contract':
-        return '📜';
-      case 'regulation':
-        return '⚖️';
-      case 'case_law':
-        return '📚';
-      default:
-        return '📋';
-    }
+  const getDocumentIcon = (category: string) => {
+    if (category.includes('Constitution')) return '📜';
+    if (category.includes('Legislation') || category.includes('Acts')) return '📋';
+    if (category.includes('Ordinances')) return '🏛️';
+    if (category.includes('Statutory') || category.includes('SROs')) return '⚙️';
+    if (category.includes('Judgment')) return '⚖️';
+    if (category.includes('Order')) return '📄';
+    if (category.includes('AJK') || category.includes('GB')) return '🗺️';
+    return '📋';
   };
 
-  const getDocumentColor = (type: string) => {
-    switch (type) {
-      case 'contract':
-        return 'from-amber-500/20 to-orange-500/20 border-amber-500/40';
-      case 'regulation':
-        return 'from-purple-500/20 to-pink-500/20 border-purple-500/40';
-      case 'case_law':
-        return 'from-blue-500/20 to-cyan-500/20 border-blue-500/40';
-      default:
-        return 'from-cyan-500/20 to-teal-500/20 border-cyan-500/40';
-    }
+  const getDocumentColor = (category: string) => {
+    if (category.includes('Constitution')) return 'from-purple-500/20 to-indigo-500/20 border-purple-500/40';
+    if (category.includes('Legislation') || category.includes('Acts')) return 'from-blue-500/20 to-cyan-500/20 border-blue-500/40';
+    if (category.includes('Ordinances')) return 'from-amber-500/20 to-orange-500/20 border-amber-500/40';
+    if (category.includes('Statutory') || category.includes('SROs')) return 'from-green-500/20 to-emerald-500/20 border-green-500/40';
+    if (category.includes('Judgment')) return 'from-red-500/20 to-pink-500/20 border-red-500/40';
+    if (category.includes('Order')) return 'from-yellow-500/20 to-orange-500/20 border-yellow-500/40';
+    if (category.includes('AJK') || category.includes('GB')) return 'from-teal-500/20 to-cyan-500/20 border-teal-500/40';
+    return 'from-cyan-500/20 to-teal-500/20 border-cyan-500/40';
   };
-
-  const filteredDocuments = documents.filter(doc => {
-    if (filter === 'latest') return doc.is_latest;
-    if (filter === 'outdated') return !doc.is_latest;
-    return true;
-  });
 
   return (
     <>
       <Navigation />
       <PageContainer>
         <div className="w-full h-full flex flex-col gap-3">
-          {/* Filter Tabs */}
-          <div className="flex gap-3 mb-8 flex-shrink-0">
-          {[
-            { id: 'all', label: 'All Documents', icon: '📋' },
-            { id: 'latest', label: 'Latest Versions', icon: '✓' },
-            { id: 'outdated', label: 'Outdated', icon: '⏱️' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id as any)}
-              className={`px-6 py-3 rounded-lg transition-all font-medium ${
-                filter === tab.id
-                  ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400'
-                  : 'bg-gray-600/20 text-gray-400 border border-gray-500/30 hover:bg-gray-600/30'
-              }`}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Documents Grid */}
-        <div className="flex-1 overflow-y-auto pr-2">
+          {/* Documents Grid */}
+          <div className="flex-1 overflow-y-auto pr-2">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
@@ -230,27 +198,25 @@ export default function DocumentsPage() {
                 <p className="text-sm text-gray-400">Loading documents...</p>
               </div>
             </div>
-          ) : filteredDocuments.length === 0 ? (
+          ) : documents.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center">
               <div>
                 <div className="text-6xl mb-3">📭</div>
                 <p className="text-sm font-semibold text-gray-300 mb-1">No documents found</p>
                 <p className="text-xs text-gray-500">
-                  {filter !== 'all' 
-                    ? `No ${filter} documents available`
-                    : 'Upload your first document from the chat'}
+                  Upload your first document from the chat
                 </p>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-              {filteredDocuments.map((doc) => (
+              {documents.map((doc) => (
                 <div
                   key={doc.id}
                   className={`p-4 rounded-lg border-2 bg-gradient-to-br ${getDocumentColor(
-                    doc.type
+                    doc.category
                   )} transition-all hover:shadow-lg animate-fade-in ${
-                    doc.is_latest
+                    doc.is_active
                       ? 'opacity-100'
                       : 'opacity-60 hover:opacity-100'
                   }`}
@@ -259,14 +225,14 @@ export default function DocumentsPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="text-3xl flex-shrink-0">
-                        {getDocumentIcon(doc.type)}
+                        {getDocumentIcon(doc.category)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-gray-200 truncate">
                           {doc.name}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
-                          Type: {doc.type.replace('_', ' ')}
+                          {doc.category}
                         </p>
                       </div>
                     </div>
@@ -277,20 +243,20 @@ export default function DocumentsPage() {
                     <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-gray-700/60 text-gray-300 border border-gray-600">
                       v{doc.version}
                     </span>
-                    {doc.is_latest && (
+                    {doc.is_active && (
                       <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-300 border border-green-500/50">
-                        ✓ Latest
+                        ✓ Active
                       </span>
                     )}
-                    {!doc.is_latest && (
+                    {!doc.is_active && (
                       <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/50">
-                        ⏱️ Outdated
+                        ⊘ Inactive
                       </span>
                     )}
                   </div>
 
-                {/* Date and Actions */}
-                <div className="flex items-center justify-between gap-2">
+                  {/* Date and Actions */}
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-gray-500">
                       📅 {new Date(doc.upload_date).toLocaleDateString('en-US', {
                         month: 'short',
@@ -298,32 +264,32 @@ export default function DocumentsPage() {
                         year: 'numeric',
                       })}
                     </p>
-                  <div className="flex items-center gap-2">
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleToggleActive(doc.id, !doc.is_latest)}
-                        disabled={toggling === doc.id || deleting === doc.id}
-                        className={`px-3 py-1 text-xs rounded-lg border transition-all ${
-                          doc.is_latest
-                            ? 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/40'
-                            : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/40'
-                        } disabled:opacity-50`}
-                        title={doc.is_latest ? 'Set as inactive' : 'Set as active'}
-                      >
-                        {toggling === doc.id ? '⟳' : doc.is_latest ? 'Active' : 'Inactive'}
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDelete(doc.id)}
-                        disabled={deleting === doc.id}
-                        className="px-3 py-1 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-all disabled:opacity-50"
-                        title="Delete document"
-                      >
-                        {deleting === doc.id ? '⟳' : '🗑'}
-                      </button>
-                    )}
-                  </div>
+                    <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleToggleActive(doc.id, !doc.is_active)}
+                          disabled={toggling === doc.id || deleting === doc.id}
+                          className={`px-3 py-1 text-xs rounded-lg border transition-all ${
+                            doc.is_active
+                              ? 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/40'
+                              : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/40'
+                          } disabled:opacity-50`}
+                          title={doc.is_active ? 'Deactivate' : 'Activate'}
+                        >
+                          {toggling === doc.id ? '⟳' : doc.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDelete(doc.id)}
+                          disabled={deleting === doc.id}
+                          className="px-3 py-1 text-xs rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-all disabled:opacity-50"
+                          title="Delete document"
+                        >
+                          {deleting === doc.id ? '⟳' : '🗑'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -333,10 +299,11 @@ export default function DocumentsPage() {
 
         {/* Footer */}
         <div className="mt-4 p-4 rounded-lg bg-gray-800/30 border border-gray-700/50 text-xs text-gray-400">
-          Total: <span className="font-semibold text-gray-300">{filteredDocuments.length}</span> document{filteredDocuments.length !== 1 ? 's' : ''} 
-          {filter === 'all' && documents.length > 0 && (
-            <> • <span className="text-green-400">{documents.filter(d => d.is_latest).length}</span> latest</>
+          Total: <span className="font-semibold text-gray-300">{documents.length}</span> document{documents.length !== 1 ? 's' : ''} 
+          {documents.length > 0 && (
+            <> • <span className="text-green-400">{documents.filter(d => d.is_active).length}</span> active</>
           )}
+        </div>
         </div>
       </div>
       </PageContainer>

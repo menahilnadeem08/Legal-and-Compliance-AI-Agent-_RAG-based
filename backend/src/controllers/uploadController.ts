@@ -44,7 +44,7 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     throw new AppError('No file uploaded', 400);
   }
 
-  const { version = '1.0', type = 'policy' } = req.body;
+  const { category = 'Federal Legislation / Acts' } = req.body;
   const fileExt = path.extname(req.file.originalname).slice(1);
 
   // Validation: Check file type
@@ -58,8 +58,7 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     req.file.path,
     req.file.originalname,
     fileExt,
-    version,
-    type,
+    category,
     req.user.id // Pass admin_id
   );
 

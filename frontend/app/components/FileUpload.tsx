@@ -4,11 +4,23 @@ import axios from 'axios';
 import Navigation from './Navigation';
 import { getAuthToken } from '../utils/auth';
 
+const LEGAL_DOCUMENT_CATEGORIES = [
+  'Constitution of Pakistan',
+  'Federal Legislation / Acts',
+  'Provincial Legislation / Acts',
+  'Presidential & Governor Ordinances',
+  'Statutory Rules & SROs',
+  'Supreme Court Judgments',
+  'High Court Judgments',
+  'Federal Shariat Court Judgments',
+  'District & Sessions Court Orders',
+  'AJK & GB Court Judgments',
+];
+
 export default function FileUpload() {
   const { data: session } = useSession();
   const [file, setFile] = useState<File | null>(null);
-  const [version, setVersion] = useState('1.0');
-  const [type, setType] = useState('policy');
+  const [category, setCategory] = useState(LEGAL_DOCUMENT_CATEGORIES[0]);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
@@ -52,8 +64,7 @@ export default function FileUpload() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('version', version);
-    formData.append('type', type);
+    formData.append('category', category);
 
     setUploading(true);
     setMessage('');
@@ -68,7 +79,7 @@ export default function FileUpload() {
       });
       setMessage('✓ Document uploaded successfully!');
       setFile(null);
-      setVersion('1.0');
+      setCategory(LEGAL_DOCUMENT_CATEGORIES[0]);
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -112,24 +123,18 @@ export default function FileUpload() {
             <div className="flex items-center justify-between">
               {[
                 { step: 1, label: 'Document', icon: '📄', active: true },
-                { step: 2, label: 'Type', icon: '📋', active: !!file },
+                { step: 2, label: 'Category', icon: '📋', active: !!file },
                 {
                   step: 3,
-                  label: 'Version',
-                  icon: '📌',
-                  active: !!file && !!type,
-                },
-                {
-                  step: 4,
                   label: 'Upload',
                   icon: '✓',
-                  active: !!file && !!type && !!version,
+                  active: !!file && !!category,
                 },
               ].map((item, idx) => (
                 <div key={item.step} className="flex items-center flex-1">
                   <div
                     className={`flex flex-col items-center ${
-                      idx < 3 ? 'flex-1' : ''
+                      idx < 2 ? 'flex-1' : ''
                     }`}
                   >
                     <div
@@ -151,10 +156,10 @@ export default function FileUpload() {
                     </p>
                   </div>
 
-                  {idx < 3 && (
+                  {idx < 2 && (
                     <div
                       className={`h-1 flex-1 mx-4 rounded transition-all ${
-                        item.active && idx < 3 ? 'bg-blue-500' : 'bg-slate-700'
+                        item.active && idx < 2 ? 'bg-blue-500' : 'bg-slate-700'
                       }`}
                     ></div>
                   )}
@@ -163,7 +168,7 @@ export default function FileUpload() {
             </div>
 
             {/* Horizontal Form Layout */}
-            <div className="grid grid-cols-4 gap-6 items-start">
+            <div className="grid grid-cols-3 gap-6 items-start">
               {/* Step 1: File Upload */}
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -226,63 +231,31 @@ export default function FileUpload() {
                 )}
               </div>
 
-              {/* Step 2: Document Type */}
+              {/* Step 2: Document Category */}
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Type
-                </label>
-                <div className="space-y-4">
-                  {[
-                    { value: 'policy', label: 'Policy', icon: '📋' },
-                    { value: 'contract', label: 'Contract', icon: '📄' },
-                    { value: 'regulation', label: 'Regulation', icon: '⚖️' },
-                    { value: 'case-law', label: 'Case Law', icon: '🏛️' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setType(option.value)}
-                      disabled={!file}
-                      className={`w-full p-4 rounded-lg border text-sm font-medium transition-all ${
-                        type === option.value
-                          ? 'bg-blue-500/20 border-blue-500 text-blue-300'
-                          : file
-                          ? 'bg-slate-800/50 border-slate-700 text-gray-400 hover:border-slate-600 hover:bg-slate-800'
-                          : 'bg-slate-800/30 border-slate-700/50 text-gray-600 cursor-not-allowed'
-                      }`}
-                    >
-                      <span className="mr-2">{option.icon}</span>
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Step 3: Version */}
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Version
+                  Category
                 </label>
                 <select
-                  value={version}
-                  onChange={(e) => setVersion(e.target.value)}
-                  disabled={!file || !type}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  disabled={!file}
                   className={`w-full p-4 bg-slate-800/50 border rounded-lg text-white text-sm focus:outline-none transition-all appearance-none cursor-pointer ${
-                    file && type
+                    file
                       ? 'border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                       : 'border-slate-700/50 bg-slate-800/30 text-gray-600 cursor-not-allowed'
                   }`}
                 >
-                  {['1.0', '2.0', '3.0', '4.0', '5.0'].map((v) => (
-                    <option key={v} value={v} className="bg-slate-900">
-                      v{v}
+                  {LEGAL_DOCUMENT_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat} className="bg-slate-900">
+                      {cat}
                     </option>
                   ))}
                 </select>
-                <p className="mt-5 text-sm text-gray-500">Select document version</p>
+                <p className="mt-5 text-sm text-gray-500">Select document category</p>
               </div>
 
-              {/* Step 4: Upload Button */}
+              {/* Step 3: Upload Button */}
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
                   Action

@@ -3,12 +3,6 @@ import { uploadController, uploadMiddleware, uploadErrorCleanup } from '../contr
 import { 
   listDocuments, 
   deleteDocument,
-  getDocumentVersionHistory,
-  getOutdatedDocuments,
-  checkForNewerVersion,
-  compareVersions,
-  compareVersionsDetailed,
-  getSuggestions,
   activateDocument,
   deactivateDocument
 } from '../controllers/documentController';
@@ -19,10 +13,6 @@ import { handleValidationErrors } from '../middleware/validation';
 import {
   validateAgentQuery,
   validateDocumentUpload,
-  validateGetVersionHistory,
-  validateCheckNewerVersion,
-  validateCompareVersions,
-  validateCompareVersionsDetailed,
   validateDeleteDocument
 } from '../middleware/validationSchemas';
 import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword, refresh } from '../controllers/authController';
@@ -112,32 +102,6 @@ router.post('/upload',
 
 // ===== Document Management =====
 router.get('/documents', listDocuments as any);
-router.get('/documents/outdated', getOutdatedDocuments as any);
-router.get('/documents/suggestions', getSuggestions as any);
-
-router.get('/documents/versions/:name',
-  validateGetVersionHistory,
-  handleValidationErrors,
-  getDocumentVersionHistory as any
-);
-
-router.get('/documents/compare/detailed',
-  validateCompareVersionsDetailed,
-  handleValidationErrors,
-  compareVersionsDetailed as any
-);
-
-router.get('/documents/compare',
-  validateCompareVersions,
-  handleValidationErrors,
-  compareVersions as any
-);
-
-router.get('/documents/:id/newer',
-  validateCheckNewerVersion,
-  handleValidationErrors,
-  checkForNewerVersion as any
-);
 
 router.put('/documents/:id/activate', activateDocument as any);
 router.put('/documents/:id/deactivate', deactivateDocument as any);

@@ -9,10 +9,10 @@ import { getAuthToken } from '../utils/auth';
 interface Document {
   id: string;
   name: string;
-  type: string;
-  version: string;
+  category: string;
+  version: number;
+  is_active: boolean;
   upload_date: string;
-  is_latest: boolean;
 }
 
 export default function DocumentList() {
@@ -75,13 +75,14 @@ export default function DocumentList() {
             <div
               key={doc.id}
               className={`p-2 rounded-lg border text-xs transition-all ${
-                doc.is_latest
+                doc.is_active
                   ? 'bg-gray-700/30 border-gray-600 text-gray-300'
                   : 'bg-gray-800/40 border-gray-700 text-gray-500 opacity-60'
               }`}
             >
               <p className="font-semibold truncate">{doc.name}</p>
-              <p className="text-gray-500">v{doc.version}</p>
+              <p className="text-gray-500">{doc.category}</p>
+              <p className="text-gray-500 text-xs mt-1">v{doc.version} {doc.is_active && '✓'}</p>
             </div>
           ))}
           {documents.length > 3 && (

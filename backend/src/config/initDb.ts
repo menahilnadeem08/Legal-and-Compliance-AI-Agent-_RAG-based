@@ -51,16 +51,29 @@ export async function initializeAuthTables() {
         id VARCHAR(36) PRIMARY KEY,
         admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
-        type VARCHAR(50),
-        version VARCHAR(20),
+        category VARCHAR(100),
+        version INTEGER DEFAULT 1,
         filename VARCHAR(255),
         filepath VARCHAR(512),
         content TEXT,
         metadata JSONB,
-        is_latest BOOLEAN DEFAULT true,
+        is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add category column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS category VARCHAR(100)
+    `);
+
+    // Add version column if it doesn't exist and ensure it's numeric (migration)
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1
     `);
 
     // Add is_active column if it doesn't exist (migration)
@@ -69,29 +82,11 @@ export async function initializeAuthTables() {
       ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true
     `);
 
-    // Add missing columns (migration)
+    // Add upload_date column if it doesn't exist (migration)
     await client.query(`
       ALTER TABLE documents
-      ADD COLUMN IF NOT EXISTS name VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS type VARCHAR(50),
-      ADD COLUMN IF NOT EXISTS version VARCHAR(20),
-      ADD COLUMN IF NOT EXISTS metadata JSONB,
-      ADD COLUMN IF NOT EXISTS is_latest BOOLEAN DEFAULT true
+      ADD COLUMN IF NOT EXISTS upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     `);
-
-    // Drop old unique constraint if it exists (migration for multi-admin support)
-    await client.query(`
-      ALTER TABLE documents
-      DROP CONSTRAINT IF EXISTS documents_name_version_key
-    `);
-
-    // Add new unique constraint with admin_id
-    await client.query(`
-      ALTER TABLE documents
-      ADD CONSTRAINT documents_admin_id_name_version_key UNIQUE (admin_id, name, version)
-    `).catch(() => {
-      // Constraint might already exist, ignore error
-    });
 
     // Create conversations table for chat history
     await client.query(`

@@ -162,7 +162,16 @@ Rules:
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
-      const pdfjsLib: any = (await import('pdfjs-dist/legacy/build/pdf.mjs'))?.default ?? (await import('pdfjs-dist'));
+      // Import pdfjs-dist - TypeScript can resolve the main entry point
+      let pdfjsLib: any;
+      try {
+        // Try to use the standard pdfjs-dist import
+        pdfjsLib = (await import('pdfjs-dist')).default;
+      } catch (e) {
+        // Fallback to require if dynamic import fails
+        pdfjsLib = require('pdfjs-dist');
+      }
+      
       const raw = fs.readFileSync(filePath);
       const uint8 = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
       const loadingTask = pdfjsLib.getDocument({ data: uint8 });
