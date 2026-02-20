@@ -21,6 +21,7 @@
     "@sendgrid/mail": "^8.1.6",
     "@types/nodemailer": "^7.0.10",
     "bcryptjs": "^3.0.3",
+    "canvas": "^3.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
@@ -33,10 +34,13 @@
     "nodemailer": "^8.0.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "path": "^0.12.7",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^5.4.530",
+    "pdfjs-dist": "^3.11.174",
     "pg": "^8.17.2",
     "pgvector": "^0.2.1",
+    "sharp": "^0.34.5",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
