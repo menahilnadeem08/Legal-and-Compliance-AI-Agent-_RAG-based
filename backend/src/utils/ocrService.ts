@@ -1,6 +1,8 @@
 import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
 
-const MIN_TEXT_LENGTH = 10;
+const MIN_TEXT_LENGTH = 50;
 const EASYOCR_URL = process.env.EASYOCR_URL || 'http://localhost:8001';
 
 // Lazy load Tesseract to avoid issues if not needed
@@ -22,52 +24,58 @@ export const extractTextFromImage = async (
   imagePath: string
 ): Promise<string> => {
   try {
-    // Try EasyOCR microservice first
     const easyOcrText = await extractWithEasyOCR(imagePath);
     if (easyOcrText && easyOcrText.trim().length > 0) {
       console.log('[OCR] ✓ EasyOCR succeeded');
+      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
       return easyOcrText;
     }
   } catch (error: any) {
-    console.warn('[OCR] ⚠️ EasyOCR unavailable, falling back to Tesseract:', error.message);
+    console.warn(
+      '[OCR] ⚠️ EasyOCR unavailable, falling back to Tesseract:',
+      error?.message ?? error
+    );
   }
 
-  // Fallback to Tesseract (local)
-  return extractWithTesseract(imagePath);
+  // Fallback to Tesseract (file still needed); cleanup after
+  const result = await extractWithTesseract(imagePath);
+  if (fs.existsSync(imagePath)) {
+    try {
+      fs.unlinkSync(imagePath);
+    } catch (e) {
+      console.warn('[OCR] Failed to cleanup image:', e);
+    }
+  }
+  return result;
 };
 
 const extractWithEasyOCR = async (
   imagePath: string
 ): Promise<string> => {
   try {
-    // Create FormData with file
-    const formData = new FormData();
-    const fileStream = fs.createReadStream(imagePath);
-    formData.append('file', fileStream as any);
+    console.log('[OCR] Sending to EasyOCR:', imagePath);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-    try {
-      const response = await fetch(`${EASYOCR_URL}/ocr`, {
-        method: 'POST',
-        body: formData as any,
-        signal: controller.signal
-      });
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        throw new Error(`EasyOCR returned ${response.status}`);
+    const response = await axios.post(
+      `${EASYOCR_URL}/ocr`,
+      {
+        file: fs.createReadStream(imagePath)
+      },
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 60000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
       }
+    );
 
-      const data: any = await response.json();
-      return data.text || '';
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = response.data as any;
+    return data.text || '';
   } catch (error: any) {
-    throw new Error(`EasyOCR error: ${error.message}`);
+    const errorText = error.response?.data || error.message;
+    console.error('[OCR] EasyOCR error response:', errorText);
+    throw new Error(`EasyOCR returned ${error.response?.status}: ${errorText}`);
   }
 };
 
@@ -86,15 +94,6 @@ const extractWithTesseract = async (
   } catch (error: any) {
     console.error('[OCR] ❌ Tesseract failed:', error.message);
     return '';
-  } finally {
-    // Clean up temp image
-    if (fs.existsSync(imagePath)) {
-      try {
-        fs.unlinkSync(imagePath);
-      } catch (e) {
-        console.warn('[OCR] Failed to cleanup image:', e);
-      }
-    }
   }
 };
 

@@ -1,9 +1,14 @@
-import pdfjs from 'pdfjs-dist';
-import { createCanvas } from 'canvas';
-import sharp from 'sharp';
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
+// DOM polyfills MUST be first — before any other imports
+const { createCanvas, DOMMatrix, DOMPoint, DOMRect } = require('canvas');
+global.DOMMatrix = DOMMatrix;
+global.DOMPoint = DOMPoint;
+global.DOMRect = DOMRect;
+
+const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const sharp = require('sharp');
 
 export const renderPageToImage = async (
   pdfPath: string,
@@ -19,7 +24,7 @@ export const renderPageToImage = async (
 
     // Set standardFontDataUrl to fix missing fonts warning
     const pdfjsLibPath = path.dirname(require.resolve('pdfjs-dist/package.json'));
-    const standardFontDataUrl = path.join(pdfjsLibPath, 'standard_fonts/');
+    const standardFontDataUrl = path.join(pdfjsLibPath, 'standard_fonts/') + '/';
 
     const pdfDocument = await pdfjs.getDocument({
       data,
@@ -31,8 +36,8 @@ export const renderPageToImage = async (
     const viewport = page.getViewport({ scale });
 
     const canvas = createCanvas(
-      Math.floor(viewport.width),
-      Math.floor(viewport.height)
+      1700,
+      2200
     );
     const context = canvas.getContext('2d');
 

@@ -3,3 +3,4 @@ uvicorn
 easyocr
 python-multipart
 Pillow
+opencv-python-headless

@@ -163,7 +163,9 @@ Rules:
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
-      const pdfjsLib = require('pdfjs-dist');
+      // Import pdfjs with proper Node.js compatibility
+      const pdfjs = require('pdfjs-dist/build/pdf');
+      
       const raw = fs.readFileSync(filePath);
       const uint8 = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
       
@@ -171,7 +173,7 @@ Rules:
       const pdfjsLibPath = require('path').dirname(require.resolve('pdfjs-dist/package.json'));
       const standardFontDataUrl = require('path').join(pdfjsLibPath, 'standard_fonts/');
       
-      const loadingTask = pdfjsLib.getDocument({ data: uint8, standardFontDataUrl });
+      const loadingTask = pdfjs.getDocument({ data: uint8, standardFontDataUrl });
       const doc = await loadingTask.promise;
       
       const allChunks: ChunkWithMetadata[] = [];
