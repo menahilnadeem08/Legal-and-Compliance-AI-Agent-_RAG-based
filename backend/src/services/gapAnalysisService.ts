@@ -1,6 +1,7 @@
 import pool from '../config/database';
 import { llm } from '../config/openai';
 import { embeddings } from '../config/openai';
+import logger from '../utils/logger';
 import { DocumentService } from './documentService';
 
 export interface GapItem {
@@ -163,13 +164,13 @@ Return only the JSON array:`;
       const topics = JSON.parse(cleaned);
 
       if (!Array.isArray(topics)) {
-        console.warn('LLM did not return array of topics, using fallback');
+        logger.warn('LLM did not return array of topics, using fallback');
         return this.extractTopicsFallback(chunks);
       }
 
       return topics.filter((t: any) => typeof t === 'string' && t.length > 0).slice(0, 20);
     } catch (error) {
-      console.warn('Failed to extract topics via LLM:', error);
+      logger.warn('Failed to extract topics via LLM:', error);
       return this.extractTopicsFallback(chunks);
     }
   }
@@ -228,7 +229,7 @@ Return only the JSON array:`;
         const embedding = await embeddings.embedQuery(chunk.content.substring(0, 500));
         targetChunkEmbeddings.push({ content: chunk.content, embedding });
       } catch (error) {
-        console.warn('Failed to embed chunk:', error);
+        logger.warn('Failed to embed chunk:', error);
       }
     }
 
@@ -265,7 +266,7 @@ Return only the JSON array:`;
           });
         }
       } catch (error) {
-        console.warn(`Failed to process topic "${topic}":`, error);
+        logger.warn(`Failed to process topic "${topic}":`, error);
       }
     }
 
@@ -380,7 +381,7 @@ Be direct and actionable.`;
       const response = await llm.invoke(prompt);
       return response.content.toString();
     } catch (error) {
-      console.warn('Failed to generate gap summary:', error);
+      logger.warn('Failed to generate gap summary:', error);
       return `${docNameA} and ${docNameB} have ${gapsInA.length + gapsInB.length} identified coverage gaps. Critical gaps: ${Math.max(
         gapsInB.filter(g => g.severity === 'critical').length,
         gapsInA.filter(g => g.severity === 'critical').length

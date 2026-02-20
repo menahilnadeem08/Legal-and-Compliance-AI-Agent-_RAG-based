@@ -1,6 +1,6 @@
 import { llm } from '../config/openai';
 import { DocumentService } from './documentService';
-
+import logger from '../utils/logger';
 export interface ParsedComparisonRequest {
   documentName: string;
   version1: string;
@@ -119,8 +119,9 @@ Return ONLY the JSON object or null, nothing else.`;
         version1: parsed.version1,
         version2: parsed.version2
       };
-    } catch (error) {
-      console.error('Failed to parse comparison request:', error);
+    } catch (error: any) {
+      logger.error('Error', { error: 'Failed to parse comparison request:', message: error?.message, stack: error?.stack });
+      
       return null;
     }
   }

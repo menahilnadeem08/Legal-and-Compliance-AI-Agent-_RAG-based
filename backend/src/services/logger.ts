@@ -94,9 +94,6 @@ export class PipelineLogger extends EventEmitter {
     }
   }
 
-  /**
-   * Get all logs
-   */
   getLogs(): LogEntry[] {
     return [...this.logs];
   }
@@ -111,3 +108,4 @@ export class PipelineLogger extends EventEmitter {
 
 // Global logger instance
 export const pipelineLogger = new PipelineLogger();
+

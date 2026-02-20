@@ -5,6 +5,7 @@ import { Reranker } from '../utils/reranker';
 import { embeddings } from '../config/openai';
 import { DocumentService } from './documentService';
 import { VersionComparisonService } from './versionComparisonService';
+import logger from '../utils/logger';
 
 // Types
 export interface QueryResult {
@@ -633,8 +634,8 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
         reranked = deduplicated.slice(0, 8);
         if (debug) console.log('⚠️ No embeddings available, using top results without reranking');
       }
-    } catch (error) {
-      console.error('MMR reranking error:', error);
+    } catch (error: any) {
+      logger.error('MMR reranking error', { message: error?.message, stack: error?.stack });
       reranked = deduplicated.slice(0, 8);
     }
 

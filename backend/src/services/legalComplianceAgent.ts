@@ -4,6 +4,7 @@ import { VersionComparisonService } from './versionComparisonService';
 import { ConflictDetectionService } from './conflictDetectionService';
 import { DocumentService } from './documentService';
 import { GapAnalysisService } from './gapAnalysisService';
+import logger from '../utils/logger';
 
 export interface AgentResult {
   answer: string;
@@ -555,7 +556,7 @@ Be specific about business/compliance impact.`;
           throw new Error(`Unknown tool: ${toolName}`);
       }
     } catch (error: any) {
-      console.error(`Tool execution error (${toolName}):`, error);
+      logger.error(`Tool execution error (${toolName})`, { message: error?.message, stack: error?.stack });
       return {
         error: true,
         message: error.message,

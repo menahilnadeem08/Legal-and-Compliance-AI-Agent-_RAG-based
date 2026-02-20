@@ -2,6 +2,7 @@ import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { llm } from '../config/openai';
+import logger from './logger';
 
 export interface ParsedDocument {
   text: string;
@@ -64,15 +65,15 @@ Rules:
       const sections = JSON.parse(cleaned);
       
       if (!Array.isArray(sections)) {
-        console.warn('LLM did not return array, using fallback');
+        logger.warn('LLM did not return array, using fallback');
         return [];
       }
 
-      console.log(`🎯 LLM detected ${sections.length} sections in first 100 lines`);
+      logger.info(`🎏 LLM detected ${sections.length} sections in first 100 lines`);
       return sections.filter(s => s.line_index < lines.length);
       
-    } catch (error) {
-      console.error('LLM section detection failed:', error);
+    } catch (error: any) {
+      logger.error('Error', { error: 'LLM section detection failed:', message: error?.message, stack: error?.stack });
       return [];
     }
   }
@@ -81,7 +82,7 @@ Rules:
    * Fallback: Traditional overlap chunking (when no sections detected)
    */
   private fallbackChunk(text: string, pageNumber?: number): ChunkWithMetadata[] {
-    console.log('⚠️  Using fallback chunking (no sections detected)');
+    logger.info('⚠️  Using fallback chunking (no sections detected)');
     const chunks: ChunkWithMetadata[] = [];
     const cleanText = text.replace(/\s+/g, ' ').trim();
     
@@ -113,7 +114,7 @@ Rules:
     const sections = await this.detectSectionsWithLLM(lines);
     
     if (sections.length === 0) {
-      console.log('No sections detected by LLM, using fallback');
+      logger.info('No sections detected by LLM, using fallback');
       return this.fallbackChunk(text, pageNumber);
     }
 
@@ -156,7 +157,7 @@ Rules:
       }
     }
 
-    console.log(`✨ Intelligent chunking: ${sections.length} sections → ${chunks.length} chunks`);
+    logger.info(`✨ Intelligent chunking: ${sections.length} sections → ${chunks.length} chunks`);
     return chunks;
   }
 
@@ -202,10 +203,10 @@ Rules:
         
         const pageText = lines.join('\n');
         
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`PAGE ${i} - Extracted ${lines.length} lines`);
-        console.log(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
-        console.log(`${'='.repeat(60)}\n`);
+        logger.info(`\n${'='.repeat(60)}`);
+        logger.info(`PAGE ${i} - Extracted ${lines.length} lines`);
+        logger.info(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
+        logger.info(`${'='.repeat(60)}\n`);
         
         const pageChunks = await this.intelligentChunk(pageText, i);
         allChunks.push(...pageChunks);
@@ -214,7 +215,7 @@ Rules:
       const fullText = allChunks.map(c => c.content).join('\n\n');
       
       const sectionsDetected = allChunks.filter(c => c.section_name).length;
-      console.log(`\n✨ PDF Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections\n`);
+      logger.info(`\n✨ PDF Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections\n`);
       
       return {
         text: fullText,
@@ -229,9 +230,9 @@ Rules:
   async parseDOCX(filePath: string): Promise<ParsedDocument> {
     const result = await mammoth.extractRawText({ path: filePath });
     
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`DOCX - Using LLM for section detection`);
-    console.log(`${'='.repeat(60)}\n`);
+    logger.info(`\n${'='.repeat(60)}`);
+    logger.info(`DOCX - Using LLM for section detection`);
+    logger.info(`${'='.repeat(60)}\n`);
     
     const charsPerPage = 3000;
     const estimatedPageCount = Math.ceil(result.value.length / charsPerPage);
@@ -250,8 +251,8 @@ Rules:
     }
 
     const sectionsDetected = allChunks.filter(c => c.section_name).length;
-    console.log(`\n✨ DOCX Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections`);
-    console.log(`📄 Estimated pages: ${estimatedPageCount} (based on ~${charsPerPage} chars/page)\n`);
+    logger.info(`\n✨ DOCX Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections`);
+    logger.info(`📄 Estimated pages: ${estimatedPageCount} (based on ~${charsPerPage} chars/page)\n`);
 
     const fullText = allChunks.map(c => c.content).join('\n\n');
 

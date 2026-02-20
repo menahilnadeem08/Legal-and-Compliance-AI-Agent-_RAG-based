@@ -6,6 +6,8 @@ import pool from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import { initializeAuthTables } from './config/initDb';
 import { startSessionCleanupScheduler } from './helpers/sessionHelper';
+import requestLogger from './middleware/requestLogger';
+import logger from './utils/logger';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,9 +16,9 @@ const PORT = process.env.PORT || 5000;
 async function startServer() {
   try {
     await initializeAuthTables();
-    console.log('Database initialized');
+    logger.info('Database initialized successfully');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    logger.error('Failed to initialize database:', { error: (error as any).message, stack: (error as any).stack });
     process.exit(1);
   }
 
@@ -26,6 +28,9 @@ async function startServer() {
     credentials: true
   }));
   app.use(express.json());
+  
+  // Request logging middleware (Morgan)
+  app.use(requestLogger);
 
   // Routes
   app.use('/api', routes);
@@ -45,7 +50,7 @@ async function startServer() {
 
   // Start server
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
   });
 
   // Clean expired sessions on startup + every 24 hours
@@ -53,9 +58,28 @@ async function startServer() {
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received, shutting down gracefully...');
     clearInterval(cleanupInterval);
     await pool.end();
     process.exit(0);
+  });
+
+  // Handle unhandled rejections
+  process.on('unhandledRejection', (reason: any) => {
+    logger.error('UNHANDLED REJECTION:', { 
+      message: reason?.message || String(reason),
+      stack: reason?.stack 
+    });
+    process.exit(1);
+  });
+
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (error: Error) => {
+    logger.error('UNCAUGHT EXCEPTION:', { 
+      message: error.message,
+      stack: error.stack 
+    });
+    process.exit(1);
   });
 }
 

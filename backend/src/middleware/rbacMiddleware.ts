@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { AuthenticatedRequest } from '../types';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 import { JWT_SECRET } from '../config/secrets';
 
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -44,7 +44,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       }
     }
 
-    logger.success('AUTH', 'User authenticated', `${user.username} (${user.role})`);
+    logger.info(`[AUTH] User authenticated: ${user.username} (${user.role})`);
 
     req.user = {
       id: user.id,

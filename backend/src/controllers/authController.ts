@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
+import logger from '../utils/logger';
 import { hashPassword, comparePassword, validatePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 import { TempPasswordService } from '../services/tempPasswordService';
@@ -43,34 +44,35 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
     );
 
     if (userResult.rows.length === 0) {
-      console.error('[AUTH:login] User not found');
+      logger.warn('[AUTH:login] User not found');
       authError(res, 401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+      return;
     }
 
     const user = userResult.rows[0];
 
     // Check if account is locked
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      console.warn(`[AUTH:login] Account locked: ${user.email}`);
+      logger.warn(`[AUTH:login] Account locked: ${user.email}`);
       authError(res, 423, lockedMessage(new Date(user.locked_until)), ERROR_CODES.ACCOUNT_LOCKED);
     }
 
     // Check if account is inactive
     if (!user.is_active) {
-      console.warn(`[AUTH:login] Inactive account: ${user.email}`);
+      logger.warn(`[AUTH:login] Inactive account: ${user.email}`);
       authError(res, 403, 'Your account has been deactivated. Contact your administrator', ERROR_CODES.ACCOUNT_INACTIVE);
     }
 
     // Check email verification
     if (!user.email_verified) {
-      console.warn(`[AUTH:login] Unverified email: ${user.email}`);
+      logger.warn(`[AUTH:login] Unverified email: ${user.email}`);
       authError(res, 403, 'Please verify your email before logging in', ERROR_CODES.EMAIL_UNVERIFIED);
     }
 
     if (user.is_temp_password) {
       // Check if temp password expired
       if (user.temp_password_expires_at && new Date(user.temp_password_expires_at) < new Date()) {
-        console.warn(`[AUTH:login] Temp password expired: ${user.email}`);
+        logger.warn(`[AUTH:login] Temp password expired: ${user.email}`);
         authError(res, 401, 'Your temporary password has expired. Request new credentials from your administrator', ERROR_CODES.TEMP_PASSWORD_EXPIRED);
       }
 
@@ -78,8 +80,9 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
         const tempPasswordValid = await TempPasswordService.validateTempPassword(user.id, password);
 
         if (!tempPasswordValid) {
-          console.error(`[AUTH:login] Invalid temp password: ${user.email}`);
+          logger.warn(`[AUTH:login] Invalid temp password: ${user.email}`);
           authError(res, 401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+          return;
         }
 
         if (user.admin_id) {
@@ -95,7 +98,7 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
               userAgent
             );
           } catch (auditError) {
-            console.error('[AUTH:login] Audit log failed:', auditError);
+            logger.error('[AUTH:login] Audit log failed', { message: (auditError as any)?.message, stack: (auditError as any)?.stack });
           }
         }
 
@@ -110,15 +113,17 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
           forcePasswordChange: true,
         });
       } catch (tempPassError: any) {
-        console.error('[AUTH:login] Temp password validation error:', tempPassError);
+        logger.error('[AUTH:login] Temp password validation error', { message: tempPassError?.message, stack: tempPassError?.stack });
         authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
+        return;
       }
     }
 
     const passwordMatch = await comparePassword(password, user.password_hash);
     if (!passwordMatch) {
-      console.error(`[AUTH:login] Invalid password: ${user.email}`);
+      logger.warn(`[AUTH:login] Invalid password: ${user.email}`);
       authError(res, 401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+      return;
     }
 
     const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
@@ -131,10 +136,11 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
       user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role },
       forcePasswordChange: false,
     });
-  } catch (error) {
-    console.error('[AUTH:login]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:login] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
@@ -145,8 +151,9 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
     const { googleId, email, name, image } = req.body;
 
     if (!googleId || !email) {
-      console.error('[AUTH:handleGoogleSignIn] Missing Google auth data');
+      logger.warn('[AUTH:handleGoogleSignIn] Missing Google auth data');
       authError(res, 400, 'Invalid Google authentication data', ERROR_CODES.MISSING_FIELDS);
+      return;
     }
 
     const userRole = 'admin';
@@ -162,7 +169,7 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
         const existingUser = existingbyEmail.rows[0];
         if (existingUser.auth_provider !== 'google') {
           client.release();
-          console.warn(`[AUTH:handleGoogleSignIn] Email exists with ${existingUser.auth_provider}: ${email}`);
+          logger.warn(`[AUTH:handleGoogleSignIn] Email exists with ${existingUser.auth_provider}: ${email}`);
           authError(res, 403, 'An account with this email already exists. Please login with your password', ERROR_CODES.EMAIL_EXISTS);
         }
       }
@@ -202,10 +209,11 @@ export async function handleGoogleSignIn(req: AuthenticatedRequest, res: Respons
     } finally {
       client.release();
     }
-  } catch (error) {
-    console.error('[AUTH:handleGoogleSignIn]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:handleGoogleSignIn] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
@@ -220,10 +228,11 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
     }
 
     authSuccess(res, 200, { message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('[AUTH:logout]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:logout] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
@@ -232,8 +241,9 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
 export async function getCurrentUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user) {
-      console.error('[AUTH:getCurrentUser] Not authenticated');
+      logger.warn('[AUTH:getCurrentUser] Not authenticated');
       authError(res, 401, 'Not authenticated', ERROR_CODES.UNAUTHORIZED);
+      return;
     }
 
     const userResult = await pool.query(
@@ -242,15 +252,17 @@ export async function getCurrentUser(req: AuthenticatedRequest, res: Response): 
     );
 
     if (userResult.rows.length === 0) {
-      console.error(`[AUTH:getCurrentUser] User not found: ${req.user!.id}`);
+      logger.warn(`[AUTH:getCurrentUser] User not found: ${req.user!.id}`);
       authError(res, 404, 'User not found', ERROR_CODES.NOT_FOUND);
+      return;
     }
 
     authSuccess(res, 200, { user: userResult.rows[0] });
-  } catch (error) {
-    console.error('[AUTH:getCurrentUser]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:getCurrentUser] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
@@ -261,24 +273,28 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
     const { currentPassword, newPassword, confirmPassword } = req.body;
 
     if (!newPassword || !confirmPassword) {
-      console.error('[AUTH:changePassword] Missing password fields');
+      logger.warn('[AUTH:changePassword] Missing password fields');
       authError(res, 400, 'Current password and new password are required', ERROR_CODES.MISSING_FIELDS);
+      return;
     }
 
     if (newPassword !== confirmPassword) {
-      console.error('[AUTH:changePassword] Passwords do not match');
+      logger.warn('[AUTH:changePassword] Passwords do not match');
       authError(res, 400, 'Passwords do not match', ERROR_CODES.MISSING_FIELDS);
+      return;
     }
 
     const passwordValidation = validatePassword(newPassword);
     if (!passwordValidation.valid) {
-      console.error('[AUTH:changePassword] Weak password');
+      logger.warn('[AUTH:changePassword] Weak password');
       authError(res, 400, 'Password must be at least 8 characters with uppercase, number, and special character', ERROR_CODES.WEAK_PASSWORD);
+      return;
     }
 
     if (!req.user) {
-      console.error('[AUTH:changePassword] User not authenticated');
+      logger.warn('[AUTH:changePassword] User not authenticated');
       authError(res, 401, 'User not authenticated', ERROR_CODES.UNAUTHORIZED);
+      return;
     }
 
     const userResult = await pool.query(
@@ -287,7 +303,7 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
     );
 
     if (userResult.rows.length === 0) {
-      console.error(`[AUTH:changePassword] User not found: ${req.user!.id}`);
+      logger.warn(`[AUTH:changePassword] User not found: ${req.user!.id}`);
       authError(res, 404, 'User not found', ERROR_CODES.NOT_FOUND);
       return;
     }
@@ -295,27 +311,31 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
     const user = userResult.rows[0];
 
     if (user.auth_provider !== 'local') {
-      console.error(`[AUTH:changePassword] OAuth user: ${req.user!.id}`);
+      logger.warn(`[AUTH:changePassword] OAuth user attempting password change: ${req.user!.id}`);
       authError(res, 403, 'Password change not available for OAuth users', ERROR_CODES.GOOGLE_ACCOUNT);
+      return;
     }
 
     if (!user.force_password_change) {
       if (!currentPassword) {
-        console.error('[AUTH:changePassword] No current password provided');
+        logger.warn('[AUTH:changePassword] No current password provided');
         authError(res, 400, 'Current password is required', ERROR_CODES.MISSING_FIELDS);
+        return;
       }
 
       const passwordMatch = await comparePassword(currentPassword, user.password_hash);
       if (!passwordMatch) {
-        console.error(`[AUTH:changePassword] Wrong current password: ${req.user!.id}`);
+        logger.warn(`[AUTH:changePassword] Wrong current password: ${req.user!.id}`);
         authError(res, 401, 'Current password is incorrect', ERROR_CODES.INVALID_CREDENTIALS);
+        return;
       }
 
       // Check if new password is same as current
       const isSamePassword = await comparePassword(newPassword, user.password_hash);
       if (isSamePassword) {
-        console.error(`[AUTH:changePassword] New password same as current: ${req.user!.id}`);
+        logger.warn(`[AUTH:changePassword] New password same as current: ${req.user!.id}`);
         authError(res, 400, 'New password must be different from current password', ERROR_CODES.PASSWORD_SAME_AS_CURRENT);
+        return;
       }
     }
 
@@ -351,10 +371,11 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
       accessToken,
       refreshToken,
     });
-  } catch (error) {
-    console.error('[AUTH:changePassword]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:changePassword] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }
@@ -369,13 +390,14 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      console.error('[AUTH:refresh] No refresh token provided');
+      logger.warn('[AUTH:refresh] No refresh token provided');
       authError(res, 400, 'Refresh token is required', ERROR_CODES.MISSING_FIELDS);
+      return;
     }
 
     const session = await validateRefreshToken(refreshToken);
     if (!session) {
-      console.error('[AUTH:refresh] Invalid or expired token');
+      logger.warn('[AUTH:refresh] Invalid or expired token');
       authError(res, 401, 'Invalid or expired refresh token', ERROR_CODES.UNAUTHORIZED);
       return;
     }
@@ -387,8 +409,9 @@ export async function refresh(req: Request, res: Response): Promise<void> {
 
     if (userResult.rows.length === 0 || !userResult.rows[0].is_active) {
       await revokeSession(refreshToken);
-      console.error(`[AUTH:refresh] User not found or inactive: ${session.user_id}`);
+      logger.warn(`[AUTH:refresh] User not found or inactive: ${session.user_id}`);
       authError(res, 401, 'User not found or inactive', ERROR_CODES.ACCOUNT_INACTIVE);
+      return;
     }
 
     const user = userResult.rows[0];
@@ -399,7 +422,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
       const revokedAt = new Date(user.sessions_revoked_at).getTime();
       if (sessionCreatedAt < revokedAt) {
         await revokeSession(refreshToken);
-        console.warn(`[AUTH:refresh] Session revoked: ${session.user_id}`);
+        logger.warn(`[AUTH:refresh] Session revoked: ${session.user_id}`);
         authError(res, 401, 'Session revoked. Please log in again', ERROR_CODES.UNAUTHORIZED);
       }
     }
@@ -409,10 +432,11 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     const newRefreshToken = await rotateRefreshToken(session.id);
 
     authSuccess(res, 200, { accessToken: newAccessToken, refreshToken: newRefreshToken });
-  } catch (error) {
-    console.error('[AUTH:refresh]', error);
+  } catch (error: any) {
+    logger.error('[AUTH:refresh] Unexpected error', { message: error?.message, stack: error?.stack });
     if (isDbError(error)) {
       authError(res, 503, 'Service temporarily unavailable', ERROR_CODES.SERVICE_UNAVAILABLE);
+      return;
     }
     authError(res, 500, 'An unexpected error occurred', ERROR_CODES.UNEXPECTED_ERROR);
   }

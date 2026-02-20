@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/database';
+import logger from '../utils/logger';
 import { DocumentParser, ChunkWithMetadata } from '../utils/documentParser';
 import { generateEmbedding } from '../utils/emdedding';
 import { DocumentService } from './documentService';
@@ -40,12 +41,12 @@ export class UploadService {
     try {
       await this.documentService.markAsLatest(documentId, fileName);
     } catch (e) {
-      console.warn(`Failed to update version status for ${fileName}:`, e);
+      logger.warn(`Failed to update version status for ${fileName}:`, e);
     }
 
     // Generate embeddings and store chunks with metadata
     const chunks = parsed.chunks;
-    console.log(`Processing ${chunks.length} chunks for ${fileName}...`);
+    logger.info(`Processing ${chunks.length} chunks for ${fileName}...`);
     
     for (let i = 0; i < chunks.length; i++) {
       const chunk: ChunkWithMetadata = chunks[i];
@@ -54,7 +55,7 @@ export class UploadService {
 
       // Log section detection for debugging
       if (chunk.section_name) {
-        console.log(`Chunk ${i}: Section="${chunk.section_name.substring(0, 50)}..." Page=${chunk.page_number || 'N/A'}`);
+        logger.info(`Chunk ${i}: Section="${chunk.section_name.substring(0, 50)}..." Page=${chunk.page_number || 'N/A'}`);
       }
 
       await pool.query(
@@ -73,7 +74,7 @@ export class UploadService {
     }
 
     const sectionsDetected = chunks.filter(c => c.section_name).length;
-    console.log(`Document ${fileName} ingested with ${chunks.length} chunks (${sectionsDetected} with sections detected)`);
+    logger.info(`Document ${fileName} ingested with ${chunks.length} chunks (${sectionsDetected} with sections detected)`);
     return documentId;
   }
 }

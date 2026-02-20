@@ -3,6 +3,7 @@ import { RetrievalService } from '../services/retrieval';
 import { AnswerGenerator } from '../services/generator';
 import { ContextCompressor } from '../services/compressor';
 import { pipelineLogger } from '../services/logger';
+import logger from '../utils/logger';
 import { sessionMemory } from '../utils/sessionMemory';
 import { AuthenticatedRequest } from '../types';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
@@ -127,8 +128,8 @@ export const queryStreamController = async (req: AuthenticatedRequest, res: Resp
       pipelineLogger.removeListener('log', logListener);
       res.end();
     }
-  } catch (error) {
-    console.error('Stream setup error:', error);
+  } catch (error: any) {
+    logger.error('Stream setup error', { message: (error as Error)?.message, stack: (error as Error)?.stack });
     res.status(500).json({ error: 'Failed to set up stream' });
   }
 };

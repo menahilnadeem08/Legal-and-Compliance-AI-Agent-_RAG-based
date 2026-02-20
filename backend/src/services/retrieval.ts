@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { embeddings } from '../config/openai';
+import logger from '../utils/logger';
 import { QueryRewriter } from '../utils/queryRewriter';
 import { Reranker } from '../utils/reranker';
 import { pipelineLogger } from './logger';
@@ -31,7 +32,7 @@ export class RetrievalService {
       originalQuery: query,
       rewrittenQueries: queries,
     });
-    console.log('Rewritten queries:', queries);
+    logger.info('Rewritten queries:', queries);
 
     const allResults = new Map<string, RetrievedChunk>();
 
@@ -106,7 +107,7 @@ export class RetrievalService {
             }
           }
         } catch (e) {
-          console.warn('Failed to parse embedding for chunk', row.id, e);
+          logger.warn('Failed to parse embedding for chunk', row.id, e);
         }
       });
 

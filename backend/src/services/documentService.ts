@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { llm } from '../config/openai';
+import logger from '../utils/logger';
 
 export interface RelatedDocument {
   document_name: string;
@@ -500,8 +501,8 @@ Be specific and actionable. Focus on business/legal impact.`;
     try {
       const response = await llm.invoke(prompt);
       return response.content.toString();
-    } catch (error) {
-      console.error('Error generating summary:', error);
+    } catch (error: any) {
+      logger.error('Error generating summary', { message: error?.message, stack: error?.stack });
       return `${changes.filter(c => c.change_type === 'added').length} sections added, ${changes.filter(c => c.change_type === 'removed').length} removed, ${changes.filter(c => c.change_type === 'modified').length} modified.`;
     }
   }

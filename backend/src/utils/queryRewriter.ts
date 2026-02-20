@@ -1,5 +1,6 @@
 import { llm } from '../config/openai';
 import { pipelineLogger } from '../services/logger';
+import logger from './logger';
 
 export class QueryRewriter {
   async rewrite(query: string): Promise<string[]> {
@@ -30,8 +31,8 @@ Return only the alternative queries, one per line, without numbering or explanat
       });
 
       return allQueries;
-    } catch (error) {
-      console.error('Query rewriting error:', error);
+    } catch (error: any) {
+        logger.error('Query rewriting error', { message: error?.message, stack: error?.stack });
       pipelineLogger.warn('QUERY_REWRITE_FAILED', 'Query rewriting failed, using original query', {
         error: String(error),
       });

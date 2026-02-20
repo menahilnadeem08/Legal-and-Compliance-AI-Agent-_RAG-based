@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import logger from '../utils/logger';
 
 export interface ApiError extends Error {
   statusCode?: number;
@@ -18,14 +19,11 @@ export const errorHandler = (
   const statusCode = error.statusCode || 500;
   const message = error.message || 'An unexpected error occurred';
 
-  console.error(`[${new Date().toISOString()}] Error:`, JSON.stringify({
-    method: req.method,
-    path: req.path,
+  logger.error(`[${req.method} ${req.path}] ${message}`, {
     statusCode,
-    message,
     details: error.details,
     stack: error.stack,
-  }, null, 2));
+  });
 
   // Prevent sending response twice
   if (res.headersSent) {

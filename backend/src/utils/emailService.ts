@@ -1,15 +1,15 @@
-import { logger } from './logger';
+import logger from './logger';
 import nodemailer from 'nodemailer';
 
 // Create transporter based on configuration
 function createTransporter() {
-  console.log('[EMAIL-CONFIG] Initializing email transporter...');
+  logger.info('[EMAIL-CONFIG] Initializing email transporter...');
   
   // For custom SMTP (e.g., Office 365, custom domain, etc.)
   if (process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-    console.log('[EMAIL-CONFIG] ✓ Using custom SMTP configuration');
-    console.log(`[EMAIL-CONFIG]   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
-    console.log(`[EMAIL-CONFIG]   User: ${process.env.SMTP_USER}`);
+    logger.info('[EMAIL-CONFIG] ✓ Using custom SMTP configuration');
+    logger.info(`[EMAIL-CONFIG]   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
+    logger.info(`[EMAIL-CONFIG]   User: ${process.env.SMTP_USER}`);
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT, 10),
@@ -23,8 +23,8 @@ function createTransporter() {
 
   // Fallback to Gmail SMTP
   if (process.env.GMAIL_USER && process.env.GMAIL_PASSWORD) {
-    console.log('[EMAIL-CONFIG] ✓ Using Gmail SMTP configuration');
-    console.log(`[EMAIL-CONFIG]   User: ${process.env.GMAIL_USER}`);
+    logger.info('[EMAIL-CONFIG] ✓ Using Gmail SMTP configuration');
+    logger.info(`[EMAIL-CONFIG]   User: ${process.env.GMAIL_USER}`);
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -35,8 +35,8 @@ function createTransporter() {
   }
 
   // Return null transporter if no config
-  console.log('[EMAIL-CONFIG] ⚠️  No email configuration found!');
-  console.log('[EMAIL-CONFIG]    Set GMAIL_USER + GMAIL_PASSWORD OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD');
+  logger.info('[EMAIL-CONFIG] ⚠️  No email configuration found!');
+  logger.info('[EMAIL-CONFIG]    Set GMAIL_USER + GMAIL_PASSWORD OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD');
   return null;
 }
 
@@ -178,29 +178,29 @@ export class EmailService {
    */
   private static async sendEmail(message: EmailMessage): Promise<void> {
     try {
-      console.log('[EMAIL-SEND] 📤 Attempting to send email...');
-      console.log('[EMAIL-SEND] To:', message.to);
-      console.log('[EMAIL-SEND] From:', message.from);
-      console.log('[EMAIL-SEND] Subject:', message.subject);
+      logger.info('[EMAIL-SEND] 📤 Attempting to send email...');
+      logger.info('[EMAIL-SEND] To:', message.to);
+      logger.info('[EMAIL-SEND] From:', message.from);
+      logger.info('[EMAIL-SEND] Subject:', message.subject);
       
       // Check if email is configured
       if (!transporter) {
-        console.log('[EMAIL-SEND] ⚠️  Transporter not configured!');
+        logger.info('[EMAIL-SEND] ⚠️  Transporter not configured!');
         logger.info('EMAIL_SERVICE', '📧 Email would be sent (Email not configured)', {
           to: message.to,
           from: message.from,
           subject: message.subject,
           timestamp: new Date().toISOString()
         });
-        console.log(
+        logger.info(
           `[EMAIL] From: ${message.from}, To: ${message.to}, Subject: ${message.subject}`
         );
-        console.log('⚠️  Configure GMAIL_USER + GMAIL_PASSWORD (for Gmail)');
-        console.log('   OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD (for custom domain)');
+        logger.info('⚠️  Configure GMAIL_USER + GMAIL_PASSWORD (for Gmail)');
+        logger.info('   OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD (for custom domain)');
         return;
       }
 
-      console.log('[EMAIL-SEND] ✓ Transporter available, sending...');
+      logger.info('[EMAIL-SEND] ✓ Transporter available, sending...');
 
       // Send email
       const info = await transporter.sendMail({
@@ -211,9 +211,9 @@ export class EmailService {
         replyTo: message.from
       });
 
-      console.log('[EMAIL-SEND] ✅ Email sent successfully!');
-      console.log('[EMAIL-SEND] MessageID:', info.messageId);
-      console.log('[EMAIL-SEND] Response:', info.response);
+      logger.info('[EMAIL-SEND] ✅ Email sent successfully!');
+      logger.info('[EMAIL-SEND] MessageID:', info.messageId);
+      logger.info('[EMAIL-SEND] Response:', info.response);
 
       logger.info('EMAIL_SERVICE', '✅ Email sent successfully', {
         to: message.to,
@@ -223,26 +223,23 @@ export class EmailService {
         timestamp: new Date().toISOString()
       });
 
-      console.log(`[EMAIL ✓] From: ${message.from}, To: ${message.to}, MessageID: ${info.messageId}`);
-    } catch (error) {
+      logger.info(`[EMAIL ✓] From: ${message.from}, To: ${message.to}, MessageID: ${info.messageId}`);
+    } catch (error: any) {
       // Log email failure but don't throw - email sending should be non-blocking
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
       
-      console.error('[EMAIL-SEND] ❌ Email sending FAILED!');
-      console.error('[EMAIL-SEND] Error Message:', errorMsg);
-      console.error('[EMAIL-SEND] Error Stack:', errorStack);
-      console.error('[EMAIL-SEND] Full Error:', error);
+      logger.error('[EMAIL-SEND] Email sending failed', { message: errorMsg, stack: errorStack });
+      logger.error('[EMAIL-SEND] Full error details', { error: error?.message, stack: error?.stack });
 
-      logger.error('EMAIL_SERVICE', 'Failed to send email', {
+      logger.error('EMAIL_SERVICE', {
+        description: 'Failed to send email',
         to: message.to,
         from: message.from,
         subject: message.subject,
         error: errorMsg,
         stack: errorStack
       });
-
-      console.error(`[EMAIL ✗] Failed to send to ${message.to}:`, error);
 
       // In production, implement retry logic here
       // throw error; // Only throw if email is critical to operation

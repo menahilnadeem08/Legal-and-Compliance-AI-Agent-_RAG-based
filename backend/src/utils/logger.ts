@@ -1,58 +1,47 @@
-/**
- * Simple logger utility that respects NODE_ENV
- * - Development: Verbose logging
- * - Production: Only error logs
- */
+import winston from 'winston';
+import path from 'path';
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const isDevelopment = NODE_ENV === 'development';
+// Ensure logs directory exists
+const logsDir = path.join(__dirname, '../../logs');
 
-export const logger = {
-  /**
-   * Log info messages (only in development)
-   */
-  info: (prefix: string, message: string, data?: any) => {
-    if (isDevelopment) {
-      if (data) {
-        console.log(`[${prefix}] ${message}`, data);
-      } else {
-        console.log(`[${prefix}] ${message}`);
-      }
-    }
-  },
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'legal-compliance-rag' },
+  transports: [
+    // Error logs
+    new winston.transports.File({
+      filename: path.join(logsDir, 'error.log'),
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    }),
+    // Combined logs
+    new winston.transports.File({
+      filename: path.join(logsDir, 'combined.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    }),
+  ],
+});
 
-  /**
-   * Log success messages (only in development)
-   */
-  success: (prefix: string, message: string, data?: any) => {
-    if (isDevelopment) {
-      if (data) {
-        console.log(`[${prefix}] ✓ ${message}`, data);
-      } else {
-        console.log(`[${prefix}] ✓ ${message}`);
-      }
-    }
-  },
+// Add console transport in development
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+          const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
+          return `${timestamp} [${level}]: ${message} ${metaStr}`;
+        })
+      ),
+    })
+  );
+}
 
-  /**
-   * Log error messages (always logged)
-   */
-  error: (prefix: string, message: string, error?: any) => {
-    if (error) {
-      console.error(`[${prefix}] ❌ ${message}`, error);
-    } else {
-      console.error(`[${prefix}] ❌ ${message}`);
-    }
-  },
-
-  /**
-   * Log warning messages (always logged)
-   */
-  warn: (prefix: string, message: string, data?: any) => {
-    if (data) {
-      console.warn(`[${prefix}] ⚠️ ${message}`, data);
-    } else {
-      console.warn(`[${prefix}] ⚠️ ${message}`);
-    }
-  },
-};
+export default logger;

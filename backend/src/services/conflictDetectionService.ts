@@ -2,6 +2,7 @@ import pool from '../config/database';
 import { llm } from '../config/openai';
 import { embeddings } from '../config/openai';
 import { Reranker } from '../utils/reranker';
+import logger from '../utils/logger';
 
 export interface ConflictChunk {
   content: string;
@@ -89,8 +90,8 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         documents: parsed.documents,
         topic: parsed.topic || undefined
       };
-    } catch (error) {
-      console.error('Failed to parse conflict query:', error);
+    } catch (error: any) {
+      logger.error('Failed to parse conflict query', { message: error?.message, stack: error?.stack });
       return null;
     }
   }
@@ -267,7 +268,7 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
       const conflicts = JSON.parse(cleaned);
 
       if (!Array.isArray(conflicts)) {
-        console.error('LLM did not return an array');
+        logger.error('LLM did not return an array', { message: 'Expected array but got: ' + typeof conflicts });
         return [];
       }
 
@@ -305,8 +306,8 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
           recommendation: conflict.recommendation
         };
       });
-    } catch (error) {
-      console.error('Failed to analyze conflicts:', error);
+    } catch (error: any) {
+      logger.error('Failed to analyze conflicts', { message: error?.message, stack: error?.stack });
       return [];
     }
   }
@@ -436,8 +437,8 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
           if (result.conflicts_found > 0) {
             results.push(result);
           }
-        } catch (error) {
-          console.error(`Failed to compare ${documents[i]} and ${documents[j]}:`, error);
+        } catch (error: any) {
+          logger.error(`Failed to compare ${documents[i]} and ${documents[j]}`, { message: error?.message, stack: error?.stack });
         }
       }
     }

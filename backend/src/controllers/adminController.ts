@@ -5,7 +5,7 @@ import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
-
+import logger from '../utils/logger';
 // Create employee user (admin only)
 // Generates temporary password and sends welcome email
 export async function createEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -128,8 +128,8 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
           ipAddress,
           userAgent
         );
-      } catch (auditError) {
-        console.error('[ADMIN-CREATE-EMPLOYEE] ⚠️  Audit log failed (non-critical):', auditError);
+      } catch (auditError: any) {        
+        logger.error('[ADMIN-CREATE-EMPLOYEE] Audit log failed (non-critical)', { message: auditError?.message, stack: auditError?.stack });
         // Non-critical error, continue
       }
 
@@ -169,9 +169,9 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
             created_at: user.created_at
           }
         });
-      } catch (emailError) {
+      } catch (emailError: any) {
         // Email failed but user was created, so return warning
-        console.error('[ADMIN-CREATE-EMPLOYEE] ⚠️  Email sending failed:', emailError);
+        logger.error('[ADMIN-CREATE-EMPLOYEE] Email sending failed', { message: emailError?.message, stack: emailError?.stack });
         res.status(201).json({
           message: 'Employee created successfully but welcome email could not be sent',
           user: {
@@ -191,9 +191,9 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       client.release();
       throw error;
     }
-  } catch (error) {
-    console.error('[ADMIN-CREATE-EMPLOYEE] ❌ Error:', error);
-    console.error('[ADMIN-CREATE-EMPLOYEE] Stack:', error instanceof Error ? error.stack : '');
+  } catch (error: any) {
+    logger.error('Error', { error: '[ADMIN-CREATE-EMPLOYEE] ❌ Error:', message: error?.message, stack: error?.stack });
+    logger.error('Error', { error: '[ADMIN-CREATE-EMPLOYEE] Stack:', message: error instanceof Error ? error.message : 'Unknown error', stack: error instanceof Error ? error.stack : undefined });
     res.status(500).json({ error: 'Failed to create employee' });
   }
 }
@@ -215,8 +215,8 @@ export async function getEmployees(req: AuthenticatedRequest, res: Response): Pr
     );
 
     res.json({ employees: result.rows });
-  } catch (error) {
-    console.error('Error fetching employees:', error);
+  } catch (error: any) {
+    logger.error('Error', { error: '[ADMIN-GET-EMPLOYEES] ❌ Error fetching employees:', message: error?.message, stack: error?.stack });
     res.status(500).json({ error: 'Failed to fetch employees' });
   }
 }
@@ -242,8 +242,8 @@ export async function deactivateEmployee(req: AuthenticatedRequest, res: Respons
     }
 
     res.json({ message: 'Employee deactivated', user: result.rows[0] });
-  } catch (error) {
-    console.error('Error deactivating employee:', error);
+  } catch (error: any) {
+    logger.error('Error', { error: '[ADMIN-DEACTIVATE-EMPLOYEE] ❌ Error deactivating employee:', message: error?.message, stack: error?.stack });
     res.status(500).json({ error: 'Failed to deactivate employee' });
   }
 }
@@ -314,24 +314,24 @@ export async function resendCredentials(req: AuthenticatedRequest, res: Response
           req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown',
           req.headers['user-agent'] || 'unknown'
         );
-      } catch (auditError) {
-        console.error('[RESEND-CREDENTIALS] Audit log failed (non-critical):', auditError);
+      } catch (auditError: any) {
+        logger.error('[RESEND-CREDENTIALS] Audit log failed (non-critical)', { message: auditError?.message, stack: auditError?.stack });
       }
 
       res.json({
         message: 'New temporary credentials sent successfully',
         expiresAt: expiresAt.toISOString()
       });
-    } catch (emailError) {
-      console.error('[RESEND-CREDENTIALS] Email sending failed:', emailError);
+    } catch (emailError: any) {
+      logger.error('[RESEND-CREDENTIALS] Email sending failed', { message: emailError?.message, stack: emailError?.stack });
       res.json({
         message: 'Credentials reset but email could not be sent',
         warning: 'Email sending failed. Contact support to resend.',
         expiresAt: expiresAt.toISOString()
       });
     }
-  } catch (error) {
-    console.error('[RESEND-CREDENTIALS] Error:', error);
+  } catch (error: any) {
+    logger.error('Error', { error: '[RESEND-CREDENTIALS] ❌ Error:', message: error?.message, stack: error?.stack });
     res.status(500).json({ error: 'Failed to resend credentials' });
   }
 }
@@ -357,8 +357,8 @@ export async function activateEmployee(req: AuthenticatedRequest, res: Response)
     }
 
     res.json({ message: 'Employee activated', user: result.rows[0] });
-  } catch (error) {
-    console.error('Error activating employee:', error);
+  } catch (error: any) {
+    logger.error('Error', { error: '[ADMIN-ACTIVATE-EMPLOYEE] ❌ Error activating employee:', message: error?.message, stack: error?.stack });
     res.status(500).json({ error: 'Failed to activate employee' });
   }
 }

@@ -1,4 +1,5 @@
 import pool from './database';
+import logger from '../utils/logger';
 
 export async function initializeAuthTables() {
   const client = await pool.connect();
@@ -183,10 +184,9 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     `);
-
-    console.log('Auth tables initialized successfully');
-  } catch (error) {
-    console.error('Error initializing auth tables:', error);
+    logger.info('Auth tables initialized successfully');
+  } catch (error: any) {
+    logger.error('Error initializing auth tables', { message: error?.message, stack: error?.stack });
     throw error;
   } finally {
     client.release();

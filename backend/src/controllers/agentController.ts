@@ -3,6 +3,7 @@ import { LegalComplianceAgent } from '../services/legalComplianceAgent';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
 import { AuthenticatedRequest } from '../types';
+import logger from '../utils/logger';
 
 const agent = new LegalComplianceAgent();
 
@@ -78,7 +79,7 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
       res.end();
     }
   } catch (error) {
-    console.error('Agent stream setup error:', error);
+    logger.error('Agent stream setup error', { message: (error as Error)?.message, stack: (error as Error)?.stack });
     res.status(500).json({ error: 'Failed to set up stream' });
   }
 };
