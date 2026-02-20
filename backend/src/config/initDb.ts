@@ -94,6 +94,12 @@ export async function initializeAuthTables() {
       DROP COLUMN IF EXISTS type
     `);
 
+    // Drop redundant name column (migration: display identifier is filename only)
+    await client.query(`
+      ALTER TABLE documents
+      DROP COLUMN IF EXISTS name
+    `);
+
     // Add filename and filepath columns if they don't exist (migration)
     await client.query(`
       ALTER TABLE documents

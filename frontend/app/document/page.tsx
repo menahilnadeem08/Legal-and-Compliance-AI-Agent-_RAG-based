@@ -11,7 +11,7 @@ import { getAuthToken, isEmployeeUser } from '../utils/auth';
 
 interface Document {
   id: string;
-  name: string;
+  filename: string;
   category: string;
   version: number;
   is_active: boolean;
@@ -229,7 +229,7 @@ export default function DocumentsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-gray-200 truncate">
-                          {doc.name}
+                          {doc.filename}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
                           {doc.category}

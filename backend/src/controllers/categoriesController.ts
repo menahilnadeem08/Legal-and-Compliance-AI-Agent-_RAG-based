@@ -43,6 +43,26 @@ export const getCategories = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 /**
+ * GET /categories/hidden-defaults
+ * Returns default categories that the current admin has hidden (for "Unhide" UI).
+ */
+export const getHiddenDefaultCategories = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user || req.user.role !== 'admin') {
+    throw new AppError('Only admins can view hidden categories', 403);
+  }
+  const adminId = req.user.id;
+  const result = await pool.query(
+    `SELECT d.id, d.name
+     FROM default_categories d
+     INNER JOIN admin_hidden_defaults h ON h.default_category_id = d.id
+     WHERE h.admin_id = $1
+     ORDER BY d.name`,
+    [adminId]
+  );
+  return res.json(result.rows);
+});
+
+/**
  * POST /custom-categories
  * Create a new custom category for the current admin.
  * Body: { name }

@@ -31,6 +31,7 @@ export default function Navigation() {
     { href: '/chat', label: 'Chat', icon: '💬' },
     { href: '/profile', label: 'Profile', icon: '👤' },
     { href: '/admin', label: 'Admin', icon: '⚙️' },
+    { href: '/admin/categories', label: 'Categories', icon: '📂' },
   ];
 
   const employeeNavItems = [

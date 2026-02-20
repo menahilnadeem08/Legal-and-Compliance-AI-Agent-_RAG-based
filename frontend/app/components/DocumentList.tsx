@@ -8,7 +8,7 @@ import { getAuthToken } from '../utils/auth';
 
 interface Document {
   id: string;
-  name: string;
+  filename: string;
   category: string;
   version: number;
   is_active: boolean;
@@ -80,7 +80,7 @@ export default function DocumentList() {
                   : 'bg-gray-800/40 border-gray-700 text-gray-500 opacity-60'
               }`}
             >
-              <p className="font-semibold truncate">{doc.name}</p>
+              <p className="font-semibold truncate">{doc.filename}</p>
               <p className="text-gray-500">{doc.category}</p>
               <p className="text-gray-500 text-xs mt-1">v{doc.version} {doc.is_active && '✓'}</p>
             </div>

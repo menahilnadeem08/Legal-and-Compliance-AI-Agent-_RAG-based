@@ -94,7 +94,7 @@ class BM25Scorer {
     const tsQuery = queryTerms.join(' | ');
     
     let sqlQuery = `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
-              d.id as document_id, d.name as document_name, d.version as document_version,
+              d.id as document_id, d.filename as document_name, d.version as document_version,
               d.category as document_category, d.upload_date, LENGTH(c.content) as doc_length
        FROM chunks c JOIN documents d ON c.document_id = d.id
        WHERE d.is_active = true AND to_tsvector('english', c.content) @@ to_tsquery('english', $1)`;
@@ -256,7 +256,7 @@ export class QueryService {
 
   async vectorSearch(queryEmbedding: number[], topK: number = 20, adminId?: number): Promise<RetrievedChunk[]> {
     let query = `SELECT c.content, c.embedding, c.section_name, c.page_number, c.chunk_index,
-              d.name as document_name, d.id as document_id, d.version as document_version,
+              d.filename as document_name, d.id as document_id, d.version as document_version,
               d.category as document_category, d.upload_date,
               1 - (c.embedding <=> $1::vector) as similarity
        FROM chunks c

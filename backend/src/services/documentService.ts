@@ -11,7 +11,7 @@ export interface RelatedDocument {
 
 export interface DocumentVersion {
   id: string;
-  name: string;
+  filename: string;
   category: string;
   version: string;
   upload_date: Date;
@@ -74,34 +74,34 @@ export class DocumentService {
    * Finds document by partial or approximate name
    */
   async findDocumentByName(userInput: string, adminId?: number): Promise<string | null> {
-    // Try exact match first (case-insensitive)
-    let query = 'SELECT DISTINCT name FROM documents WHERE LOWER(name) = LOWER($1)';
+    // Try exact match first (case-insensitive) — matches against filename
+    let query = 'SELECT DISTINCT filename FROM documents WHERE LOWER(filename) = LOWER($1)';
     if (adminId) query += ` AND admin_id = $2`;
     query += ' LIMIT 1';
     
     const params = adminId ? [userInput, adminId] : [userInput];
     const exact = await pool.query(query, params);
-    if (exact.rows.length > 0) return exact.rows[0].name;
+    if (exact.rows.length > 0) return exact.rows[0].filename;
 
     // Try partial match (contains)
-    query = 'SELECT DISTINCT name FROM documents WHERE LOWER(name) LIKE LOWER($1)';
+    query = 'SELECT DISTINCT filename FROM documents WHERE LOWER(filename) LIKE LOWER($1)';
     if (adminId) query += ` AND admin_id = $2`;
     query += ' LIMIT 1';
     
     const partial = await pool.query(query, adminId ? [userInput, adminId] : [userInput]);
-    if (partial.rows.length > 0) return partial.rows[0].name;
+    if (partial.rows.length > 0) return partial.rows[0].filename;
 
     // Try fuzzy match using similarity (requires pg_trgm extension)
     try {
-      query = `SELECT name, similarity(LOWER(name), LOWER($1)) as score 
+      query = `SELECT filename, similarity(LOWER(filename), LOWER($1)) as score 
          FROM documents 
-         WHERE similarity(LOWER(name), LOWER($1)) > 0.3`;
+         WHERE similarity(LOWER(filename), LOWER($1)) > 0.3`;
       if (adminId) query += ` AND admin_id = $2`;
-      query += ` ORDER BY score DESC N       LIMIT 1`;
+      query += ` ORDER BY score DESC LIMIT 1`;
       
       const fuzzy = await pool.query(query, adminId ? [userInput, adminId] : [userInput]);
       
-      if (fuzzy.rows.length > 0) return fuzzy.rows[0].name;
+      if (fuzzy.rows.length > 0) return fuzzy.rows[0].filename;
     } catch (error) {
       console.warn('Similarity search failed (pg_trgm not enabled?):', error);
     }
@@ -113,14 +113,14 @@ export class DocumentService {
    * GET SIMILAR DOCUMENT NAMES (for suggestions)
    */
   async getSimilarDocuments(userInput: string, adminId?: number): Promise<string[]> {
-    let query = `SELECT DISTINCT name FROM documents 
-       WHERE LOWER(name) LIKE LOWER($1)`;
+    let query = `SELECT DISTINCT filename FROM documents 
+       WHERE LOWER(filename) LIKE LOWER($1)`;
     if (adminId) query += ` AND admin_id = $2`;
-    query += ` ORDER BY name LIMIT 5`;
+    query += ` ORDER BY filename LIMIT 5`;
     
     const params = adminId ? [userInput, adminId] : [userInput];
     const result = await pool.query(query, params);
-    return result.rows.map(r => r.name);
+    return result.rows.map(r => r.filename);
   }
 
   /**
@@ -136,7 +136,7 @@ export class DocumentService {
 
     // Handle "latest" keyword
     if (normalizedVersion === 'latest' || normalizedVersion === 'current') {
-      let query = 'SELECT version FROM documents WHERE name = $1 AND is_active = true';
+      let query = 'SELECT version FROM documents WHERE filename = $1 AND is_active = true';
       if (adminId) query += ' AND admin_id = $2';
       const params = adminId ? [actualName, adminId] : [actualName];
       const result = await pool.query(query, params);
@@ -146,7 +146,7 @@ export class DocumentService {
     // Handle "previous" or "old" keyword
     if (normalizedVersion === 'previous' || normalizedVersion === 'old' || normalizedVersion === 'older') {
       let query = `SELECT version FROM documents 
-         WHERE name = $1 AND is_active = false`;
+         WHERE filename = $1 AND is_active = false`;
       if (adminId) query += ' AND admin_id = $2';
       query += ` ORDER BY upload_date DESC LIMIT 1`;
       const params = adminId ? [actualName, adminId] : [actualName];
@@ -155,7 +155,7 @@ export class DocumentService {
     }
 
     // Try exact version match
-    let query = 'SELECT version FROM documents WHERE name = $1 AND version = $2';
+    let query = 'SELECT version FROM documents WHERE filename = $1 AND version = $2';
     if (adminId) query += ' AND admin_id = $3';
     let params = adminId ? [actualName, versionInput, adminId] : [actualName, versionInput];
     const exact = await pool.query(query, params);
@@ -163,7 +163,7 @@ export class DocumentService {
 
     // Try partial version matching (e.g., "2" matches "2.4")
     query = `SELECT version FROM documents 
-       WHERE name = $1 AND version LIKE $2`;
+       WHERE filename = $1 AND version LIKE $2`;
     if (adminId) query += ' AND admin_id = $3';
     query += ` ORDER BY version DESC LIMIT 1`;
     params = adminId ? [actualName, `${versionInput}%`, adminId] : [actualName, `${versionInput}%`];
@@ -180,7 +180,7 @@ export class DocumentService {
     if (!actualName) return [];
 
     let query = `SELECT version FROM documents 
-       WHERE name = $1`;
+       WHERE filename = $1`;
     if (adminId) query += ` AND admin_id = $2`;
     query += ` ORDER BY upload_date DESC`;
     
@@ -190,14 +190,14 @@ export class DocumentService {
   }
 
   async listDocuments(adminId?: number) {
-    let query = `SELECT id, name, category, version, is_active, upload_date 
+    let query = `SELECT id, filename, category, version, is_active, upload_date 
        FROM documents`;
     
     if (adminId) {
       query += ` WHERE admin_id = $1`;
     }
     
-    query += ` ORDER BY name ASC, upload_date DESC`;
+    query += ` ORDER BY filename ASC, upload_date DESC`;
     
     const result = adminId 
       ? await pool.query(query, [adminId])
@@ -210,11 +210,11 @@ export class DocumentService {
    * Get all versions of a document by name, with latest marked
    */
   async getDocumentVersionHistory(documentName: string, adminId?: number): Promise<DocumentVersionHistory> {
-    let query = `SELECT d.id, d.name, d.category, d.version, d.upload_date, d.is_active,
+    let query = `SELECT d.id, d.filename, d.category, d.version, d.upload_date, d.is_active,
               COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.name = $1`;
+       WHERE d.filename = $1`;
     
     if (adminId) {
       query += ` AND d.admin_id = $2`;
@@ -253,9 +253,9 @@ export class DocumentService {
    * Get latest version of a specific document
    */
   async getLatestDocumentVersion(documentName: string, adminId?: number): Promise<DocumentVersion> {
-    let query = `SELECT id, name, category, version, upload_date, is_active
+    let query = `SELECT id, filename, category, version, upload_date, is_active
        FROM documents
-       WHERE name = $1 AND is_active = true`;
+       WHERE filename = $1 AND is_active = true`;
     
     if (adminId) {
       query += ` AND admin_id = $2`;
@@ -277,8 +277,8 @@ export class DocumentService {
    * Get all outdated documents (not latest versions)
    */
   async getOutdatedDocuments(adminId?: number) {
-    let query = `WITH latest_per_name AS (
-         SELECT name, MAX(upload_date) as max_date
+    let query = `WITH latest_per_filename AS (
+         SELECT filename, MAX(upload_date) as max_date
          FROM documents`;
     
     if (adminId) {
@@ -286,13 +286,13 @@ export class DocumentService {
     }
     
     query += `
-         GROUP BY name
+         GROUP BY filename
        )
-       SELECT d.id, d.name, d.category, d.version, d.upload_date, d.is_active,
+       SELECT d.id, d.filename, d.category, d.version, d.upload_date, d.is_active,
               lpn.max_date,
               EXTRACT(DAY FROM NOW() - d.upload_date)::int as days_old
        FROM documents d
-       JOIN latest_per_name lpn ON d.name = lpn.name
+       JOIN latest_per_filename lpn ON d.filename = lpn.filename
        WHERE d.upload_date < lpn.max_date`;
     
     if (adminId) {
@@ -313,7 +313,7 @@ export class DocumentService {
    */
   async checkForNewerVersion(documentId: string, adminId: number): Promise<{ hasNewer: boolean; newer?: DocumentVersion }> {
     const currentDoc = await pool.query(
-      'SELECT name, version, upload_date FROM documents WHERE id = $1 AND admin_id = $2',
+      'SELECT filename, version, upload_date FROM documents WHERE id = $1 AND admin_id = $2',
       [documentId, adminId]
     );
 
@@ -321,15 +321,15 @@ export class DocumentService {
       throw new Error('Document not found');
     }
 
-    const { name, upload_date } = currentDoc.rows[0];
+    const { filename, upload_date } = currentDoc.rows[0];
 
     const newerResult = await pool.query(
-      `SELECT id, name, category, version, upload_date, is_active
+      `SELECT id, filename, category, version, upload_date, is_active
        FROM documents
-       WHERE name = $1 AND admin_id = $2 AND upload_date > $3
+       WHERE filename = $1 AND admin_id = $2 AND upload_date > $3
        ORDER BY upload_date DESC
        LIMIT 1`,
-      [name, adminId, upload_date]
+      [filename, adminId, upload_date]
     );
 
     return {
@@ -344,7 +344,7 @@ export class DocumentService {
       await client.query('BEGIN');
 
       const docResult = await client.query(
-        'SELECT name FROM documents WHERE id = $1 AND admin_id = $2',
+        'SELECT filename FROM documents WHERE id = $1 AND admin_id = $2',
         [documentId, adminId]
       );
 
@@ -560,7 +560,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       `SELECT d.id, d.version, d.upload_date, COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.name = $1 AND d.version = $2
+       WHERE d.filename = $1 AND d.version = $2
        GROUP BY d.id`,
       [documentName, version1]
     );
@@ -569,7 +569,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       `SELECT d.id, d.version, d.upload_date, COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.name = $1 AND d.version = $2
+       WHERE d.filename = $1 AND d.version = $2
        GROUP BY d.id`,
       [documentName, version2]
     );
@@ -697,7 +697,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       `SELECT d.id, d.version, d.upload_date, COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.name = $1 AND d.version = $2
+       WHERE d.filename = $1 AND d.version = $2
        GROUP BY d.id`,
       [documentName, version1]
     );
@@ -706,7 +706,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       `SELECT d.id, d.version, d.upload_date, COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.name = $1 AND d.version = $2
+       WHERE d.filename = $1 AND d.version = $2
        GROUP BY d.id`,
       [documentName, version2]
     );
@@ -839,7 +839,7 @@ Be specific and actionable. Focus on business/legal impact.`;
 
     // Get source document ID
     const sourceDocQuery = await pool.query(
-      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_active = true LIMIT 1`,
+      `SELECT id FROM documents WHERE filename = $1 AND admin_id = $2 AND is_active = true LIMIT 1`,
       [actualName, adminId]
     );
 
@@ -875,9 +875,9 @@ Be specific and actionable. Focus on business/legal impact.`;
 
     // Get all OTHER latest documents for this admin
     const otherDocsQuery = await pool.query(
-      `SELECT DISTINCT d.id, d.name, d.version FROM documents d
+      `SELECT DISTINCT d.id, d.filename, d.version FROM documents d
        WHERE d.admin_id = $1 AND d.is_active = true AND d.id != $2
-       ORDER BY d.name ASC`,
+       ORDER BY d.filename ASC`,
       [adminId, sourceDocId]
     );
 
@@ -926,7 +926,7 @@ Be specific and actionable. Focus on business/legal impact.`;
         .map(r => r.content.substring(0, 200));
 
       documentSimilarities.push({
-        document_name: doc.name,
+        document_name: doc.filename,
         version: doc.version,
         similarity_score: similarity,
         source_chunks: sourceChunkSamples,

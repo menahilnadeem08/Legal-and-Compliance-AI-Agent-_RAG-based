@@ -34,6 +34,7 @@ import {
 } from '../controllers/conversationController';
 import {
   getCategories,
+  getHiddenDefaultCategories,
   createCustomCategory,
   updateCustomCategory,
   deleteCustomCategory,
@@ -110,6 +111,7 @@ router.post('/upload',
 
 // ===== Categories (visible list + custom/hide management) =====
 router.get('/categories', getCategories as any);
+router.get('/categories/hidden-defaults', requireRole('admin') as any, getHiddenDefaultCategories as any);
 router.post('/custom-categories', requireRole('admin') as any, createCustomCategory as any);
 router.patch('/custom-categories/:id', requireRole('admin') as any, updateCustomCategory as any);
 router.delete('/custom-categories/:id', requireRole('admin') as any, deleteCustomCategory as any);

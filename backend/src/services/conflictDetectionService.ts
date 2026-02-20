@@ -111,20 +111,20 @@ Return ONLY the JSON object or null if you cannot extract document information.`
       let docQuery: any;
       if (adminId) {
         docQuery = await pool.query(
-          `SELECT DISTINCT d.id, d.name, d.version
+          `SELECT DISTINCT d.id, d.filename, d.version
            FROM documents d
            WHERE d.is_active = true 
            AND d.admin_id = $3
-           AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
+           AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
            LIMIT 1`,
           [docName, `%${docName}%`, adminId]
         );
       } else {
         docQuery = await pool.query(
-          `SELECT DISTINCT d.id, d.name, d.version
+          `SELECT DISTINCT d.id, d.filename, d.version
            FROM documents d
            WHERE d.is_active = true 
-           AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
+           AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
            LIMIT 1`,
           [docName, `%${docName}%`]
         );
@@ -164,9 +164,9 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         )).rows;
       }
 
-      result.set(doc.name, chunks.map(chunk => ({
+      result.set(doc.filename, chunks.map(chunk => ({
         content: chunk.content,
-        document_name: doc.name,
+        document_name: doc.filename,
         document_version: doc.version,
         section_name: chunk.section_name,
         page_number: chunk.page_number,
@@ -413,10 +413,10 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   async detectAllConflicts(topic?: string): Promise<ConflictAnalysisResult[]> {
     // Get all latest documents
     const docsResult = await pool.query(
-      `SELECT DISTINCT name FROM documents WHERE is_active = true ORDER BY name`
+      `SELECT DISTINCT filename FROM documents WHERE is_active = true ORDER BY filename`
     );
 
-    const documents = docsResult.rows.map(r => r.name);
+    const documents = docsResult.rows.map(r => r.filename);
     
     if (documents.length < 2) {
       throw new Error('Need at least 2 documents for conflict detection');

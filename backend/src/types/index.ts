@@ -21,7 +21,7 @@ export interface AuthenticatedRequest extends Request {
 
 export interface Document {
     id: string;
-    name: string;
+    filename: string;
     category: string;
     version: string;
     upload_date: Date;

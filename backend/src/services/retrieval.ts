@@ -46,7 +46,7 @@ export class RetrievalService {
     c.content,
     c.section_name,
     c.page_number,
-    d.name as document_name,
+    d.filename as document_name,
     c.embedding
    FROM chunks c
    JOIN documents d ON c.document_id = d.id
@@ -66,7 +66,7 @@ export class RetrievalService {
           c.content,
           c.section_name,
           c.page_number,
-          d.name as document_name,
+          d.filename as document_name,
           ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', $1::text)) as rank
          FROM chunks c
          JOIN documents d ON c.document_id = d.id

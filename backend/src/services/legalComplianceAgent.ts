@@ -411,17 +411,18 @@ export class LegalComplianceAgent {
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           // Group by document name
           const grouped = docs.reduce((acc: any, doc: any) => {
-            if (!acc[doc.name]) {
-              acc[doc.name] = {
-                name: doc.name,
+            const key = doc.filename;
+            if (!acc[key]) {
+              acc[key] = {
+                name: doc.filename,
                 category: doc.category,
                 versions: [],
                 latest_version: null
               };
             }
-            acc[doc.name].versions.push(doc.version);
+            acc[key].versions.push(doc.version);
             if (doc.is_active) {
-              acc[doc.name].latest_version = doc.version;
+              acc[key].latest_version = doc.version;
             }
             return acc;
           }, {});
