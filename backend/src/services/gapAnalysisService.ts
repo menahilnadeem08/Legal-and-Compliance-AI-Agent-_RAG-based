@@ -50,11 +50,11 @@ export class GapAnalysisService {
 
     // Get document IDs
     const docAQuery = await pool.query(
-      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_latest = true LIMIT 1`,
+      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_active = true LIMIT 1`,
       [actualNameA, adminId]
     );
     const docBQuery = await pool.query(
-      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_latest = true LIMIT 1`,
+      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_active = true LIMIT 1`,
       [actualNameB, adminId]
     );
 

@@ -12,10 +12,10 @@ import { getAuthToken, isEmployeeUser } from '../utils/auth';
 interface Document {
   id: string;
   name: string;
-  type: string;
+  category: string;
   version: string;
   upload_date: string;
-  is_latest: boolean;
+  is_active: boolean;
 }
 
 export default function DocumentsPage() {
@@ -25,7 +25,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'latest' | 'outdated'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEmployee, setIsEmployee] = useState(false);
@@ -163,35 +163,31 @@ export default function DocumentsPage() {
     fetchDocuments();
   }, [status, session]);
 
-  const getDocumentIcon = (type: string) => {
-    switch (type) {
-      case 'contract':
-        return '📜';
-      case 'regulation':
-        return '⚖️';
-      case 'case_law':
-        return '📚';
-      default:
-        return '📋';
-    }
+  const getDocumentIcon = (category: string) => {
+    if (category.includes('Constitution')) return '📜';
+    if (category.includes('Legislation') || category.includes('Acts')) return '📋';
+    if (category.includes('Ordinances')) return '🏛️';
+    if (category.includes('Statutory') || category.includes('SROs')) return '⚙️';
+    if (category.includes('Judgment')) return '⚖️';
+    if (category.includes('Order')) return '📄';
+    if (category.includes('AJK') || category.includes('GB')) return '🗺️';
+    return '📋';
   };
 
-  const getDocumentColor = (type: string) => {
-    switch (type) {
-      case 'contract':
-        return 'from-amber-500/20 to-orange-500/20 border-amber-500/40';
-      case 'regulation':
-        return 'from-purple-500/20 to-pink-500/20 border-purple-500/40';
-      case 'case_law':
-        return 'from-blue-500/20 to-cyan-500/20 border-blue-500/40';
-      default:
-        return 'from-cyan-500/20 to-teal-500/20 border-cyan-500/40';
-    }
+  const getDocumentColor = (category: string) => {
+    if (category.includes('Constitution')) return 'from-purple-500/20 to-indigo-500/20 border-purple-500/40';
+    if (category.includes('Legislation') || category.includes('Acts')) return 'from-blue-500/20 to-cyan-500/20 border-blue-500/40';
+    if (category.includes('Ordinances')) return 'from-amber-500/20 to-orange-500/20 border-amber-500/40';
+    if (category.includes('Statutory') || category.includes('SROs')) return 'from-green-500/20 to-emerald-500/20 border-green-500/40';
+    if (category.includes('Judgment')) return 'from-red-500/20 to-pink-500/20 border-red-500/40';
+    if (category.includes('Order')) return 'from-yellow-500/20 to-orange-500/20 border-yellow-500/40';
+    if (category.includes('AJK') || category.includes('GB')) return 'from-teal-500/20 to-cyan-500/20 border-teal-500/40';
+    return 'from-cyan-500/20 to-teal-500/20 border-cyan-500/40';
   };
 
   const filteredDocuments = documents.filter(doc => {
-    if (filter === 'latest') return doc.is_latest;
-    if (filter === 'outdated') return !doc.is_latest;
+    if (filter === 'active') return doc.is_active;
+    if (filter === 'inactive') return !doc.is_active;
     return true;
   });
 
@@ -204,8 +200,8 @@ export default function DocumentsPage() {
           <div className="flex gap-2 flex-shrink-0">
         {[
           { id: 'all', label: 'All Documents', icon: '📋' },
-          { id: 'latest', label: 'Latest Versions', icon: '✓' },
-          { id: 'outdated', label: 'Outdated', icon: '⏱️' },
+          { id: 'active', label: 'Active', icon: '✓' },
+          { id: 'inactive', label: 'Inactive', icon: '⏱️' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -248,9 +244,9 @@ export default function DocumentsPage() {
               <div
                 key={doc.id}
                 className={`p-4 rounded-lg border-2 bg-gradient-to-br ${getDocumentColor(
-                  doc.type
+                  doc.category
                 )} transition-all hover:shadow-lg animate-fade-in ${
-                  doc.is_latest
+                  doc.is_active
                     ? 'opacity-100'
                     : 'opacity-60 hover:opacity-100'
                 }`}
@@ -259,14 +255,14 @@ export default function DocumentsPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="text-3xl flex-shrink-0">
-                      {getDocumentIcon(doc.type)}
+                      {getDocumentIcon(doc.category)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-200 truncate">
                         {doc.name}
                       </p>
                       <p className="text-xs text-gray-500 truncate">
-                        Type: {doc.type.replace('_', ' ')}
+                        Category: {doc.category}
                       </p>
                     </div>
                   </div>
@@ -276,14 +272,14 @@ export default function DocumentsPage() {
                   <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-gray-700/60 text-gray-300 border border-gray-600">
                     v{doc.version}
                   </span>
-                  {doc.is_latest && (
+                  {doc.is_active && (
                     <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-300 border border-green-500/50">
-                      ✓ Latest
+                      ✓ Active
                     </span>
                   )}
-                  {!doc.is_latest && (
+                  {!doc.is_active && (
                     <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/50">
-                      ⏱️ Outdated
+                      ⏱️ Inactive
                     </span>
                   )}
                 </div>
@@ -299,16 +295,16 @@ export default function DocumentsPage() {
                   <div className="flex items-center gap-2">
                     {isAdmin && (
                       <button
-                        onClick={() => handleToggleActive(doc.id, !doc.is_latest)}
+                        onClick={() => handleToggleActive(doc.id, !doc.is_active)}
                         disabled={toggling === doc.id || deleting === doc.id}
                         className={`px-3 py-1 text-xs rounded-lg border transition-all ${
-                          doc.is_latest
+                          doc.is_active
                             ? 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/40'
                             : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/40'
                         } disabled:opacity-50`}
-                        title={doc.is_latest ? 'Set as inactive' : 'Set as active'}
+                        title={doc.is_active ? 'Set as inactive' : 'Set as active'}
                       >
-                        {toggling === doc.id ? '⟳' : doc.is_latest ? 'Active' : 'Inactive'}
+                        {toggling === doc.id ? '⟳' : doc.is_active ? 'Active' : 'Inactive'}
                       </button>
                     )}
                     {isAdmin && (
@@ -333,7 +329,7 @@ export default function DocumentsPage() {
       <div className="flex-shrink-0 p-4 rounded-lg bg-gray-800/30 border border-gray-700/50 text-xs text-gray-400">
         Total: <span className="font-semibold text-gray-300">{filteredDocuments.length}</span> document{filteredDocuments.length !== 1 ? 's' : ''} 
         {filter === 'all' && documents.length > 0 && (
-          <> • <span className="text-green-400">{documents.filter(d => d.is_latest).length}</span> latest</>
+          <> • <span className="text-green-400">{documents.filter(d => d.is_active).length}</span> active</>
         )}
       </div>
     </div>

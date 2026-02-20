@@ -25,7 +25,7 @@ export interface RetrievedChunk {
   document_name: string;
   document_id?: string;
   document_version?: string;
-  document_type?: string;
+  document_category?: string;
   upload_date?: Date;
   section_name?: string;
   page_number?: number;
@@ -95,9 +95,9 @@ class BM25Scorer {
     
     let sqlQuery = `SELECT c.id, c.content, c.section_name, c.page_number, c.chunk_index,
               d.id as document_id, d.name as document_name, d.version as document_version,
-              d.type as document_type, d.upload_date, LENGTH(c.content) as doc_length
+              d.category as document_category, d.upload_date, LENGTH(c.content) as doc_length
        FROM chunks c JOIN documents d ON c.document_id = d.id
-       WHERE d.is_latest = true AND to_tsvector('english', c.content) @@ to_tsquery('english', $1)`;
+       WHERE d.is_active = true AND to_tsvector('english', c.content) @@ to_tsquery('english', $1)`;
     
     const params: any[] = [tsQuery];
     if (adminId) {
@@ -146,7 +146,7 @@ class BM25Scorer {
         document_name: doc.document_name,
         document_id: doc.document_id,
         document_version: doc.document_version,
-        document_type: doc.document_type,
+        document_category: doc.document_category,
         upload_date: doc.upload_date,
         section_name: doc.section_name,
         page_number: doc.page_number,
@@ -257,11 +257,11 @@ export class QueryService {
   async vectorSearch(queryEmbedding: number[], topK: number = 20, adminId?: number): Promise<RetrievedChunk[]> {
     let query = `SELECT c.content, c.embedding, c.section_name, c.page_number, c.chunk_index,
               d.name as document_name, d.id as document_id, d.version as document_version,
-              d.type as document_type, d.upload_date,
+              d.category as document_category, d.upload_date,
               1 - (c.embedding <=> $1::vector) as similarity
        FROM chunks c
        JOIN documents d ON c.document_id = d.id
-       WHERE d.is_latest = true`;
+       WHERE d.is_active = true`;
     
     const params: any[] = [JSON.stringify(queryEmbedding)];
     let paramIndex = 2;

@@ -22,10 +22,10 @@ export interface AuthenticatedRequest extends Request {
 export interface Document {
     id: string;
     name: string;
-    type: string;
+    category: string;
     version: string;
     upload_date: Date;
-    is_latest: boolean;
+    is_active: boolean;
     metadata?: Record<string, any>;
   }
   

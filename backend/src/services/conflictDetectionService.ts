@@ -113,7 +113,7 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         docQuery = await pool.query(
           `SELECT DISTINCT d.id, d.name, d.version
            FROM documents d
-           WHERE d.is_latest = true 
+           WHERE d.is_active = true 
            AND d.admin_id = $3
            AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
            LIMIT 1`,
@@ -123,7 +123,7 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         docQuery = await pool.query(
           `SELECT DISTINCT d.id, d.name, d.version
            FROM documents d
-           WHERE d.is_latest = true 
+           WHERE d.is_active = true 
            AND (LOWER(d.name) = LOWER($1) OR LOWER(d.name) LIKE LOWER($2))
            LIMIT 1`,
           [docName, `%${docName}%`]
@@ -413,7 +413,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   async detectAllConflicts(topic?: string): Promise<ConflictAnalysisResult[]> {
     // Get all latest documents
     const docsResult = await pool.query(
-      `SELECT DISTINCT name FROM documents WHERE is_latest = true ORDER BY name`
+      `SELECT DISTINCT name FROM documents WHERE is_active = true ORDER BY name`
     );
 
     const documents = docsResult.rows.map(r => r.name);

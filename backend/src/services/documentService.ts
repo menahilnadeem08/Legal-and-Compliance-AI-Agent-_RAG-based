@@ -12,10 +12,10 @@ export interface RelatedDocument {
 export interface DocumentVersion {
   id: string;
   name: string;
-  type: string;
+  category: string;
   version: string;
   upload_date: Date;
-  is_latest: boolean;
+  is_active: boolean;
   chunk_count?: number;
   file_size?: number;
 }
@@ -136,7 +136,7 @@ export class DocumentService {
 
     // Handle "latest" keyword
     if (normalizedVersion === 'latest' || normalizedVersion === 'current') {
-      let query = 'SELECT version FROM documents WHERE name = $1 AND is_latest = true';
+      let query = 'SELECT version FROM documents WHERE name = $1 AND is_active = true';
       if (adminId) query += ' AND admin_id = $2';
       const params = adminId ? [actualName, adminId] : [actualName];
       const result = await pool.query(query, params);
@@ -146,7 +146,7 @@ export class DocumentService {
     // Handle "previous" or "old" keyword
     if (normalizedVersion === 'previous' || normalizedVersion === 'old' || normalizedVersion === 'older') {
       let query = `SELECT version FROM documents 
-         WHERE name = $1 AND is_latest = false`;
+         WHERE name = $1 AND is_active = false`;
       if (adminId) query += ' AND admin_id = $2';
       query += ` ORDER BY upload_date DESC LIMIT 1`;
       const params = adminId ? [actualName, adminId] : [actualName];
@@ -210,7 +210,7 @@ export class DocumentService {
    * Get all versions of a document by name, with latest marked
    */
   async getDocumentVersionHistory(documentName: string, adminId?: number): Promise<DocumentVersionHistory> {
-    let query = `SELECT d.id, d.name, d.type, d.version, d.upload_date, d.is_latest,
+    let query = `SELECT d.id, d.name, d.category, d.version, d.upload_date, d.is_active,
               COUNT(c.id) as chunk_count
        FROM documents d
        LEFT JOIN chunks c ON d.id = c.document_id
@@ -231,7 +231,7 @@ export class DocumentService {
     }
 
     const versions = result.rows as DocumentVersion[];
-    const latest = versions.find(v => v.is_latest);
+    const latest = versions.find(v => v.is_active);
 
     // Generate deprecation warnings
     const deprecation_warnings: string[] = [];
@@ -253,9 +253,9 @@ export class DocumentService {
    * Get latest version of a specific document
    */
   async getLatestDocumentVersion(documentName: string, adminId?: number): Promise<DocumentVersion> {
-    let query = `SELECT id, name, type, version, upload_date, is_latest
+    let query = `SELECT id, name, category, version, upload_date, is_active
        FROM documents
-       WHERE name = $1 AND is_latest = true`;
+       WHERE name = $1 AND is_active = true`;
     
     if (adminId) {
       query += ` AND admin_id = $2`;
@@ -288,7 +288,7 @@ export class DocumentService {
     query += `
          GROUP BY name
        )
-       SELECT d.id, d.name, d.type, d.version, d.upload_date, d.is_latest,
+       SELECT d.id, d.name, d.category, d.version, d.upload_date, d.is_active,
               lpn.max_date,
               EXTRACT(DAY FROM NOW() - d.upload_date)::int as days_old
        FROM documents d
@@ -324,7 +324,7 @@ export class DocumentService {
     const { name, upload_date } = currentDoc.rows[0];
 
     const newerResult = await pool.query(
-      `SELECT id, name, type, version, upload_date, is_latest
+      `SELECT id, name, category, version, upload_date, is_active
        FROM documents
        WHERE name = $1 AND admin_id = $2 AND upload_date > $3
        ORDER BY upload_date DESC
@@ -370,30 +370,37 @@ export class DocumentService {
     }
   }
 
-  async getDocumentById(documentId: string) {
+  async getDocumentById(documentId: string, adminId: number) {
     const result = await pool.query(
-      'SELECT * FROM documents WHERE id = $1',
-      [documentId]
+      'SELECT * FROM documents WHERE id = $1 AND admin_id = $2',
+      [documentId, adminId]
     );
+    if (result.rows.length === 0) {
+      throw new Error('Document not found or access denied');
+    }
     return result.rows[0];
   }
 
   /**
    * Mark a document version as latest (when new version uploaded)
+   * Uses is_active: deactivate others in same category, activate this one.
    */
-  async markAsLatest(documentId: string, documentName: string) {
-    // First, unmark all previous versions
+  async markAsLatest(documentId: string, adminId: number) {
+    const docResult = await pool.query(
+      'SELECT category FROM documents WHERE id = $1 AND admin_id = $2',
+      [documentId, adminId]
+    );
+    if (docResult.rows.length === 0) throw new Error('Document not found');
+    const { category } = docResult.rows[0];
+
     await pool.query(
-      'UPDATE documents SET is_latest = false WHERE name = $1 AND type = (SELECT type FROM documents WHERE id = $2)',
-      [documentName, documentId]
+      'UPDATE documents SET is_active = false WHERE category = $1 AND admin_id = $2 AND id != $3',
+      [category, adminId, documentId]
     );
-
-    // Mark the new one as latest
     const result = await pool.query(
-      'UPDATE documents SET is_latest = true WHERE id = $1 RETURNING *',
-      [documentId]
+      'UPDATE documents SET is_active = true WHERE id = $1 AND admin_id = $2 RETURNING *',
+      [documentId, adminId]
     );
-
     return result.rows[0];
   }
 
@@ -718,7 +725,7 @@ Be specific and actionable. Focus on business/legal impact.`;
 
   /**
    * Activate a document version
-   * Only allows activation if no other document with same name and type is already active
+   * Only allows activation if no other document with same category is already active
    */
   async activateDocument(documentId: string, adminId: number) {
     const client = await pool.connect();
@@ -832,7 +839,7 @@ Be specific and actionable. Focus on business/legal impact.`;
 
     // Get source document ID
     const sourceDocQuery = await pool.query(
-      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_latest = true LIMIT 1`,
+      `SELECT id FROM documents WHERE name = $1 AND admin_id = $2 AND is_active = true LIMIT 1`,
       [actualName, adminId]
     );
 
@@ -869,7 +876,7 @@ Be specific and actionable. Focus on business/legal impact.`;
     // Get all OTHER latest documents for this admin
     const otherDocsQuery = await pool.query(
       `SELECT DISTINCT d.id, d.name, d.version FROM documents d
-       WHERE d.admin_id = $1 AND d.is_latest = true AND d.id != $2
+       WHERE d.admin_id = $1 AND d.is_active = true AND d.id != $2
        ORDER BY d.name ASC`,
       [adminId, sourceDocId]
     );
