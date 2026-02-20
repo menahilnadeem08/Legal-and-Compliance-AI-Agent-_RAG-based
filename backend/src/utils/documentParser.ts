@@ -2,6 +2,7 @@ import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { llm } from '../config/openai';
+import { isTextMeaningful, extractTextFromImage } from './ocrService';
 
 export interface ParsedDocument {
   text: string;
@@ -162,10 +163,15 @@ Rules:
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
-      const pdfjsLib: any = (await import('pdfjs-dist/legacy/build/pdf.mjs'))?.default ?? (await import('pdfjs-dist'));
+      const pdfjsLib = require('pdfjs-dist');
       const raw = fs.readFileSync(filePath);
       const uint8 = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-      const loadingTask = pdfjsLib.getDocument({ data: uint8 });
+      
+      // Set standardFontDataUrl to fix missing fonts warning
+      const pdfjsLibPath = require('path').dirname(require.resolve('pdfjs-dist/package.json'));
+      const standardFontDataUrl = require('path').join(pdfjsLibPath, 'standard_fonts/');
+      
+      const loadingTask = pdfjsLib.getDocument({ data: uint8, standardFontDataUrl });
       const doc = await loadingTask.promise;
       
       const allChunks: ChunkWithMetadata[] = [];
@@ -207,8 +213,30 @@ Rules:
         console.log(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
         console.log(`${'='.repeat(60)}\n`);
         
-        const pageChunks = await this.intelligentChunk(pageText, i);
-        allChunks.push(...pageChunks);
+        // OCR fallback for scanned PDFs
+        let finalText = pageText;
+
+        if (!isTextMeaningful(pageText)) {
+          console.log(`[Parser] Page ${i} has minimal text — attempting OCR`);
+          try {
+            // Lazy load pdfRenderer to avoid DOMMatrix errors at startup
+            const { renderPageToImage } = await import('./pdfRenderer');
+            const imagePath = await renderPageToImage(filePath, i);
+            const ocrText = await extractTextFromImage(imagePath);
+            if (ocrText.trim().length > 0) {
+              finalText = ocrText;
+              console.log(`[Parser] ✓ OCR recovered ${ocrText.length} chars from page ${i}`);
+            } else {
+              console.warn(`[Parser] ⚠️ OCR returned empty for page ${i}`);
+            }
+          } catch (ocrError) {
+            console.error(`[Parser] ❌ OCR failed for page ${i}:`, ocrError);
+            finalText = pageText;
+          }
+        }
+
+        const pageChunks = await this.intelligentChunk(finalText, i);
+        if (pageChunks.length > 0) allChunks.push(...pageChunks);
       }
       
       const fullText = allChunks.map(c => c.content).join('\n\n');
