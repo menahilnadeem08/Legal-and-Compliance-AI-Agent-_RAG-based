@@ -32,6 +32,14 @@ import {
   clearConversationMessages,
   getMessageCount
 } from '../controllers/conversationController';
+import {
+  getCategories,
+  createCustomCategory,
+  updateCustomCategory,
+  deleteCustomCategory,
+  hideDefaultCategory,
+  unhideDefaultCategory
+} from '../controllers/categoriesController';
 
 const router = express.Router();
 
@@ -99,6 +107,14 @@ router.post('/upload',
   uploadController as any,
   uploadErrorCleanup
 );
+
+// ===== Categories (visible list + custom/hide management) =====
+router.get('/categories', getCategories as any);
+router.post('/custom-categories', requireRole('admin') as any, createCustomCategory as any);
+router.patch('/custom-categories/:id', requireRole('admin') as any, updateCustomCategory as any);
+router.delete('/custom-categories/:id', requireRole('admin') as any, deleteCustomCategory as any);
+router.post('/categories/hide-default/:defaultCategoryId', requireRole('admin') as any, hideDefaultCategory as any);
+router.delete('/categories/hide-default/:defaultCategoryId', requireRole('admin') as any, unhideDefaultCategory as any);
 
 // ===== Document Management =====
 router.get('/documents', listDocuments as any);

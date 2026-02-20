@@ -1,29 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Navigation from './Navigation';
 import { getAuthToken } from '../utils/auth';
 
-const LEGAL_DOCUMENT_CATEGORIES = [
-  'Constitution of Pakistan',
-  'Federal Legislation / Acts',
-  'Provincial Legislation / Acts',
-  'Presidential & Governor Ordinances',
-  'Statutory Rules & SROs',
-  'Supreme Court Judgments',
-  'High Court Judgments',
-  'Federal Shariat Court Judgments',
-  'District & Sessions Court Orders',
-  'AJK & GB Court Judgments',
-];
+export type CategoryItem = { id: number | string; name: string; type: 'default' | 'custom' };
 
 export default function FileUpload() {
   const { data: session } = useSession();
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [file, setFile] = useState<File | null>(null);
-  const [category, setCategory] = useState(LEGAL_DOCUMENT_CATEGORIES[0]);
+  const [category, setCategory] = useState('');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken(session);
+    if (!token) {
+      setCategoriesLoading(false);
+      return;
+    }
+    axios
+      .get<CategoryItem[]>(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => {
+        setCategories(res.data || []);
+        setCategory((prev) => {
+          const names = (res.data || []).map((c) => c.name);
+          if (names.length && !names.includes(prev)) return names[0];
+          return prev || names[0] || '';
+        });
+      })
+      .catch(() => setCategories([]))
+      .finally(() => setCategoriesLoading(false));
+  }, [session]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -79,7 +92,7 @@ export default function FileUpload() {
       });
       setMessage('✓ Document uploaded successfully!');
       setFile(null);
-      setCategory(LEGAL_DOCUMENT_CATEGORIES[0]);
+      setCategory(categories.length ? categories[0].name : '');
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -128,7 +141,7 @@ export default function FileUpload() {
                   step: 3,
                   label: 'Upload',
                   icon: '✓',
-                  active: !!file && !!category,
+                  active: !!file && !!category && categories.length > 0,
                 },
               ].map((item, idx) => (
                 <div key={item.step} className="flex items-center flex-1">
@@ -231,7 +244,7 @@ export default function FileUpload() {
                 )}
               </div>
 
-              {/* Step 2: Document Category */}
+              {/* Step 2: Document Category (from API: defaults not hidden + custom) */}
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
                   Category
@@ -239,18 +252,22 @@ export default function FileUpload() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  disabled={!file}
+                  disabled={!file || categoriesLoading || categories.length === 0}
                   className={`w-full p-4 bg-slate-800/50 border rounded-lg text-white text-sm focus:outline-none transition-all appearance-none cursor-pointer ${
-                    file
+                    file && !categoriesLoading && categories.length > 0
                       ? 'border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                       : 'border-slate-700/50 bg-slate-800/30 text-gray-600 cursor-not-allowed'
                   }`}
                 >
-                  {LEGAL_DOCUMENT_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat} className="bg-slate-900">
-                      {cat}
-                    </option>
-                  ))}
+                  {categoriesLoading ? (
+                    <option value="" className="bg-slate-900">Loading…</option>
+                  ) : (
+                    categories.map((cat) => (
+                      <option key={`${cat.type}-${cat.id}`} value={cat.name} className="bg-slate-900">
+                        {cat.name} {cat.type === 'custom' ? '(custom)' : ''}
+                      </option>
+                    ))
+                  )}
                 </select>
                 <p className="mt-5 text-sm text-gray-500">Select document category</p>
               </div>
@@ -262,7 +279,7 @@ export default function FileUpload() {
                 </label>
                 <button
                   type="submit"
-                  disabled={!file || uploading}
+                  disabled={!file || uploading || !category || categories.length === 0}
                   className="w-full h-[120px] bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-medium disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed hover:from-blue-500 hover:to-blue-400 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20 disabled:shadow-none flex flex-col items-center justify-center gap-2"
                 >
                   {uploading ? (

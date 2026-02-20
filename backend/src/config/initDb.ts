@@ -192,6 +192,56 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     `);
 
+    // ===== Category system: default_categories, admin_hidden_defaults, custom_categories =====
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS default_categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_hidden_defaults (
+        id SERIAL PRIMARY KEY,
+        admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        default_category_id INTEGER NOT NULL REFERENCES default_categories(id) ON DELETE CASCADE,
+        UNIQUE(admin_id, default_category_id)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS custom_categories (
+        id SERIAL PRIMARY KEY,
+        admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_admin_hidden_defaults_admin_id ON admin_hidden_defaults(admin_id);
+      CREATE INDEX IF NOT EXISTS idx_custom_categories_admin_id ON custom_categories(admin_id);
+    `);
+
+    // Seed default_categories (idempotent: insert only if not exists)
+    const defaultCategoryNames = [
+      'Constitution of Pakistan',
+      'Federal Legislation / Acts',
+      'Provincial Legislation / Acts',
+      'Presidential & Governor Ordinances',
+      'Statutory Rules & SROs',
+      'Supreme Court Judgments',
+      'High Court Judgments',
+      'Federal Shariat Court Judgments',
+      'District & Sessions Court Orders',
+      'AJK & GB Court Judgments',
+    ];
+    for (const name of defaultCategoryNames) {
+      await client.query(
+        `INSERT INTO default_categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+        [name]
+      );
+    }
+
     console.log('Auth tables initialized successfully');
   } catch (error) {
     console.error('Error initializing auth tables:', error);
