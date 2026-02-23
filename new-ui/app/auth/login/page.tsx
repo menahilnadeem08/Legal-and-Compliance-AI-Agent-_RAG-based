@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { Sparkles } from "lucide-react";
 import { getAuthToken, setAuth } from "@/app/utils/auth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const urlError = useMemo(() => searchParams.get("error") || "", [searchParams]);
+  const isLocalLoginHint = urlError.includes("local login") || urlError.includes("original login");
 
   useEffect(() => {
     if (status === "loading") return;
@@ -72,8 +76,24 @@ export default function LoginPage() {
             Sign in with Google or use admin email/password below.
           </p>
 
-          {error && (
-            <p className="mb-4 text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+          {(error || urlError) && (
+            <div className="mb-4 space-y-1">
+              <p className="text-sm text-red-600 dark:text-red-400 text-center">
+                {error || decodeURIComponent(urlError)}
+              </p>
+              {isLocalLoginHint && (
+                <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
+                  Use{" "}
+                  <Link
+                    href="/auth/admin/login"
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                  >
+                    Admin login (email/password)
+                  </Link>{" "}
+                  for this account.
+                </p>
+              )}
+            </div>
           )}
 
           <button
