@@ -3,29 +3,22 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
+import { isEmployeeUser, clearAllAuth, getAuthToken, getRefreshToken, getAuthUser } from '../utils/auth';
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session } = useSession();
   const [isEmployee, setIsEmployee] = useState(false);
   const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
 
-    // If there is a local JWT + user, treat as employee login
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       setIsEmployee(true);
-      try {
-        const userData = JSON.parse(userStr);
-        setUserName(userData.username || userData.name || 'Employee');
-      } catch {
-        setUserName('Employee');
-      }
+      const user = getAuthUser();
+      setUserName(user?.username || user?.name || 'Employee');
     } else {
       setIsEmployee(false);
     }
@@ -50,16 +43,22 @@ export default function Navigation() {
   const navItems = isEmployee ? employeeNavItems : adminNavItems;
 
   const handleLogout = async () => {
-    if (isEmployee) {
-      // Employee logout
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      router.push('/auth/employee-login');
-    } else {
-      // Admin logout
-      await signOut({ redirect: false });
-      router.push('/auth/login');
+    try {
+      const token = getAuthToken();
+      const refresh = getRefreshToken();
+      if (token) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: refresh }),
+        });
+      }
+    } catch (error) {
+      console.error('Logout API call failed:', error);
     }
+    clearAllAuth();
+    await signOut({ redirect: false });
+    router.push('/auth/login');
   };
 
   const handleNavigation = (href: string) => {

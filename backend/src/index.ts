@@ -5,6 +5,7 @@ import routes from './routes';
 import pool from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import { initializeAuthTables } from './config/initDb';
+import { startSessionCleanupScheduler } from './helpers/sessionHelper';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,6 +17,7 @@ async function startServer() {
     console.log('Database initialized');
   } catch (error) {
     console.error('Failed to initialize database:', error);
+    process.exit(1);
   }
 
   // Middleware
@@ -46,8 +48,12 @@ async function startServer() {
     console.log(`Server running on port ${PORT}`);
   });
 
+  // Clean expired sessions on startup + every 24 hours
+  const cleanupInterval = startSessionCleanupScheduler();
+
   // Graceful shutdown
   process.on('SIGTERM', async () => {
+    clearInterval(cleanupInterval);
     await pool.end();
     process.exit(0);
   });

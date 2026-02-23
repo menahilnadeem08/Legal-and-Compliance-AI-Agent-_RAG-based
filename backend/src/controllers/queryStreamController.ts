@@ -1,20 +1,28 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { RetrievalService } from '../services/retrieval';
 import { AnswerGenerator } from '../services/generator';
 import { ContextCompressor } from '../services/compressor';
 import { pipelineLogger } from '../services/logger';
 import { sessionMemory } from '../utils/sessionMemory';
+import { AuthenticatedRequest } from '../types';
+import { getAdminIdForUser } from '../utils/adminIdUtils';
+import { AppError } from '../middleware/errorHandler';
 
 const retrievalService = new RetrievalService();
 const answerGenerator = new AnswerGenerator();
 const compressor = new ContextCompressor();
 
-export const queryStreamController = async (req: Request, res: Response) => {
+export const queryStreamController = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { query, sessionId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
+    }
+
+    const adminId = getAdminIdForUser(req.user);
+    if (!adminId) {
+      return res.status(500).json({ error: 'User role not properly configured' });
     }
 
     // Set headers for Server-Sent Events streaming
@@ -61,7 +69,7 @@ export const queryStreamController = async (req: Request, res: Response) => {
 
       // Stage 1: Retrieval
       pipelineLogger.info('RETRIEVAL', 'Searching documents for relevant content...');
-      const chunks = await retrievalService.hybridSearch(query, 10);
+      const chunks = await retrievalService.hybridSearch(query, 10, adminId);
       pipelineLogger.info('RETRIEVAL_COMPLETE', `Retrieved ${chunks.length} chunks`, {
         count: chunks.length,
       });

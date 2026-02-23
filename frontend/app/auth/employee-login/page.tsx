@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
+import { setAuth, getAuthUser } from '../../utils/auth';
 
 export default function EmployeeLoginPage() {
   const router = useRouter();
@@ -13,35 +14,23 @@ export default function EmployeeLoginPage() {
   const [password, setPassword] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // Redirect authenticated users away from login page
+  // Redirect only if employee is already logged in via localStorage
+  // Allow this page even if admin is logged in (admin can help employee login)
   useEffect(() => {
-    // Check if user is logged in via NextAuth (admin) or localStorage (employee)
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    // If NextAuth session is still loading, wait
     if (status === 'loading') {
       setIsAuthLoading(true);
       return;
     }
 
-    // If admin is authenticated via NextAuth
-    if (session && session.user) {
+    const user = getAuthUser();
+    if (user && user.role === 'employee') {
       setIsAuthLoading(false);
       router.push('/');
       return;
     }
 
-    // If employee is authenticated via localStorage
-    if (token && userStr) {
-      setIsAuthLoading(false);
-      router.push('/');
-      return;
-    }
-
-    // No authentication found, show login page
     setIsAuthLoading(false);
-  }, [session, status, router]);
+  }, [status, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,9 +45,7 @@ export default function EmployeeLoginPage() {
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
 
@@ -69,13 +56,15 @@ export default function EmployeeLoginPage() {
       }
 
       const data = await response.json();
-      
-      // Store token and user info in localStorage
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      setAuth(data.accessToken, data.user, data.refreshToken);
 
-      // Redirect to home page
-      router.push('/');
+      if (data.forcePasswordChange) {
+        localStorage.setItem('forcePasswordChange', 'true');
+        document.cookie = `force-password-change=true; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+        router.push('/auth/change-password');
+      } else {
+        router.push('/');
+      }
     } catch (err) {
       setError('An error occurred during login');
       console.error(err);

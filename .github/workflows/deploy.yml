@@ -51,6 +51,7 @@ jobs:
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
             

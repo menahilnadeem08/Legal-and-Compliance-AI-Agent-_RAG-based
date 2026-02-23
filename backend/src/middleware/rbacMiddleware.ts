@@ -3,10 +3,8 @@ import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { AuthenticatedRequest } from '../types';
 import { logger } from '../utils/logger';
+import { JWT_SECRET } from '../config/secrets';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-// Authenticate user via JWT token
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -17,23 +15,9 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    logger.info('AUTH', 'Token verified for user', decoded.id);
-
-    // Verify session exists in database
-    const sessionResult = await pool.query(
-      'SELECT * FROM sessions WHERE token = $1 AND expires_at > NOW()',
-      [token]
-    );
-
-    if (sessionResult.rows.length === 0) {
-      logger.warn('AUTH', 'Session not found or expired in database');
-      return res.status(401).json({ error: 'Session expired' });
-    }
-
-    logger.success('AUTH', 'Session found in database');
 
     const userResult = await pool.query(
-      'SELECT id, username, email, name, role, admin_id FROM users WHERE id = $1',
+      'SELECT id, username, email, name, role, admin_id, force_password_change, sessions_revoked_at, is_active FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -43,14 +27,32 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     const user = userResult.rows[0];
+
+    // Check if user account is active (not deactivated)
+    if (!user.is_active) {
+      logger.warn('AUTH', 'Attempt to login with deactivated account', `${user.username}`);
+      return res.status(401).json({ error: 'Account has been deactivated' });
+    }
+
+    // Reject access tokens issued before the last session revocation
+    if (user.sessions_revoked_at) {
+      const tokenIssuedAt = decoded.iat;
+      const revokedAtSeconds = Math.floor(new Date(user.sessions_revoked_at).getTime() / 1000);
+      if (tokenIssuedAt < revokedAtSeconds) {
+        logger.warn('AUTH', 'Token issued before session revocation');
+        return res.status(401).json({ error: 'Session revoked. Please log in again.' });
+      }
+    }
+
     logger.success('AUTH', 'User authenticated', `${user.username} (${user.role})`);
-    
+
     req.user = {
       id: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
-      admin_id: user.admin_id
+      admin_id: user.admin_id,
+      forcePasswordChange: user.force_password_change || false,
     };
 
     next();
@@ -63,7 +65,6 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
   }
 }
 
-// Require specific role(s)
 export function requireRole(...allowedRoles: string[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

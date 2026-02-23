@@ -18,9 +18,20 @@ export async function initializeAuthTables() {
         auth_provider VARCHAR(50) DEFAULT 'local',
         admin_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         is_active BOOLEAN DEFAULT true,
+        is_temp_password BOOLEAN DEFAULT true,
+        temp_password_expires_at TIMESTAMP,
+        force_password_change BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add temp password columns if they don't exist (migration)
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS is_temp_password BOOLEAN DEFAULT true,
+      ADD COLUMN IF NOT EXISTS temp_password_expires_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false
     `);
 
     // Create sessions table for JWT/session tracking
@@ -107,19 +118,20 @@ export async function initializeAuthTables() {
       )
     `);
 
-    // Verify foreign key relationship exists
+    // Ensure foreign key relationship exists
     await client.query(`
-      ALTER TABLE messages
-      DROP CONSTRAINT IF EXISTS messages_conversation_id_fkey
-    `).catch(() => {});
-
-    await client.query(`
-      ALTER TABLE messages
-      ADD CONSTRAINT messages_conversation_id_fkey
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-    `).catch(() => {
-      // Constraint might already exist
-    });
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'messages_conversation_id_fkey'
+        ) THEN
+          ALTER TABLE messages
+            ADD CONSTRAINT messages_conversation_id_fkey
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE;
+        END IF;
+      END
+      $$;
+    `);
 
     // Create indexes
     await client.query(`
@@ -128,12 +140,48 @@ export async function initializeAuthTables() {
       CREATE INDEX IF NOT EXISTS idx_users_admin_id ON users(admin_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
       CREATE INDEX IF NOT EXISTS idx_documents_admin_id ON documents(admin_id);
       CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
       CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(conversation_id, sequence_number);
+    `);
+
+    // Create audit_logs table for comprehensive audit trail
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id SERIAL PRIMARY KEY,
+        admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        action VARCHAR(100) NOT NULL,
+        resource_type VARCHAR(100),
+        resource_id VARCHAR(255),
+        metadata JSONB DEFAULT '{}',
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add columns to users table if they don't exist (migration)
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS otp_code VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS sessions_revoked_at TIMESTAMP
+    `);
+
+    // Create indexes for audit_logs
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     `);
 
     console.log('Auth tables initialized successfully');

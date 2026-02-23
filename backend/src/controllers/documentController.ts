@@ -45,7 +45,7 @@ export const checkForNewerVersion = asyncHandler(async (req: AuthenticatedReques
     throw new AppError('User role not properly configured', 500);
   }
   
-  const result = await documentService.checkForNewerVersion(id as string);
+  const result = await documentService.checkForNewerVersion(id as string, adminId);
   return res.json(result);
 });
 
@@ -160,7 +160,12 @@ export const getSuggestions = asyncHandler(async (req: AuthenticatedRequest, res
 
 export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const result = await documentService.deleteDocument(id as string);
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+
+  const result = await documentService.deleteDocument(id as string, adminId);
   return res.json(result);
 });
 
@@ -170,7 +175,12 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
  */
 export const activateDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const result = await documentService.activateDocument(id as string);
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+
+  const result = await documentService.activateDocument(id as string, adminId);
   return res.json(result);
 });
 
@@ -180,6 +190,11 @@ export const activateDocument = asyncHandler(async (req: AuthenticatedRequest, r
  */
 export const deactivateDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const result = await documentService.deactivateDocument(id as string);
+  const adminId = getAdminIdForUser(req.user);
+  if (!adminId) {
+    throw new AppError('User role not properly configured', 500);
+  }
+
+  const result = await documentService.deactivateDocument(id as string, adminId);
   return res.json(result);
 });

@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import { getAuthToken, isEmployeeUser } from '../utils/auth';
 
 interface Document {
   id: string;
@@ -29,39 +30,21 @@ export default function DocumentsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEmployee, setIsEmployee] = useState(false);
 
-  // Check authentication and user type
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-
-    // Employees can access documents
-    if (token && userStr) {
+    if (isEmployeeUser()) {
       setIsEmployee(true);
       setIsAdmin(false);
-      return;
-    }
-
-    // Redirect to login if not authenticated
-    if (status === 'unauthenticated') {
-      router.push('/login');
-      return;
-    }
-
-    // Check if admin
-    if (session && session.user) {
+    } else if (getAuthToken(session)) {
       setIsAdmin(true);
       setIsEmployee(false);
+    } else if (status === 'unauthenticated') {
+      router.push('/auth/login');
     }
   }, [status, session, router]);
 
   const fetchDocuments = async () => {
     try {
-      // Get token from localStorage (employee) or session (admin Google OAuth)
-      let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token && session && (session.user as any)?.token) {
-        token = (session.user as any).token;
-      }
-
+      const token = getAuthToken(session);
       if (!token) {
         setError('Authentication required to view documents.');
         return;

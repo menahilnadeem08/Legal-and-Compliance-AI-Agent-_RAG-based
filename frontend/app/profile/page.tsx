@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import PageContainer from '../components/PageContainer';
+import { getAuthToken, getRefreshToken, getAuthUser, isEmployeeUser, clearAllAuth, setAuth } from '../utils/auth';
 
 interface UserInfo {
   id: number;
@@ -33,60 +34,61 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Check for employee authentication (localStorage)
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    if (token && userStr) {
-      try {
-        const userData = JSON.parse(userStr);
-        setUser(userData);
-        setIsEmployee(true);
-        setLoading(false);
-        return;
-      } catch (err) {
-        console.error('Failed to parse user data:', err);
-      }
-    }
+    const storedUser = getAuthUser();
 
-    // Wait for NextAuth to load
-    if (status === 'loading') {
+    if (storedUser) {
+      const userInfo: UserInfo = {
+        id: storedUser.id || 0,
+        username: storedUser.username || storedUser.email || 'User',
+        email: storedUser.email || '',
+        name: storedUser.name || storedUser.username || '',
+        role: storedUser.role || 'admin',
+      };
+      setUser(userInfo);
+      setIsEmployee(storedUser.role === 'employee');
+      setLoading(false);
       return;
     }
 
-    // Check for admin authentication (NextAuth)
-    if (session && session.user) {
-      const adminUser: UserInfo = {
-        id: 0, // Google doesn't provide ID
+    if (status === 'loading') return;
+
+    if (session?.user) {
+      const sessionUser: UserInfo = {
+        id: 0,
         username: session.user.email || 'Admin User',
         email: session.user.email || '',
         name: session.user.name || 'Admin',
         role: 'admin',
       };
-      setUser(adminUser);
+      setUser(sessionUser);
       setIsEmployee(false);
       setLoading(false);
       return;
     }
 
-    // Not authenticated - redirect to login
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' && !getAuthToken()) {
       router.push('/auth/login');
       setLoading(false);
     }
   }, [status, session, router]);
 
   const handleLogout = async () => {
-    if (isEmployee) {
-      // Employee logout
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      router.push('/auth/employee-login');
-    } else {
-      // Admin logout
-      await signOut({ redirect: false });
-      router.push('/auth/login');
+    try {
+      const token = getAuthToken(session);
+      const refresh = getRefreshToken();
+      if (token) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: refresh }),
+        });
+      }
+    } catch (error) {
+      console.error('Logout API call failed:', error);
     }
+    clearAllAuth();
+    await signOut({ redirect: false });
+    router.push('/auth/login');
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -99,7 +101,7 @@ export default function ProfilePage() {
     try {
       setPasswordLoading(true);
       setError('');
-      const token = localStorage.getItem('token');
+      const token = getAuthToken(session);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/change-password`, {
         method: 'POST',
@@ -114,10 +116,17 @@ export default function ProfilePage() {
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         setError(data.error || 'Failed to change password');
         return;
+      }
+
+      // Store the fresh token pair returned after password change
+      if (data.accessToken) {
+        const currentUser = getAuthUser();
+        setAuth(data.accessToken, currentUser, data.refreshToken);
       }
 
       setSuccessMessage('Password changed successfully');

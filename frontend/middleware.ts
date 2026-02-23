@@ -1,37 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const token = req.cookies.get("__Secure-next-auth.session-token")?.value ||
-                req.cookies.get("next-auth.session-token")?.value;
-  
-  // If there's a NextAuth token (admin), allow access
-  if (token) {
-    return NextResponse.next();
-  }
-
-  // For public routes, allow access (auth routes)
   const pathname = req.nextUrl.pathname;
-  const publicRoutes = ["/auth"];
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
+
+  // Single unified token cookie. NextAuth session cookies kept as fallback
+  // for the first request after Google OAuth (before AuthSync sets auth-token).
+  const authToken =
+    req.cookies.get("auth-token")?.value ||
+    req.cookies.get("__Secure-next-auth.session-token")?.value ||
+    req.cookies.get("next-auth.session-token")?.value;
+
+  const forcePasswordChange =
+    req.cookies.get("force-password-change")?.value === "true";
+
+  // All /auth/* routes are public
+  if (pathname.startsWith("/auth")) {
+    if (authToken && forcePasswordChange) {
+      if (!pathname.startsWith("/auth/change-password")) {
+        return NextResponse.redirect(
+          new URL("/auth/change-password", req.url)
+        );
+      }
+    } else if (authToken && pathname.startsWith("/auth/change-password")) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
     return NextResponse.next();
   }
 
-  // Only truly admin-only routes require NextAuth token
-  // Home page (/) handles both admin and employee auth client-side
-  // Employee routes (/profile, /documents, /chat) handle auth client-side
-  const adminRoutes = ["/upload", "/admin"];
-  if (adminRoutes.some(route => pathname === route || pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+  // Authenticated user
+  if (authToken) {
+    if (forcePasswordChange) {
+      return NextResponse.redirect(new URL("/auth/change-password", req.url));
+    }
+    return NextResponse.next();
   }
 
-  return NextResponse.next();
+  // No authentication — redirect to login
+  return NextResponse.redirect(new URL("/auth/login", req.url));
 }
 
 export const config = {
   matcher: [
-    "/upload",
-    "/admin",
-    "/",
-    "/((?!auth|profile|document|chat|api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon\\.ico).*)",
   ],
 };

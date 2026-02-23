@@ -3,6 +3,7 @@ import { QueryService } from './queryService';
 import { VersionComparisonService } from './versionComparisonService';
 import { ConflictDetectionService } from './conflictDetectionService';
 import { DocumentService } from './documentService';
+import { GapAnalysisService } from './gapAnalysisService';
 
 export interface AgentResult {
   answer: string;
@@ -23,6 +24,7 @@ export class LegalComplianceAgent {
   private versionService: VersionComparisonService;
   private conflictService: ConflictDetectionService;
   private documentService: DocumentService;
+  private gapAnalysisService: GapAnalysisService;
   private toolResultsMetadata: Map<string, any> = new Map();
 
   constructor() {
@@ -30,6 +32,7 @@ export class LegalComplianceAgent {
     this.versionService = new VersionComparisonService();
     this.conflictService = new ConflictDetectionService();
     this.documentService = new DocumentService();
+    this.gapAnalysisService = new GapAnalysisService();
   }
 
   /**
@@ -296,6 +299,77 @@ export class LegalComplianceAgent {
             required: ["document_name"]
           }
         }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "track_policy_changes",
+          description: "Track how a policy or document has evolved across all versions over time. Returns a chronological timeline of changes, what was added/removed/modified in each version, severity of changes, and AI summary of the evolution. Use when user asks 'what changed', 'how has this policy evolved', 'show me the history'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_name: {
+                type: "string",
+                description: "Name of the document to track"
+              },
+              from_version: {
+                type: "string",
+                description: "Starting version (optional, defaults to earliest)"
+              },
+              to_version: {
+                type: "string",
+                description: "Ending version (optional, defaults to latest)"
+              }
+            },
+            required: ["document_name"]
+          }
+        }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "find_related_documents",
+          description: "Find documents that are semantically related to a given document using embedding similarity. Returns ranked list of related documents with relationship scores and shared topics. Use when user asks 'what documents relate to X', 'find similar policies', 'what else covers this topic'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_name: {
+                type: "string",
+                description: "Name of the source document"
+              },
+              limit: {
+                type: "number",
+                description: "Max related documents to return (default 5)"
+              }
+            },
+            required: ["document_name"]
+          }
+        }
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "gap_analysis",
+          description: "Compare two documents and identify topics, obligations, or clauses that exist in one but are missing in the other. Returns coverage scores and recommendations. Use when user asks 'what is missing from', 'does this contract cover', 'compare coverage between', 'what does Doc A have that Doc B doesnt'.",
+          parameters: {
+            type: "object",
+            properties: {
+              document_a: {
+                type: "string",
+                description: "First document name"
+              },
+              document_b: {
+                type: "string",
+                description: "Second document name to compare against"
+              },
+              focus_area: {
+                type: "string",
+                description: "Optional specific topic to focus on e.g. 'data retention' or 'termination'"
+              }
+            },
+            required: ["document_a", "document_b"]
+          }
+        }
       }
     ];
   }
@@ -361,6 +435,121 @@ export class LegalComplianceAgent {
             document_name: resolvedName || args.document_name,
             versions: versions
           };
+
+        case "track_policy_changes":
+          // Find actual document name
+          const actualDocName = await this.documentService.findDocumentByName(args.document_name, adminId);
+          if (!actualDocName) {
+            throw new Error(`Document "${args.document_name}" not found`);
+          }
+
+          // Get full version history with metadata
+          const versionHistory = await this.documentService.getDocumentVersionHistory(actualDocName, adminId);
+          let versionsList = [...versionHistory.versions].sort(
+            (a: any, b: any) => new Date(a.upload_date).getTime() - new Date(b.upload_date).getTime()
+          );
+
+          // Filter by from_version/to_version if provided
+          if (args.from_version) {
+            const fromIdx = versionsList.findIndex((v: any) => v.version === args.from_version);
+            if (fromIdx === -1) throw new Error(`Version "${args.from_version}" not found`);
+            versionsList = versionsList.slice(fromIdx);
+          }
+          if (args.to_version) {
+            const toIdx = versionsList.findIndex((v: any) => v.version === args.to_version);
+            if (toIdx === -1) throw new Error(`Version "${args.to_version}" not found`);
+            versionsList = versionsList.slice(0, toIdx + 1);
+          }
+
+          // Build timeline by comparing consecutive versions
+          const timeline: any[] = [];
+          for (let i = 0; i < versionsList.length - 1; i++) {
+            const v1 = versionsList[i];
+            const v2 = versionsList[i + 1];
+
+            const comparison = await this.documentService.compareVersionsDetailed(actualDocName, v1.version, v2.version, adminId);
+
+            // Determine severity based on change statistics
+            let severity = 'low';
+            if (comparison.statistics.change_percentage > 30) severity = 'high';
+            else if (comparison.statistics.change_percentage > 10) severity = 'medium';
+
+            timeline.push({
+              from: v1.version,
+              to: v2.version,
+              date: new Date(v2.upload_date).toISOString().split('T')[0],
+              summary: comparison.summary,
+              changes_added: comparison.statistics.chunks_added,
+              changes_removed: comparison.statistics.chunks_removed,
+              changes_modified: comparison.statistics.chunks_modified,
+              change_percentage: comparison.statistics.change_percentage,
+              severity: severity,
+              impact_analysis: comparison.impact_analysis,
+              key_changes: comparison.changes
+                .filter((c: any) => c.change_type !== 'unchanged')
+                .slice(0, 5)
+                .map((c: any) => ({
+                  type: c.change_type,
+                  section: c.section_name || 'N/A',
+                  page: c.page_number
+                }))
+            });
+          }
+
+          // Generate overall evolution summary
+          if (timeline.length > 0) {
+            const timelineSummary = timeline
+              .map(t => `v${t.from} → v${t.to} (${t.date}): ${t.changes_added} added, ${t.changes_removed} removed, ${t.changes_modified} modified (${t.change_percentage.toFixed(0)}% change)`)
+              .join('\n');
+
+            const overallSummaryPrompt = `You are a legal compliance expert. Summarize the evolution of "${actualDocName}" across versions:
+
+${timelineSummary}
+
+Provide a concise executive summary (2-3 bullet points) highlighting:
+1. Major shifts and trends in the policy
+2. Key milestones in its evolution
+3. Overall direction of policy changes
+
+Be specific about business/compliance impact.`;
+
+            const overallResponse = await llm.invoke(overallSummaryPrompt);
+            const overallSummary = overallResponse.content.toString();
+
+            const result = {
+              document_name: actualDocName,
+              timeline,
+              overall_summary: overallSummary,
+              total_versions_tracked: versionsList.length
+            };
+
+            console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+            return result;
+          } else {
+            throw new Error('Only one version exists; no changes to track');
+          }
+
+        case "find_related_documents":
+          const relatedDocs = await this.documentService.findRelatedDocuments(
+            args.document_name,
+            adminId,
+            args.limit || 5
+          );
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return {
+            document_name: args.document_name,
+            related_documents: relatedDocs
+          };
+
+        case "gap_analysis":
+          const gapResult = await this.gapAnalysisService.analyzeGaps(
+            args.document_a,
+            args.document_b,
+            adminId,
+            args.focus_area
+          );
+          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          return gapResult;
 
         default:
           throw new Error(`Unknown tool: ${toolName}`);
@@ -433,6 +622,78 @@ ${result.conflicts.map((c: any, i: number) =>
           citations: this.extractVersionListCitations(result)
         };
 
+      case "track_policy_changes":
+        const timelineText = result.timeline
+          .map((t: any) => `v${t.from} → v${t.to} (${t.date}) [${t.severity}]: +${t.changes_added} -${t.changes_removed} ~${t.changes_modified}\n${t.summary}`)
+          .join('\n\n');
+        return {
+          text: `Policy Evolution Timeline for ${result.document_name}:\n\n${timelineText}\n\nOverall Evolution:\n${result.overall_summary}`,
+          citations: this.extractVersionCitations({  // Reuse version citation extractor
+            document_name: result.document_name,
+            changes: result.timeline.flatMap((t: any) => t.key_changes || [])
+          })
+        };
+
+      case "find_related_documents":
+        const relatedListText = result.related_documents
+          .map((d: any) => `• ${d.document_name} (v${d.version}) - Similarity: ${(d.similarity_score * 100).toFixed(0)}% [${d.relationship_type}]\n  Topics: ${d.shared_topics.join(', ')}`)
+          .join('\n\n');
+        return {
+          text: `Related Documents for ${result.document_name}:\n\n${relatedListText || 'No related documents found.'}`,
+          citations: result.related_documents.map((d: any) => ({
+            document_name: d.document_name,
+            version: d.version,
+            relationship_type: d.relationship_type,
+            similarity_score: d.similarity_score,
+            shared_topics: d.shared_topics.join(', '),
+            content: `Related with ${(d.similarity_score * 100).toFixed(0)}% similarity. Shared topics: ${d.shared_topics.join(', ')}`,
+            relevance_score: d.similarity_score
+          }))
+        };
+
+      case "gap_analysis":
+        const gapsInBText = result.gaps_in_b.length > 0
+          ? `\n${result.gaps_in_b.map((g: any) => `• [${g.severity.toUpperCase()}] ${g.topic}: ${g.recommendation}`).join('\n')}`
+          : '\nNo major gaps found in this direction.';
+        const gapsInAText = result.gaps_in_a.length > 0
+          ? `\n${result.gaps_in_a.map((g: any) => `• [${g.severity.toUpperCase()}] ${g.topic}: ${g.recommendation}`).join('\n')}`
+          : '\nNo major gaps found in this direction.';
+        
+        return {
+          text: `Gap Analysis: "${result.document_a}" vs "${result.document_b}"
+
+Coverage Scores:
+• ${result.document_a}: ${result.coverage_score_a}% coverage of ${result.document_b}
+• ${result.document_b}: ${result.coverage_score_b}% coverage of ${result.document_a}
+
+Critical Gaps Found: ${result.critical_gaps}
+
+Missing from ${result.document_b}:${gapsInBText}
+
+Missing from ${result.document_a}:${gapsInAText}
+
+Expert Analysis:
+${result.llm_summary}`,
+          citations: [
+            ...result.gaps_in_b.map((g: any) => ({
+              document_name: result.document_b,
+              gap_type: 'missing',
+              topic: g.topic,
+              severity: g.severity,
+              content: g.recommendation,
+              relevance_score: g.severity === 'critical' ? 1.0 : g.severity === 'important' ? 0.7 : 0.4
+            })),
+            ...result.gaps_in_a.map((g: any) => ({
+              document_name: result.document_a,
+              gap_type: 'missing',
+              topic: g.topic,
+              severity: g.severity,
+              content: g.recommendation,
+              relevance_score: g.severity === 'critical' ? 1.0 : g.severity === 'important' ? 0.7 : 0.4
+            }))
+          ]
+        };
+
       default:
         return {
           text: JSON.stringify(result)
@@ -443,9 +704,16 @@ ${result.conflicts.map((c: any, i: number) =>
   /**
    * Main agent processing with function calling and UNIVERSAL citation tracking
    */
-  async processQuery(userQuery: string, adminId: number, maxIterations: number = 5): Promise<AgentResult> {
+  async processQuery(
+    userQuery: string,
+    adminId: number,
+    maxIterations: number = 5,
+    onLog?: (stage: string, message: string) => void
+  ): Promise<AgentResult> {
+    const log = onLog || (() => {});
     console.log('\n🤖 Legal Compliance Agent starting...');
     console.log('📝 Query:', userQuery);
+    log('AGENT_START', 'Processing your question...');
 
     // Reset metadata storage
     this.toolResultsMetadata.clear();
@@ -483,11 +751,18 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 - Never claim certainty beyond what evidence supports
 
 Tool Selection Guidelines:
-- Use search_documents for general questions about document content
-- Use compare_document_versions when asked about version differences or changes
+- Use search_documents for general questions about document content or answering FROM documents
+- Use compare_document_versions when asked about version differences or changes WITHIN the same document
 - Use detect_policy_conflicts when asked if documents conflict or contradict
 - Use list_available_documents when user asks what documents exist
+- Use track_policy_changes when user asks "what changed", "how has this evolved", "show me the history", "what was updated", "differences across versions", or "policy timeline"
+- Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
+- Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents", or "what topics are not covered"
 - Call multiple tools if needed for comprehensive, well-sourced answers
+
+Tool Disambiguation:
+- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document. Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
+- find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
 
 Response Requirements:
 - Be precise and cite sources when available [Document Name, Section/Page]
@@ -514,6 +789,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
     while (iteration < maxIterations) {
       iteration++;
       console.log(`\n🔄 Iteration ${iteration}/${maxIterations}`);
+      log('LLM_THINKING', 'Analyzing your question and deciding which tools to use...');
 
       // Call LLM with tools
       const response = await llm.invoke(conversationHistory, {
@@ -527,10 +803,8 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       if (message.additional_kwargs?.tool_calls && message.additional_kwargs.tool_calls.length > 0) {
         console.log(`📞 LLM requesting ${message.additional_kwargs.tool_calls.length} tool call(s)`);
 
-        // Execute all requested tools IN PARALLEL for better performance
         const toolResults: any[] = [];
         
-        // Prepare all tool calls
         const toolPromises = message.additional_kwargs.tool_calls.map(async (toolCall: any) => {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
@@ -538,10 +812,20 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           toolCalls.push(toolName);
           console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...) [PARALLEL]`);
 
+          const friendlyNames: Record<string, string> = {
+            search_documents: 'Searching documents...',
+            compare_document_versions: 'Comparing document versions...',
+            detect_policy_conflicts: 'Detecting policy conflicts...',
+            list_available_documents: 'Listing available documents...',
+            get_document_versions: 'Retrieving document versions...',
+          };
+          log('TOOL_START', friendlyNames[toolName] || `Running ${toolName}...`);
+
           // Execute in parallel
           const result = await this.executeTool(toolName, toolArgs, adminId);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
+          log('TOOL_DONE', `Completed ${toolName.replace(/_/g, ' ')}`);
           return {
             toolCall,
             toolName,
@@ -585,6 +869,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
       } else {
         // No more tool calls - LLM has final answer
+        log('GENERATING', 'Generating final answer...');
         finalAnswer = message.content.toString();
         console.log('\n✅ Agent completed');
         break;
