@@ -106,7 +106,14 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
       return;
     }
 
-    const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
+    const forcePasswordChange = !!user.force_password_change;
+    const tokenPayload = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      ...(forcePasswordChange && { forcePasswordChange: true }),
+    };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
@@ -114,7 +121,7 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
       accessToken,
       refreshToken,
       user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role },
-      forcePasswordChange: false,
+      forcePasswordChange,
     });
   } catch (error) {
     console.error('[AUTH] Login error:', error);

@@ -22,6 +22,7 @@ function generateAccessToken(payload: object): string {
 export async function adminSignup(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { username, email, password, confirmPassword, companyName } = req.body;
+    console.log('[ADMIN-SIGNUP] Request received for email:', email ?? '(missing)');
 
     if (!username || !email || !password || !confirmPassword) {
       res.status(400).json({ error: 'Username, email, password, and confirm password are required' });
@@ -82,14 +83,27 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
 
       const user = newUser.rows[0];
 
-      await EmailService.sendOtpEmail(email, otp, user.name || username);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ADMIN-SIGNUP] 📧 OTP for', email, '->', otp, '(use this if email is not received)');
+      }
+
+      let emailSent = true;
+      try {
+        await EmailService.sendOtpEmail(email, otp, user.name || username);
+      } catch (emailError) {
+        console.error('[ADMIN-SIGNUP] OTP email failed:', emailError);
+        emailSent = false;
+      }
 
       client.release();
 
       res.status(201).json({
-        message: 'Account created. Please verify your email with the OTP sent to your inbox.',
+        message: emailSent
+          ? 'Account created. Please verify your email with the OTP sent to your inbox.'
+          : 'Account created. We could not send the verification email. Please use the "Resend OTP" button on the next screen, or check server logs for the OTP in development.',
         requiresVerification: true,
-        email: user.email
+        email: user.email,
+        emailSent
       });
     } catch (error) {
       client.release();
@@ -268,9 +282,19 @@ export async function resendOtp(req: AuthenticatedRequest, res: Response): Promi
       [otpHash, otpExpiresAt, user.id]
     );
 
-    await EmailService.sendOtpEmail(email, otp, user.name || email);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[RESEND-OTP] 📧 OTP for', email, '->', otp);
+    }
 
-    res.json({ message: 'A new OTP has been sent to your email' });
+    try {
+      await EmailService.sendOtpEmail(email, otp, user.name || email);
+      res.json({ message: 'A new OTP has been sent to your email' });
+    } catch (emailError) {
+      console.error('[RESEND-OTP] Email send failed:', emailError);
+      res.status(503).json({
+        error: 'Could not send verification email. Check that GMAIL_PASSWORD is an App Password if using Gmail with 2FA, or check server logs for details.'
+      });
+    }
   } catch (error) {
     console.error('[RESEND-OTP] Error:', error);
     res.status(500).json({ error: 'Failed to resend OTP' });
