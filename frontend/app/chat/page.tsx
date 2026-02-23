@@ -68,6 +68,14 @@ const getFriendlyMessage = (stage: string, message: string): string => {
   return stageMap[stage] || message;
 };
 
+// Remove inline citation numbers from answer text
+// Converts: "This is text [1][2][3]" → "This is text"
+const stripInlineCitations = (text: string): string => {
+  if (!text) return text;
+  // Remove patterns like [1], [2], etc. - including multiple consecutive citations
+  return text.replace(/\s*\[\d+\](?:\[\d+\])*/g, '').trim();
+};
+
 export default function ChatPage() {
   return (
     <Suspense fallback={null}>
@@ -483,7 +491,7 @@ function ChatPageContent() {
                         ) : (
                           <>
                             <div className="prose prose-sm prose-invert max-w-none">
-                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                              <ReactMarkdown>{stripInlineCitations(msg.content)}</ReactMarkdown>
                             </div>
 
                             {msg.citations && msg.citations.length > 0 && (
