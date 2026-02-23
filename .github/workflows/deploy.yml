@@ -3,7 +3,7 @@ name: CI/CD Deployment to EC2
 on:
   push:
     branches:
-      - chat-memory
+      - master
 
 jobs:
   deploy:
@@ -34,11 +34,11 @@ jobs:
             
             # Clone or pull repo - FORCE CLEAN PULL
             if [ -d ".git" ]; then
-              git fetch origin chat-memory
-              git reset --hard origin/chat-memory
+              git fetch origin master
+              git reset --hard origin/master
               git clean -fd
             else
-              git clone -b chat-memory https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
+              git clone -b master https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
             fi
             
             # ========== Backend ==========
@@ -52,6 +52,9 @@ jobs:
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
+            GMAIL_USER=${{ secrets.GMAIL_USER }}
+            GMAIL_PASSWORD=${{ secrets.GMAIL_PASSWORD }}
+            APP_URL=${{ secrets.APP_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
             
