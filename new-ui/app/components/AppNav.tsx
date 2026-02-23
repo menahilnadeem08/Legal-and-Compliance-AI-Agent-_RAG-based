@@ -11,6 +11,7 @@ import {
   Upload,
   FileText,
   Shield,
+  FolderTree,
   Moon,
   Sun,
   LogOut,
@@ -23,6 +24,7 @@ const navLinks: { href: string; label: string; icon: typeof LayoutDashboard; adm
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/upload", label: "Upload", icon: Upload, adminOnly: true },
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/categories", label: "Categories", icon: FolderTree, adminOnly: true },
   { href: "/admin", label: "Admin", icon: Shield, adminOnly: true },
 ];
 

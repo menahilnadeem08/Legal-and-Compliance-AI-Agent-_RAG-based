@@ -228,8 +228,11 @@ export default function CategoriesPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Categories</h1>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-slate-600 dark:text-slate-400 mb-1">
             Add custom categories or show/hide default ones. These options appear when uploading documents.
+          </p>
+          <p className="text-slate-500 dark:text-slate-500 text-sm">
+            Categories are private to your account. Other admins cannot see or change your categories.
           </p>
         </div>
 
@@ -265,75 +268,106 @@ export default function CategoriesPage() {
           </div>
         ) : (
           <>
-            {/* Visible categories (default + custom) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-8">
+            {/* Default categories (visible) — list with hide toggle */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6">
               <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FolderTree className="w-5 h-5" />
-                  Visible categories ({categories.length})
+                  Default categories ({visibleDefaults.length})
                 </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                  Shown when uploading documents. Toggle off to hide from your list.
+                </p>
               </div>
               <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-                {categories.length === 0 ? (
-                  <li className="px-4 py-8 text-center text-slate-500 dark:text-slate-400 text-sm">
-                    No categories yet. Add a custom one or unhide defaults below.
+                {visibleDefaults.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    No default categories visible. Unhide some from the section below.
                   </li>
                 ) : (
-                  categories.map((c) => (
+                  visibleDefaults.map((c) => (
                     <li
-                      key={`${c.type}-${c.id}`}
+                      key={`default-${c.id}`}
                       className="flex items-center justify-between gap-4 px-4 py-3"
                     >
                       <span className="font-medium text-slate-900 dark:text-white truncate">{c.name}</span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {c.type === "default" && (
-                          <button
-                            type="button"
-                            onClick={() => hideDefault(Number(c.id))}
-                            disabled={!!actionLoading}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            {actionLoading === `hide-${c.id}` ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <EyeOff className="w-4 h-4" />
-                            )}
-                            Hide
-                          </button>
+                      <button
+                        type="button"
+                        onClick={() => hideDefault(Number(c.id))}
+                        disabled={!!actionLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                        title="Hide from upload list"
+                      >
+                        {actionLoading === `hide-${c.id}` ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <EyeOff className="w-4 h-4" />
                         )}
-                        {c.type === "custom" && (
-                          <button
-                            type="button"
-                            onClick={() => deleteCustom(Number(c.id))}
-                            disabled={!!actionLoading}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                          >
-                            {actionLoading === `del-${c.id}` ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                            Remove
-                          </button>
-                        )}
-                      </div>
+                        Hide
+                      </button>
                     </li>
                   ))
                 )}
               </ul>
             </div>
 
-            {/* Hidden default categories */}
-            {hiddenDefaults.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <EyeOff className="w-5 h-5" />
-                    Hidden default categories
-                  </h2>
-                </div>
-                <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {hiddenDefaults.map((h) => (
+            {/* Custom categories */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6">
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Tag className="w-5 h-5" />
+                  Your custom categories ({customCats.length})
+                </h2>
+              </div>
+              <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                {customCats.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    No custom categories. Add one above.
+                  </li>
+                ) : (
+                  customCats.map((c) => (
+                    <li
+                      key={`custom-${c.id}`}
+                      className="flex items-center justify-between gap-4 px-4 py-3"
+                    >
+                      <span className="font-medium text-slate-900 dark:text-white truncate">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => deleteCustom(Number(c.id))}
+                        disabled={!!actionLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                      >
+                        {actionLoading === `del-${c.id}` ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                        Remove
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+
+            {/* Hidden default categories — unhide toggle */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <EyeOff className="w-5 h-5" />
+                  Hidden default categories ({hiddenDefaults.length})
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                  Unhide to show them again in the default list and when uploading.
+                </p>
+              </div>
+              <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                {hiddenDefaults.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    None hidden. Use &quot;Hide&quot; on any default category above to add it here.
+                  </li>
+                ) : (
+                  hiddenDefaults.map((h) => (
                     <li
                       key={h.id}
                       className="flex items-center justify-between gap-4 px-4 py-3"
@@ -344,6 +378,7 @@ export default function CategoriesPage() {
                         onClick={() => unhideDefault(h.id)}
                         disabled={!!actionLoading}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
+                        title="Show in upload list"
                       >
                         {actionLoading === `unhide-${h.id}` ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -353,10 +388,10 @@ export default function CategoriesPage() {
                         Unhide
                       </button>
                     </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                  ))
+                )}
+              </ul>
+            </div>
           </>
         )}
       </main>
