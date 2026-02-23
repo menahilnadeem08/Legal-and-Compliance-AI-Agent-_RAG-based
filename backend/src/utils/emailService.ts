@@ -21,7 +21,7 @@ function createTransporter() {
     });
   }
 
-  // Fallback to Gmail SMTP (use App Password if 2FA is enabled: https://support.google.com/accounts/answer/185833)
+  // Fallback to Gmail SMTP
   if (process.env.GMAIL_USER && process.env.GMAIL_PASSWORD) {
     console.log('[EMAIL-CONFIG] ✓ Using Gmail SMTP configuration');
     console.log(`[EMAIL-CONFIG]   User: ${process.env.GMAIL_USER}`);
@@ -185,10 +185,19 @@ export class EmailService {
       
       // Check if email is configured
       if (!transporter) {
-        console.error('[EMAIL-SEND] ⚠️  Transporter not configured! Email not sent.');
-        console.error('   Set GMAIL_USER + GMAIL_PASSWORD (for Gmail; use App Password if 2FA: https://support.google.com/accounts/answer/185833)');
-        console.error('   OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD (for custom SMTP)');
-        throw new Error('Email transporter not configured. Set GMAIL_USER and GMAIL_PASSWORD (or SMTP_* vars) in .env.');
+        console.log('[EMAIL-SEND] ⚠️  Transporter not configured!');
+        logger.info('EMAIL_SERVICE', '📧 Email would be sent (Email not configured)', {
+          to: message.to,
+          from: message.from,
+          subject: message.subject,
+          timestamp: new Date().toISOString()
+        });
+        console.log(
+          `[EMAIL] From: ${message.from}, To: ${message.to}, Subject: ${message.subject}`
+        );
+        console.log('⚠️  Configure GMAIL_USER + GMAIL_PASSWORD (for Gmail)');
+        console.log('   OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD (for custom domain)');
+        return;
       }
 
       console.log('[EMAIL-SEND] ✓ Transporter available, sending...');
@@ -234,10 +243,9 @@ export class EmailService {
       });
 
       console.error(`[EMAIL ✗] Failed to send to ${message.to}:`, error);
-      console.error('[EMAIL] For Gmail with 2FA, use an App Password: https://support.google.com/accounts/answer/185833');
 
-      // Rethrow so callers (e.g. signup) can return a proper response to the client
-      throw error;
+      // In production, implement retry logic here
+      // throw error; // Only throw if email is critical to operation
     }
   }
 }

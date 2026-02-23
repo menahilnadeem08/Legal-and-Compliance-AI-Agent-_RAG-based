@@ -17,6 +17,7 @@ import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } 
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
+/** Matches backend list: id, filename, category, version, is_active, upload_date */
 type DocumentItem = {
   id: string;
   name: string;
@@ -25,6 +26,25 @@ type DocumentItem = {
   upload_date: string;
   is_latest: boolean;
 };
+
+type ApiDocument = {
+  id: string;
+  filename?: string;
+  category?: string;
+  version?: string | number;
+  is_active?: boolean;
+  upload_date?: string;
+};
+function mapDocFromApi(doc: ApiDocument): DocumentItem {
+  return {
+    id: doc.id,
+    name: doc.filename ?? "Document",
+    type: doc.category ?? "other",
+    version: doc.version != null ? String(doc.version) : "—",
+    upload_date: doc.upload_date ?? "",
+    is_latest: doc.is_active ?? false,
+  };
+}
 
 type TabId = "all" | "latest" | "outdated";
 
@@ -130,7 +150,8 @@ export default function DocumentsPage() {
         return;
       }
       const data = await res.json();
-      setDocuments(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setDocuments(list.map((d: ApiDocument) => mapDocFromApi(d)));
     } catch (err) {
       console.error(err);
       setError("Failed to load documents. Please try again.");

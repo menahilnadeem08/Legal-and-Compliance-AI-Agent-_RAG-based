@@ -162,7 +162,9 @@ Rules:
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
-      const pdfjsLib: any = (await import('pdfjs-dist/build/pdf'))?.default ?? (await import('pdfjs-dist'));
+      // Import pdfjs-dist using the correct build path for Node.js
+      const pdfjsLib = require('pdfjs-dist/build/pdf');
+      
       const raw = fs.readFileSync(filePath);
       const uint8 = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
       const loadingTask = pdfjsLib.getDocument({ data: uint8 });

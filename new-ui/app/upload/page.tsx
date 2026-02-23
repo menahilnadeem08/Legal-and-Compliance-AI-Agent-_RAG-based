@@ -6,7 +6,9 @@ import { AppNav } from "@/app/components/AppNav";
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
 
-const DOCUMENT_TYPES = [
+/** Categories sent to backend; version is auto-assigned per category. */
+const DOCUMENT_CATEGORIES = [
+  "Federal Legislation / Acts",
   "Policy",
   "Contract",
   "Regulation",
@@ -16,25 +18,12 @@ const DOCUMENT_TYPES = [
   "Other",
 ] as const;
 
-const TYPE_TO_API = (t: string): string => {
-  const map: Record<string, string> = {
-    Policy: "policy",
-    Contract: "contract",
-    Regulation: "regulation",
-    Guideline: "guideline",
-    Procedure: "other",
-    "Compliance Notice": "other",
-    Other: "other",
-  };
-  return map[t] ?? "policy";
-};
-
 type SubmitState = "idle" | "loading" | "success" | "error";
 
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [documentType, setDocumentType] = useState<string>(DOCUMENT_TYPES[0]);
+  const [category, setCategory] = useState<string>(DOCUMENT_CATEGORIES[0]);
   const [title, setTitle] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
@@ -78,7 +67,7 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("type", TYPE_TO_API(documentType));
+    formData.append("category", category);
 
     try {
       const res = await fetch(`${getApiBase()}/upload`, {
@@ -108,7 +97,7 @@ export default function UploadPage() {
       setMessage(`"${file.name}" uploaded successfully.`);
       setFile(null);
       setTitle("");
-      setDocumentType(DOCUMENT_TYPES[0]);
+      setCategory(DOCUMENT_CATEGORIES[0]);
       const input = document.getElementById("file-input") as HTMLInputElement;
       if (input) input.value = "";
     } catch (err) {
@@ -132,7 +121,7 @@ export default function UploadPage() {
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 className="text-3xl font-bold mb-2">Upload Document</h1>
         <p className="text-slate-600 dark:text-slate-400 mb-8">
-          Add a PDF or DOCX file and choose a document type. Admin only.
+          Add a PDF or DOCX file and choose a category. Version is assigned automatically per category. Admin only.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -162,18 +151,18 @@ export default function UploadPage() {
             </div>
 
             <div>
-              <label htmlFor="document-type" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Document type
+              <label htmlFor="document-category" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Category
               </label>
               <select
-                id="document-type"
-                value={documentType}
-                onChange={(e) => setDocumentType(e.target.value)}
+                id="document-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {DOCUMENT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
+                {DOCUMENT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
                   </option>
                 ))}
               </select>

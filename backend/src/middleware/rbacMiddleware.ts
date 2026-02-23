@@ -57,15 +57,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
 
     next();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const isExpectedInvalid = error instanceof jwt.TokenExpiredError ||
-      error instanceof jwt.JsonWebTokenError ||
-      message === 'jwt malformed';
-    if (isExpectedInvalid) {
-      logger.warn('AUTH', 'Invalid or expired token', message);
-    } else {
-      logger.error('AUTH', 'Authentication error', message);
-    }
+    logger.error('AUTH', 'Authentication error', error instanceof Error ? error.message : error);
     if (error instanceof jwt.TokenExpiredError) {
       return res.status(401).json({ error: 'Token expired' });
     }
