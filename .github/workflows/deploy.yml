@@ -56,14 +56,13 @@ jobs:
             NODE_TLS_REJECT_UNAUTHORIZED=0
             EASYOCR_URL=http://localhost:8001
             ENVFILE
-
-            # Install only if node_modules missing
-            if [ ! -d "node_modules" ]; then
-              npm ci
-            fi
-
+            
+            # Clean and install (full install so TypeScript + @types/express are available for build)
+            rm -rf node_modules .next dist build
+            npm install
             npm run build
-
+            
+            # Start backend
             pm2 delete backend 2>/dev/null || true
             pm2 start dist/index.js --name backend
 
