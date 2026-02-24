@@ -10,11 +10,18 @@ export type ConversationItem = {
   created_at?: string;
 };
 
-/** Format latest activity time as HH:MM (e.g. "2:35") from conversation updated_at. */
-function formatConversationTime(updatedAt?: string): string {
+/** Format conversation timestamp as date and time from DB (e.g. "Feb 24, 2026, 7:58 AM"). */
+function formatConversationDateTime(updatedAt?: string): string {
   if (!updatedAt) return "";
   const d = new Date(updatedAt);
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 type Props = {
@@ -24,6 +31,9 @@ type Props = {
   onSelect: (id: string) => void;
   onDelete?: (id: string) => void;
   userName?: string;
+  conversationsLoading?: boolean;
+  conversationsError?: string | null;
+  onRetry?: () => void;
 };
 
 export function ConversationList({
@@ -33,6 +43,9 @@ export function ConversationList({
   onSelect,
   onDelete,
   userName = "Your Name",
+  conversationsLoading = false,
+  conversationsError = null,
+  onRetry,
 }: Props) {
   const initial = userName.slice(0, 1).toUpperCase();
 
@@ -67,13 +80,32 @@ export function ConversationList({
           Recent
         </p>
         <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {conversations.length === 0 ? (
+          {conversationsError ? (
+            <li className="py-4 px-4">
+              <div className="text-red-500 dark:text-red-400 text-sm text-center">
+                {conversationsError}
+                {onRetry && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="block mx-auto mt-2 text-xs underline hover:no-underline"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            </li>
+          ) : conversationsLoading ? (
+            <li className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 dark:border-slate-600 border-t-blue-600 dark:border-t-blue-400" />
+            </li>
+          ) : conversations.length === 0 ? (
             <li className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">
               No conversations yet
             </li>
           ) : (
-            conversations.map((c) => (
-              <li key={c.id} className="group">
+            conversations.map((c, i) => (
+              <li key={c.id != null ? `conv-${c.id}-${i}` : `conv-fallback-${i}`}>
                 <div
                   className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     currentId === c.id
@@ -96,7 +128,7 @@ export function ConversationList({
                         e.stopPropagation();
                         onDelete(c.id);
                       }}
-                      className="flex-shrink-0 p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-opacity"
+                      className="flex-shrink-0 p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400"
                       aria-label="Delete conversation"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -105,7 +137,7 @@ export function ConversationList({
                 </div>
                 {c.updated_at && (
                   <p className="pl-9 pr-3 pb-1.5 text-xs text-slate-400 dark:text-slate-500">
-                    {formatConversationTime(c.updated_at)}
+                    {formatConversationDateTime(c.updated_at)}
                   </p>
                 )}
               </li>

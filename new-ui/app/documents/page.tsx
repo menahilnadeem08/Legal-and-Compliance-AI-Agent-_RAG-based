@@ -111,10 +111,18 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setIsAdmin(isAdminUser());
   }, []);
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const fetchDocuments = async () => {
     setLoading(true);
@@ -159,8 +167,10 @@ export default function DocumentsPage() {
     try {
       const action = makeActive ? "activate" : "deactivate";
       const response = await api.put(`/documents/${doc.id}/${action}`);
-      if (response.success) await fetchDocuments();
-      else setError(response.message ?? "Failed to update document status.");
+      if (response.success) {
+        await fetchDocuments();
+        setSuccessMessage(`Document ${makeActive ? "activated" : "deactivated"} successfully.`);
+      } else setError(response.message ?? "Failed to update document status.");
     } catch (err) {
       console.error(err);
       setError("Failed to update document status.");
@@ -177,6 +187,7 @@ export default function DocumentsPage() {
       if (response.success) {
         setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         setDeleteTarget(null);
+        setSuccessMessage("Document deleted successfully.");
       } else {
         setError(response.message ?? "Failed to delete document.");
       }
@@ -209,6 +220,19 @@ export default function DocumentsPage() {
             </p>
           </div>
         </div>
+        {successMessage && (
+          <div className="mb-6 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 px-4 py-3 flex items-center justify-between">
+            <span>{successMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
+              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 px-4 py-3 text-sm border border-red-200 dark:border-red-800">
             {error}

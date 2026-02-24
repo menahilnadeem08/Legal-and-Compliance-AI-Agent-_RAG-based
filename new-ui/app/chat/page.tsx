@@ -41,6 +41,8 @@ export default function ChatPage() {
   const conversationIdFromUrl = searchParams.get("conversation");
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -92,25 +94,41 @@ export default function ChatPage() {
     }
   }, [authenticated, conversationIdFromUrl]);
 
+  const fetchConversations = useCallback(async () => {
+    setConversationsLoading(true);
+    setConversationsError(null);
+    try {
+      const response = await api.get<{ conversations?: { id: number | string; title?: string; updated_at?: string; created_at?: string }[]; total?: number }>("/conversations");
+      if (!response.success) {
+        setConversationsError(response.message ?? "Failed to load conversations.");
+        setConversations([]);
+      } else {
+        const list = response.data?.conversations ?? [];
+        const mapped = list.map((c) => ({
+          id: String(c.id),
+          title: c.title,
+          updated_at: c.updated_at,
+          created_at: c.created_at,
+        }));
+        mapped.sort((a: ConversationItem, b: ConversationItem) => {
+          const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+          const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+          return tb - ta;
+        });
+        setConversations(mapped);
+      }
+    } catch {
+      setConversationsError("Failed to load conversations.");
+      setConversations([]);
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!authenticated) return;
-    api.get<{ conversations?: { id: number | string; title?: string; updated_at?: string; created_at?: string }[]; total?: number }>("/conversations").then((response) => {
-      if (!response.success || !response.data?.conversations) return;
-      const list = response.data.conversations;
-      const mapped = list.map((c) => ({
-        id: String(c.id),
-        title: c.title,
-        updated_at: c.updated_at,
-        created_at: c.created_at,
-      }));
-      mapped.sort((a: ConversationItem, b: ConversationItem) => {
-        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-        return tb - ta;
-      });
-      setConversations(mapped);
-    });
-  }, [authenticated]);
+    fetchConversations();
+  }, [authenticated, fetchConversations]);
 
   async function loadConversation(id: string) {
     try {
@@ -142,11 +160,7 @@ export default function ChatPage() {
         return null;
       }
       const id = response.data.conversation.id;
-      if (id != null) {
-        const idStr = String(id);
-        setConversations((prev) => [...prev, { id: idStr, title: "New chat", updated_at: new Date().toISOString() }]);
-        return idStr;
-      }
+      if (id != null) return String(id);
       return null;
     } catch {
       toast.error("Could not create conversation");
@@ -197,8 +211,6 @@ export default function ChatPage() {
   async function handleNewChat() {
     const id = await createConversation();
     if (id) {
-      const now = new Date().toISOString();
-      setConversations((prev) => [{ id, title: "New Chat", updated_at: now, created_at: now }, ...prev]);
       router.push(`/chat?conversation=${id}`);
       setCurrentConversationId(id);
       setMessages([]);
@@ -238,7 +250,16 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     saveMessage(convId, "user", query);
-    if (isFirstMessage) updateConversationTitle(convId, query);
+    if (isFirstMessage) {
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === convId)) return prev;
+        return [
+          { id: convId, title: query.slice(0, 80).trim() || "New Chat", updated_at: new Date().toISOString() },
+          ...prev,
+        ];
+      });
+      updateConversationTitle(convId, query);
+    }
 
     setIsLoading(true);
     setStatus("Processing your question...");
@@ -354,6 +375,9 @@ export default function ChatPage() {
         onSelect={(id) => router.push(`/chat?conversation=${id}`)}
         onDelete={deleteConversation}
         userName={userName}
+        conversationsLoading={conversationsLoading}
+        conversationsError={conversationsError}
+        onRetry={fetchConversations}
       />
 
       <div className="flex flex-1 flex-col min-h-0 min-w-0 h-full bg-slate-50 dark:bg-slate-950">
