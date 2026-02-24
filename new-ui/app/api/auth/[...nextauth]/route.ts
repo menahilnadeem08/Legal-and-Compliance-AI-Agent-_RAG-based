@@ -42,7 +42,11 @@ const handler = NextAuth({
           const errorData = await response.json();
           throw new Error(errorData.error || `Signin failed with status ${response.status}`);
         }
-        const data = await response.json();
+        const json = await response.json();
+        const data = json.data;
+        if (!data?.user) {
+          throw new Error("Invalid sign-in response: missing user");
+        }
         user.id = data.user.id;
         (user as any).accessToken = data.accessToken;
         (user as any).refreshToken = data.refreshToken;
