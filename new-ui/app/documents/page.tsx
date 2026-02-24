@@ -13,7 +13,8 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
@@ -110,48 +111,22 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    if (!getAuthToken()) {
-      router.replace("/auth/login");
-      return;
-    }
     setIsAdmin(isAdminUser());
-    setAuthChecked(true);
-  }, [router]);
+  }, []);
 
   const fetchDocuments = async () => {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${getApiBase()}/documents`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to view documents.");
+      const response = await api.get<{ documents?: ApiDocument[] }>("/documents");
+      if (response.success && response.data?.documents != null) {
+        setDocuments(response.data.documents.map((d: ApiDocument) => mapDocFromApi(d)));
+      } else {
+        setError(response.message ?? "Failed to load documents.");
         setDocuments([]);
-        return;
       }
-      if (!res.ok) {
-        setError("Failed to load documents. Please try again.");
-        setDocuments([]);
-        return;
-      }
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : [];
-      setDocuments(list.map((d: ApiDocument) => mapDocFromApi(d)));
     } catch (err) {
       console.error(err);
       setError("Failed to load documents. Please try again.");
@@ -162,9 +137,12 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => {
-    if (!authChecked) return;
+    if (!getAuthToken()) {
+      router.replace("/auth/login");
+      return;
+    }
     fetchDocuments();
-  }, [authChecked]);
+  }, [router]);
 
   const filtered = documents.filter((doc) => {
     if (activeTab === "latest") return doc.is_latest;
@@ -176,30 +154,13 @@ export default function DocumentsPage() {
 
   const handleToggleActive = async (doc: DocumentItem) => {
     if (!isAdmin) return;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     const makeActive = !doc.is_latest;
     setToggling(doc.id);
     try {
       const action = makeActive ? "activate" : "deactivate";
-      const res = await fetch(`${getApiBase()}/documents/${doc.id}/${action}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to change document status.");
-        return;
-      }
-      if (res.ok) await fetchDocuments();
+      const response = await api.put(`/documents/${doc.id}/${action}`);
+      if (response.success) await fetchDocuments();
+      else setError(response.message ?? "Failed to update document status.");
     } catch (err) {
       console.error(err);
       setError("Failed to update document status.");
@@ -210,33 +171,14 @@ export default function DocumentsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setDeleting(deleteTarget.id);
     try {
-      const res = await fetch(`${getApiBase()}/documents/${deleteTarget.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to delete documents.");
-        setDeleteTarget(null);
-        return;
-      }
-      if (res.ok) {
+      const response = await api.delete(`/documents/${deleteTarget.id}`);
+      if (response.success) {
         setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         setDeleteTarget(null);
       } else {
-        setError("Failed to delete document.");
+        setError(response.message ?? "Failed to delete document.");
       }
     } catch (err) {
       console.error(err);
@@ -246,7 +188,7 @@ export default function DocumentsPage() {
     }
   };
 
-  if (!authChecked || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-blue-600 dark:text-blue-400" />

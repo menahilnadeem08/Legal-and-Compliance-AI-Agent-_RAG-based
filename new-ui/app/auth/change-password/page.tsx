@@ -4,13 +4,16 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, ArrowRight, Sparkles, AlertCircle, CheckCircle } from "lucide-react";
-import { setAuth, getAuthToken, getAuthTokenForApi, getAuthUser, clearAuth, getApiBase } from "../../utils/auth";
+import { setAuth, getAuthToken, getAuthUser } from "../../utils/auth";
+import { api } from "../../utils/apiClient";
+import { mapFieldErrors } from "../../utils/formErrors";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isForcedPasswordChange, setIsForcedPasswordChange] = useState(false);
   const [formData, setFormData] = useState({
@@ -41,6 +44,7 @@ export default function ChangePasswordPage() {
     setLoading(true);
     setError("");
     setSuccess("");
+    setFieldErrors({});
 
     if (!formData.newPassword || !formData.confirmPassword) {
       setError("New password and confirm password are required");
@@ -79,45 +83,21 @@ export default function ChangePasswordPage() {
     if (!isForcedPasswordChange) body.currentPassword = formData.currentPassword;
 
     try {
-      const token = getAuthTokenForApi();
-      if (!token) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      const response = await fetch(`${getApiBase()}/auth/change-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-
-      if (response.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (!response.ok) {
-        setError(data.error || "Failed to change password");
-        setLoading(false);
-        return;
-      }
-
-      if (data.accessToken) {
+      const response = await api.post<{ accessToken?: string; refreshToken?: string }>("/auth/change-password", body);
+      if (response.success && response.data?.accessToken) {
         const user = getAuthUser();
-        setAuth(data.accessToken, user || {}, data.refreshToken);
+        setAuth(response.data.accessToken, user || {}, response.data.refreshToken);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("forcePasswordChange");
+          document.cookie = "force-password-change=; path=/; max-age=0; SameSite=Lax";
+        }
+        setSuccess("Password changed successfully! Redirecting...");
+        setFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        setTimeout(() => router.replace("/dashboard"), 2000);
+      } else {
+        setError(response.message ?? "Failed to change password");
+        if (response.errors) setFieldErrors(mapFieldErrors(response.errors));
       }
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("forcePasswordChange");
-        document.cookie = "force-password-change=; path=/; max-age=0; SameSite=Lax";
-      }
-      setSuccess("Password changed successfully! Redirecting...");
-      setFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      setTimeout(() => router.replace("/dashboard"), 2000);
     } catch (err) {
       setError("An error occurred while changing password");
       console.error(err);

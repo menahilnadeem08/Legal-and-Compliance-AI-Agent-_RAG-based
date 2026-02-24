@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { setAuth, getAuthToken, clearAuth, getApiBase } from "../../../utils/auth";
+import { setAuth, getAuthToken } from "../../../utils/auth";
+import { api } from "../../../utils/apiClient";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -30,22 +31,20 @@ export default function AdminLoginPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${getApiBase()}/auth/admin/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
+      const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
+        "/auth/admin/login",
+        { email: email.trim(), password },
+        { requiresAuth: false }
+      );
 
-      if (response.status === 401) {
-        clearAuth();
-        router.push("/auth/login");
+      if (!response.success) {
+        setError(response.message ?? "Login failed");
         return;
       }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed");
+      const data = response.data;
+      if (!data?.accessToken || !data?.user) {
+        setError("Invalid response from server.");
         return;
       }
 

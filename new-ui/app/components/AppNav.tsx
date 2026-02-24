@@ -17,7 +17,8 @@ import {
   LogOut,
   User,
 } from "lucide-react";
-import { getAuthTokenForApi, getRefreshToken, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getRefreshToken, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 const navLinks: { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -33,19 +34,9 @@ export function AppNav() {
   const { theme, toggleTheme } = useTheme();
 
   async function handleLogout() {
-    const token = getAuthTokenForApi();
     const refresh = getRefreshToken();
     try {
-      if (token) {
-        await fetch(`${getApiBase()}/auth/logout`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refreshToken: refresh ?? undefined }),
-        });
-      }
+      await api.post("/auth/logout", { refreshToken: refresh ?? undefined });
     } catch (err) {
       console.error(err);
     }

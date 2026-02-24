@@ -15,7 +15,9 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser, getApiBase } from "@/app/utils/auth";
+import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
+import { mapFieldErrors } from "@/app/utils/formErrors";
 
 type UserInfo = {
   username: string;
@@ -39,6 +41,7 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [modalMessage, setModalMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -62,6 +65,7 @@ export default function ProfilePage() {
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalMessage(null);
+    setFieldErrors({});
     if (newPassword !== confirmPassword) {
       setModalMessage({ type: "error", text: "New password and confirmation do not match." });
       return;
@@ -70,48 +74,28 @@ export default function ProfilePage() {
       setModalMessage({ type: "error", text: "New password must be at least 6 characters." });
       return;
     }
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setPasswordLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/auth/change-password`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          confirmPassword,
-        }),
+      const response = await api.post<{ accessToken?: string; refreshToken?: string }>("/auth/change-password", {
+        currentPassword,
+        newPassword,
+        confirmPassword,
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (!res.ok) {
-        setModalMessage({ type: "error", text: data.error ?? "Failed to change password." });
-        return;
-      }
-      if (data.accessToken) {
+      if (response.success && response.data?.accessToken) {
         const currentUser = getAuthUser();
-        setAuth(data.accessToken, currentUser ?? {}, data.refreshToken);
+        setAuth(response.data.accessToken, currentUser ?? {}, response.data.refreshToken);
+        setModalMessage({ type: "success", text: "Password changed successfully." });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setTimeout(() => {
+          setPasswordModalOpen(false);
+          setModalMessage(null);
+        }, 1500);
+      } else {
+        setModalMessage({ type: "error", text: response.message ?? "Failed to change password." });
+        if (response.errors) setFieldErrors(mapFieldErrors(response.errors));
       }
-      setModalMessage({ type: "success", text: "Password changed successfully." });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setTimeout(() => {
-        setPasswordModalOpen(false);
-        setModalMessage(null);
-      }, 1500);
     } catch (err) {
       console.error(err);
       setModalMessage({ type: "error", text: "An error occurred while changing password." });
@@ -119,6 +103,8 @@ export default function ProfilePage() {
       setPasswordLoading(false);
     }
   };
+
+  const getFieldError = (field: string) => fieldErrors[field] ?? fieldErrors[`body.${field}`];
 
   const closePasswordModal = () => {
     setPasswordModalOpen(false);
@@ -129,23 +115,14 @@ export default function ProfilePage() {
     setShowNewPassword(false);
     setShowConfirmPassword(false);
     setModalMessage(null);
+    setFieldErrors({});
   };
 
   const handleLogoutConfirm = async () => {
     setLogoutConfirmOpen(false);
-    const token = getAuthTokenForApi();
     const refresh = getRefreshToken();
     try {
-      if (token) {
-        await fetch(`${getApiBase()}/auth/logout`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refreshToken: refresh }),
-        });
-      }
+      await api.post("/auth/logout", { refreshToken: refresh });
     } catch (err) {
       console.error(err);
     }
@@ -275,7 +252,7 @@ export default function ProfilePage() {
                     type={showCurrentPassword ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("currentPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
                     placeholder="Enter current password"
                     disabled={passwordLoading}
                   />
@@ -288,6 +265,9 @@ export default function ProfilePage() {
                     {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {getFieldError("currentPassword") && (
+                  <p className="text-red-500 text-sm mt-1">{getFieldError("currentPassword")}</p>
+                )}
               </div>
               <div>
                 <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -299,7 +279,7 @@ export default function ProfilePage() {
                     type={showNewPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("newPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
                     placeholder="Enter new password"
                     disabled={passwordLoading}
                   />
@@ -312,6 +292,9 @@ export default function ProfilePage() {
                     {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {getFieldError("newPassword") && (
+                  <p className="text-red-500 text-sm mt-1">{getFieldError("newPassword")}</p>
+                )}
               </div>
               <div>
                 <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -323,7 +306,7 @@ export default function ProfilePage() {
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("confirmPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
                     placeholder="Confirm new password"
                     disabled={passwordLoading}
                   />
@@ -336,6 +319,9 @@ export default function ProfilePage() {
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {getFieldError("confirmPassword") && (
+                  <p className="text-red-500 text-sm mt-1">{getFieldError("confirmPassword")}</p>
+                )}
               </div>
               <div className="flex gap-2 pt-2">
                 <button

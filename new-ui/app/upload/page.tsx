@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 /** Categories sent to backend; version is auto-assigned per category. */
 const DOCUMENT_CATEGORIES = [
@@ -27,7 +28,6 @@ export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -38,7 +38,6 @@ export default function UploadPage() {
       router.replace("/");
       return;
     }
-    setAuthChecked(true);
   }, [router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,13 +54,6 @@ export default function UploadPage() {
       return;
     }
 
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
-
     setSubmitState("loading");
     setMessage("");
 
@@ -70,34 +62,17 @@ export default function UploadPage() {
     formData.append("category", category);
 
     try {
-      const res = await fetch(`${getApiBase()}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
+      const response = await api.postFormData<{ documentId?: string }>("/upload", formData);
+      if (response.success) {
+        setSubmitState("success");
+        setMessage(response.message ?? `"${file.name}" uploaded successfully.`);
+        setFile(null);
+        setTitle("");
+        setCategory(DOCUMENT_CATEGORIES[0]);
+      } else {
         setSubmitState("error");
-        setMessage("Only admins can upload documents.");
-        return;
+        setMessage(response.message ?? "Upload failed. Please try again.");
       }
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setSubmitState("error");
-        setMessage(data.error ?? "Upload failed. Please try again.");
-        return;
-      }
-
-      setSubmitState("success");
-      setMessage(`"${file.name}" uploaded successfully.`);
-      setFile(null);
-      setTitle("");
-      setCategory(DOCUMENT_CATEGORIES[0]);
       const input = document.getElementById("file-input") as HTMLInputElement;
       if (input) input.value = "";
     } catch (err) {
@@ -106,14 +81,6 @@ export default function UploadPage() {
       console.error(err);
     }
   };
-
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">

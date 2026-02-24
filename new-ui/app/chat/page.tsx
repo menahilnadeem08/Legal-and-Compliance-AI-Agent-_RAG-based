@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 import { AppNav } from "@/app/components/AppNav";
 import { ConversationList, type ConversationItem } from "./components/ConversationList";
 import {
@@ -93,68 +94,34 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!authenticated) return;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
-    const apiBase = getApiBase();
-    fetch(`${apiBase}/conversations`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (res.status === 401) {
-          clearAuth();
-          router.replace("/auth/login");
-          return null;
-        }
-        return res.ok ? res.json() : null;
-      })
-      .then((data) => {
-        if (!data) return;
-        const list = Array.isArray(data) ? data : data?.conversations ?? [];
-        const mapped = list.map((c: { id: number | string; title?: string; updated_at?: string; created_at?: string }) => ({
-          id: String(c.id),
-          title: c.title,
-          updated_at: c.updated_at,
-          created_at: c.created_at,
-        }));
-        mapped.sort((a: ConversationItem, b: ConversationItem) => {
-          const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-          const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-          return tb - ta;
-        });
-        setConversations(mapped);
-      })
-      .catch(() => {});
-  }, [authenticated, router]);
+    api.get<{ conversations?: { id: number | string; title?: string; updated_at?: string; created_at?: string }[]; total?: number }>("/conversations").then((response) => {
+      if (!response.success || !response.data?.conversations) return;
+      const list = response.data.conversations;
+      const mapped = list.map((c) => ({
+        id: String(c.id),
+        title: c.title,
+        updated_at: c.updated_at,
+        created_at: c.created_at,
+      }));
+      mapped.sort((a: ConversationItem, b: ConversationItem) => {
+        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+        return tb - ta;
+      });
+      setConversations(mapped);
+    });
+  }, [authenticated]);
 
   async function loadConversation(id: string) {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     try {
-      const res = await fetch(`${getApiBase()}/conversations/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
+      const response = await api.get<{ conversation?: { messages?: { id?: string; role: string; content: string; metadata?: { citations?: Citation[] }; citations?: Citation[] }[] } }>(`/conversations/${id}`);
+      if (!response.success) {
+        if (response.message?.toLowerCase().includes("not found")) setMessages([]);
+        else toast.error(response.message ?? "Could not load conversation");
+        setMessages([]);
         return;
       }
-      if (!res.ok) {
-        if (res.status === 404) {
-          setMessages([]);
-          return;
-        }
-        throw new Error("Failed to load conversation");
-      }
-      const data = await res.json();
-      const msgs = (data.messages ?? []).map((m: { id?: string; role: string; content: string; metadata?: { citations?: Citation[] }; citations?: Citation[] }) => ({
+      const msgs = (response.data?.conversation?.messages ?? []).map((m) => ({
         id: String(m.id ?? crypto.randomUUID()),
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -168,29 +135,13 @@ export default function ChatPage() {
   }
 
   async function createConversation(): Promise<string | null> {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return null;
-    }
     try {
-      const res = await fetch(`${getApiBase()}/conversations`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title: "New Chat", metadata: {} }),
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
+      const response = await api.post<{ conversation?: { id?: number | string } }>("/conversations", { title: "New Chat", metadata: {} });
+      if (!response.success || !response.data?.conversation) {
+        toast.error(response.message ?? "Could not create conversation");
         return null;
       }
-      if (!res.ok) throw new Error("Create failed");
-      const data = await res.json();
-      const id = data.id ?? data.conversation_id;
+      const id = response.data.conversation.id;
       if (id != null) {
         const idStr = String(id);
         setConversations((prev) => [...prev, { id: idStr, title: "New chat", updated_at: new Date().toISOString() }]);
@@ -204,43 +155,17 @@ export default function ChatPage() {
   }
 
   async function saveMessage(convId: string, role: "user" | "assistant", content: string, citations?: Citation[], confidence?: number) {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     try {
-      const res = await fetch(`${getApiBase()}/conversations/${convId}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ role, content, metadata: { citations, confidence } }),
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-      }
+      await api.post(`/conversations/${convId}/messages`, { role, content, metadata: { citations, confidence } });
     } catch {
       toast.error("Could not save message");
     }
   }
 
   async function updateConversationTitle(convId: string, title: string) {
-    const token = getAuthTokenForApi();
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiBase()}/conversations/${convId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title: title.slice(0, 80).trim() || "New Chat" }),
-      });
-      if (res.ok) {
+      const response = await api.put(`/conversations/${convId}`, { title: title.slice(0, 80).trim() || "New Chat" });
+      if (response.success) {
         setConversations((prev) =>
           prev.map((c) => (c.id === convId ? { ...c, title: title.slice(0, 80).trim() || "New Chat", updated_at: new Date().toISOString() } : c))
         );
@@ -251,23 +176,9 @@ export default function ChatPage() {
   }
 
   async function deleteConversation(convId: string) {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     try {
-      const res = await fetch(`${getApiBase()}/conversations/${convId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.ok) {
+      const response = await api.delete(`/conversations/${convId}`);
+      if (response.success) {
         setConversations((prev) => prev.filter((c) => c.id !== convId));
         if (currentConversationId === convId) {
           setCurrentConversationId(null);
@@ -276,7 +187,7 @@ export default function ChatPage() {
         }
         toast.success("Conversation deleted");
       } else {
-        toast.error("Could not delete conversation");
+        toast.error(response.message ?? "Could not delete conversation");
       }
     } catch {
       toast.error("Could not delete conversation");

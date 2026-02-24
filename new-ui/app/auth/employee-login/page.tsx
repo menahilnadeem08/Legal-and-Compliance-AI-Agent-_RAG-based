@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { setAuth, getAuthUser, clearAuth, getApiBase } from "../../utils/auth";
+import { setAuth, getAuthUser } from "../../utils/auth";
+import { api } from "../../utils/apiClient";
 
 export default function EmployeeLoginPage() {
   const router = useRouter();
@@ -31,23 +32,21 @@ export default function EmployeeLoginPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${getApiBase()}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
-      });
+      const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object; forcePasswordChange?: boolean }>(
+        "/auth/login",
+        { username: username.trim(), password },
+        { requiresAuth: false }
+      );
 
-      if (response.status === 401) {
-        clearAuth();
-        router.push("/auth/login");
+      if (!response.success) {
+        setError(response.message ?? "Login failed");
+        toast.error("Sign in failed.");
         return;
       }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed");
-        toast.error("Sign in failed.");
+      const data = response.data;
+      if (!data?.accessToken || !data?.user) {
+        setError("Invalid response from server.");
         return;
       }
 

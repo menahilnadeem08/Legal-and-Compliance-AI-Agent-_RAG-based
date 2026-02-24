@@ -15,7 +15,9 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { setAuth, getAuthToken, clearAuth, getApiBase } from "../../../utils/auth";
+import { setAuth, getAuthToken } from "../../../utils/auth";
+import { api } from "../../../utils/apiClient";
+import { mapFieldErrors } from "../../../utils/formErrors";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -33,6 +35,7 @@ export default function AdminSignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState("");
@@ -83,39 +86,32 @@ export default function AdminSignupPage() {
     }
 
     setLoading(true);
+    setFieldErrors({});
     try {
-      const response = await fetch(`${getApiBase()}/auth/admin/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await api.post<{ requiresVerification?: boolean; email?: string; emailSent?: boolean }>(
+        "/auth/admin/signup",
+        {
           username: u,
           email: em,
           password,
           confirmPassword,
           companyName: companyName.trim() || undefined,
-        }),
-      });
+        },
+        { requiresAuth: false }
+      );
 
-      const data = await response.json();
-
-      if (response.status === 401) {
-        clearAuth();
-        router.push("/auth/login");
+      if (!response.success) {
+        setError(response.message ?? "Signup failed");
+        if (response.errors) setFieldErrors(mapFieldErrors(response.errors));
         return;
       }
 
-      if (!response.ok) {
-        if (response.status === 409) setError(data.error || "Username or email already exists");
-        else if (response.status === 400) setError(data.details ? data.details.join(", ") : data.error || "Invalid request");
-        else setError(data.error || "Signup failed");
-        return;
-      }
-
-      if (data.requiresVerification) {
-        setVerifiedEmail(data.email);
+      const data = response.data;
+      if (data?.requiresVerification) {
+        setVerifiedEmail(data.email ?? em);
         setStep("otp");
         setResendCooldown(data.emailSent === false ? 10 : 60);
-        setSuccessMessage(data.message || "A verification code has been sent to your email.");
+        setSuccessMessage(response.message ?? "A verification code has been sent to your email.");
       }
     } catch (err) {
       setError("An error occurred during signup");
@@ -157,20 +153,24 @@ export default function AdminSignupPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${getApiBase()}/auth/admin/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: verifiedEmail, otp }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "Verification failed");
+      const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
+        "/auth/admin/verify-otp",
+        { email: verifiedEmail, otp },
+        { requiresAuth: false }
+      );
+      if (!response.success) {
+        setError(response.message ?? "Verification failed");
         setOtpValues(["", "", "", "", "", ""]);
         otpRefs.current[0]?.focus();
         return;
       }
-      setAuth(data.accessToken, data.user, data.refreshToken);
-      router.push("/");
+      const data = response.data;
+      if (data?.accessToken && data?.user) {
+        setAuth(data.accessToken, data.user, data.refreshToken);
+        router.push("/");
+      } else {
+        setError("Invalid response from server.");
+      }
     } catch (err) {
       setError("An error occurred during verification");
       console.error(err);
@@ -185,20 +185,15 @@ export default function AdminSignupPage() {
     setError("");
     setSuccessMessage("");
     try {
-      const response = await fetch(`${getApiBase()}/auth/admin/resend-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: verifiedEmail }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "Failed to resend OTP");
-        return;
+      const response = await api.post("/auth/admin/resend-otp", { email: verifiedEmail }, { requiresAuth: false });
+      if (response.success) {
+        setSuccessMessage(response.message ?? "A new verification code has been sent to your email.");
+        setResendCooldown(60);
+        setOtpValues(["", "", "", "", "", ""]);
+        otpRefs.current[0]?.focus();
+      } else {
+        setError(response.message ?? "Failed to resend OTP");
       }
-      setSuccessMessage("A new verification code has been sent to your email.");
-      setResendCooldown(60);
-      setOtpValues(["", "", "", "", "", ""]);
-      otpRefs.current[0]?.focus();
     } catch (err) {
       setError("Failed to resend verification code");
       console.error(err);
