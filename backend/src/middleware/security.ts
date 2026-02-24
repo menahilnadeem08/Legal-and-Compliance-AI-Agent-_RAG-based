@@ -1,3 +1,4 @@
+import helmet from "helmet";
 import cors from "cors";
 import { Express } from "express";
 import logger from "../utils/logger";
@@ -7,7 +8,9 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim
 ].filter(Boolean);
 
 export const applySecurityMiddleware = (app: Express) => {
-  
+  app.use(helmet());
+  app.disable("x-powered-by");
+
   app.use(
     cors({
       origin: (origin, callback) => {
