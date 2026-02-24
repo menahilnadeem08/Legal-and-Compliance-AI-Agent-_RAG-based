@@ -67,12 +67,12 @@ jobs:
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
             
-            # ========== Frontend ==========
-            cd $APP_DIR/frontend
-            
+            # ========== Frontend (new-ui) ==========
+            cd $APP_DIR/new-ui
+
             # Clean old build and cache
             rm -rf .next node_modules/.cache
-            
+
             # Create .env
             cat > .env << 'ENVFILE'
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
@@ -81,17 +81,17 @@ jobs:
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             ENVFILE
-            
+
             # Install and build
             npm install
             npm run build
-            
+
             # Verify build exists
             if [ ! -d ".next" ]; then
               echo "Build failed - .next directory not found"
               exit 1
             fi
-            
+
             # Start frontend with clean restart
             pm2 delete frontend 2>/dev/null || true
             pm2 start npm --name "frontend" -- start
