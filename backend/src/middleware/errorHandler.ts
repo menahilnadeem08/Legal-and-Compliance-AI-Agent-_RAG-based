@@ -74,7 +74,6 @@ export const errorHandler = (
   const payload: Record<string, unknown> = {
     success: false,
     message,
-    error: message,
   };
   if (errors && errors.length > 0) payload.errors = errors;
   if (process.env.NODE_ENV === 'development' && error.details) payload.details = error.details;
