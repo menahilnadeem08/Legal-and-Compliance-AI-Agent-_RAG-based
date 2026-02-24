@@ -59,10 +59,10 @@ jobs:
             EASYOCR_URL=http://localhost:8001
             ENVFILE
             
-            # Clean and install
+            # Clean and install (full install so TypeScript + @types/express are available for build)
             rm -rf node_modules .next dist build
-            npm install --production
-            npm run build || true
+            npm install
+            npm run build
             
             # Start backend
             pm2 delete backend 2>/dev/null || true
