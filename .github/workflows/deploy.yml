@@ -11,12 +11,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
+        uses: actions/checkout@v4
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.9
@@ -26,25 +21,28 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
+            set -e   # 🚀 Stop immediately if any command fails
+
             APP_DIR="/home/${{ secrets.EC2_USER }}/app"
-            
-            # Create app directory
+
             mkdir -p $APP_DIR
             cd $APP_DIR
-            
-            # Clone or pull repo - FORCE CLEAN PULL
+
+            # -------------------------------
+            # Pull latest code
+            # -------------------------------
             if [ -d ".git" ]; then
               git fetch origin master
               git reset --hard origin/master
-              git clean -fd
             else
               git clone -b master https://github.com/menahilnadeem08/Legal-and-Compliance-AI-Agent-_RAG-based.git .
             fi
-            
-            # ========== Backend ==========
+
+            # ====================================================
+            # BACKEND
+            # ====================================================
             cd $APP_DIR/backend
-            
-            # Create .env
+
             cat > .env << 'ENVFILE'
             PORT=3001
             NODE_ENV=production
@@ -66,50 +64,40 @@ jobs:
             
             # Start backend
             pm2 delete backend 2>/dev/null || true
-            pm2 start npm --name "backend" -- start
+            pm2 start dist/index.js --name backend
 
-            # ========== OCR service (EasyOCR) ==========
+            # ====================================================
+            # OCR SERVICE
+            # ====================================================
             cd $APP_DIR/ocr-service
-            python3 -m venv .venv
-            .venv/bin/pip install -r requirements.txt --quiet
+
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+              .venv/bin/pip install -r requirements.txt
+            fi
+
             pm2 delete ocr-service 2>/dev/null || true
-            pm2 start ".venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001" --name "ocr-service" --cwd $APP_DIR/ocr-service
-            
-            # ========== Frontend (new-ui) ==========
+            pm2 start ".venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001" \
+              --name ocr-service --cwd $APP_DIR/ocr-service
+
+            # ====================================================
+            # FRONTEND (Next.js with pnpm)
+            # ====================================================
             cd $APP_DIR/new-ui
 
-            # Enable pnpm (Node 16.13+)
             corepack enable
             corepack prepare pnpm@latest --activate
 
-            # Clean old build and cache
-            rm -rf .next node_modules .pnpm-store
-
-            # Create .env
-            cat > .env << 'ENVFILE'
-            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-            NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
-            ENVFILE
-
-            # Install and build with pnpm
-            pnpm install --frozen-lockfile
-            pnpm run build
-
-            # Verify build exists
-            if [ ! -d ".next" ]; then
-              echo "Build failed - .next directory not found"
-              exit 1
+            if [ ! -d "node_modules" ]; then
+              pnpm install --frozen-lockfile
             fi
 
-            # Start new-ui with clean restart
+            pnpm run build
+
             pm2 delete new-ui 2>/dev/null || true
-            pm2 start pnpm --name "new-ui" -- start
-            pm2 restart new-ui --update-env
-            
-            # Save PM2 state
+            pm2 start "pnpm start" --name new-ui
+
+            # ====================================================
+            # SAVE PM2 STATE
+            # ====================================================
             pm2 save
-            pm2 startup || true
-            
