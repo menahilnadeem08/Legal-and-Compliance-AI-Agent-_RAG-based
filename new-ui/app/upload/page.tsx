@@ -7,9 +7,18 @@ import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-reac
 import { getAuthToken, isAdminUser } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 
-/** Categories sent to backend; version is auto-assigned per category. */
-const DOCUMENT_CATEGORIES = [
+/** Fallback when API fails or before load; matches backend default_categories seed. */
+const DEFAULT_CATEGORY_NAMES = [
+  "Constitution of Pakistan",
   "Federal Legislation / Acts",
+  "Provincial Legislation / Acts",
+  "Presidential & Governor Ordinances",
+  "Statutory Rules & SROs",
+  "Supreme Court Judgments",
+  "High Court Judgments",
+  "Federal Shariat Court Judgments",
+  "District & Sessions Court Orders",
+  "AJK & GB Court Judgments",
   "Policy",
   "Contract",
   "Regulation",
@@ -17,17 +26,20 @@ const DOCUMENT_CATEGORIES = [
   "Procedure",
   "Compliance Notice",
   "Other",
-] as const;
+];
 
+type CategoryItem = { id: number | string; name: string; type: "default" | "custom" };
 type SubmitState = "idle" | "loading" | "success" | "error";
 
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [category, setCategory] = useState<string>(DOCUMENT_CATEGORIES[0]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [category, setCategory] = useState<string>(DEFAULT_CATEGORY_NAMES[0]);
   const [title, setTitle] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -39,6 +51,24 @@ export default function UploadPage() {
       return;
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!getAuthToken() || !isAdminUser()) return;
+    api.get<{ categories?: CategoryItem[] }>("/categories").then((response) => {
+      setCategoriesLoading(false);
+      if (response.success && response.data?.categories?.length) {
+        const list = response.data.categories;
+        setCategories(list);
+        const names = list.map((c) => c.name);
+        setCategory((prev) => (names.includes(prev) ? prev : names[0]));
+      } else {
+        setCategories(DEFAULT_CATEGORY_NAMES.map((name, i) => ({ id: i, name, type: "default" as const })));
+      }
+    }).catch(() => {
+      setCategoriesLoading(false);
+      setCategories(DEFAULT_CATEGORY_NAMES.map((name, i) => ({ id: i, name, type: "default" as const })));
+    });
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const chosen = e.target.files?.[0];
@@ -68,7 +98,7 @@ export default function UploadPage() {
         setMessage(response.message ?? `"${file.name}" uploaded successfully.`);
         setFile(null);
         setTitle("");
-        setCategory(DOCUMENT_CATEGORIES[0]);
+        setCategory(categories[0]?.name ?? DEFAULT_CATEGORY_NAMES[0]);
       } else {
         setSubmitState("error");
         setMessage(response.message ?? "Upload failed. Please try again.");
@@ -125,14 +155,18 @@ export default function UploadPage() {
                 id="document-category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={categoriesLoading}
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               >
-                {DOCUMENT_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                {(categories.length ? categories : DEFAULT_CATEGORY_NAMES.map((name, i) => ({ id: i, name, type: "default" as const }))).map((cat) => (
+                  <option key={typeof cat.id !== "undefined" ? cat.id : cat.name} value={cat.name}>
+                    {cat.name} {cat.type === "custom" ? "(custom)" : ""}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                From your visible default and custom categories. Manage in Categories.
+              </p>
             </div>
 
             <div>
