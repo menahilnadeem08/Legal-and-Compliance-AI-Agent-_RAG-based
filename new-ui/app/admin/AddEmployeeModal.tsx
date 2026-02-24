@@ -5,6 +5,8 @@ import { X, AlertCircle } from "lucide-react";
 import { api } from "@/app/utils/apiClient";
 import { mapFieldErrors } from "@/app/utils/formErrors";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 type AddEmployeeModalProps = {
   open: boolean;
   onClose: () => void;
@@ -33,6 +35,10 @@ export function AddEmployeeModal({ open, onClose, onSuccess }: AddEmployeeModalP
     }
     if (!trimmedEmail) {
       setErrorMessage("Email is required.");
+      return;
+    }
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setErrorMessage("Please enter a valid email address.");
       return;
     }
     setSubmitting(true);
@@ -104,6 +110,8 @@ export function AddEmployeeModal({ open, onClose, onSuccess }: AddEmployeeModalP
               className={`w-full rounded-lg border bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("username") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
               placeholder="e.g. jane.doe"
               disabled={submitting}
+              required
+              aria-required="true"
             />
             {getFieldError("username") && (
               <p className="text-red-500 text-sm mt-1">{getFieldError("username")}</p>
@@ -121,6 +129,8 @@ export function AddEmployeeModal({ open, onClose, onSuccess }: AddEmployeeModalP
               className={`w-full rounded-lg border bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("email") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
               placeholder="e.g. jane@example.com"
               disabled={submitting}
+              required
+              aria-required="true"
             />
             {getFieldError("email") && (
               <p className="text-red-500 text-sm mt-1">{getFieldError("email")}</p>

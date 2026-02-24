@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { setAuth, getAuthToken } from "../../../utils/auth";
 import { api } from "../../../utils/apiClient";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -24,8 +26,13 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
       setError("Please enter email and password.");
+      return;
+    }
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -33,7 +40,7 @@ export default function AdminLoginPage() {
     try {
       const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
         "/auth/admin/login",
-        { email: email.trim(), password },
+        { email: trimmedEmail, password },
         { requiresAuth: false }
       );
 
