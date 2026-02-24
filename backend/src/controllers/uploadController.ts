@@ -49,7 +49,7 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
 
   // Validation: Check file type
   if (!uploadService.validateFileType(fileExt)) {
-    fs.unlinkSync(req.file.path);
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     throw new AppError('Supported file types: PDF, DOCX, JPG, PNG, TIFF, WebP', 400);
   }
 
@@ -62,8 +62,8 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     req.user.id // Pass admin_id
   );
 
-  // Clean up uploaded file on success
-  fs.unlinkSync(req.file.path);
+  // Clean up uploaded file on success (image may already be removed by OCR service)
+  if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
   // Standardized response
   return res.json({

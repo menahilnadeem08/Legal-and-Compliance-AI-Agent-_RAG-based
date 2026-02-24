@@ -292,15 +292,15 @@ Rules:
     };
   }
 
-  async parseImage(filePath: string): Promise<ParsedDocument> {
+  async parseImage(filePath: string, fileExtension: string): Promise<ParsedDocument> {
     try {
       console.log(`\n${'='.repeat(60)}`);
       console.log(`IMAGE - Running OCR on image file`);
       console.log(`${'='.repeat(60)}\n`);
 
-      // Extract text from image using OCR
+      // Extract text from image using OCR (pass extension so EasyOCR receives correct Content-Type)
       const { extractTextFromImage } = await import('./ocrService');
-      const ocrText = await extractTextFromImage(filePath);
+      const ocrText = await extractTextFromImage(filePath, fileExtension);
 
       if (!ocrText || ocrText.trim().length === 0) {
         console.warn('⚠️  OCR returned no text from image');
@@ -338,8 +338,8 @@ Rules:
       return this.parsePDF(filePath);
     } else if (normalizedType === 'docx') {
       return this.parseDOCX(filePath);
-    } else if (['jpg', 'jpeg', 'png', 'tiff', 'webp'].includes(normalizedType)) {
-      return this.parseImage(filePath);
+    } else if (['jpg', 'jpeg', 'png', 'tiff', 'tif', 'webp'].includes(normalizedType)) {
+      return this.parseImage(filePath, normalizedType);
     }
     throw new Error(`Unsupported file type: ${fileType}`);
   }
