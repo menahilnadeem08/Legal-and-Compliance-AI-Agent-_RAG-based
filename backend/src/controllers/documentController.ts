@@ -13,7 +13,7 @@ export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res:
   }
   
   const documents = await documentService.listDocuments(adminId);
-  return res.json(documents);
+  return res.status(200).json({ success: true, data: { documents } });
 });
 
 export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -23,8 +23,8 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
     throw new AppError('User role not properly configured', 500);
   }
 
-  const result = await documentService.deleteDocument(id as string, adminId);
-  return res.json(result);
+  await documentService.deleteDocument(id as string, adminId);
+  return res.status(200).json({ success: true, message: 'Document deleted' });
 });
 
 /**
@@ -38,8 +38,8 @@ export const activateDocument = asyncHandler(async (req: AuthenticatedRequest, r
     throw new AppError('User role not properly configured', 500);
   }
 
-  const result = await documentService.activateDocument(id as string, adminId);
-  return res.json(result);
+  await documentService.activateDocument(id as string, adminId);
+  return res.status(200).json({ success: true, message: 'Document activated' });
 });
 
 /**
@@ -53,6 +53,6 @@ export const deactivateDocument = asyncHandler(async (req: AuthenticatedRequest,
     throw new AppError('User role not properly configured', 500);
   }
 
-  const result = await documentService.deactivateDocument(id as string, adminId);
-  return res.json(result);
+  await documentService.deactivateDocument(id as string, adminId);
+  return res.status(200).json({ success: true, message: 'Document deactivated' });
 });

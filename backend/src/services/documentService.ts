@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { llm } from '../config/openai';
+import logger from '../utils/logger';
 
 export interface RelatedDocument {
   document_name: string;
@@ -103,7 +104,7 @@ export class DocumentService {
       
       if (fuzzy.rows.length > 0) return fuzzy.rows[0].filename;
     } catch (error) {
-      console.warn('Similarity search failed (pg_trgm not enabled?):', error);
+      logger.warn('Similarity search failed (pg_trgm not enabled?)', { error });
     }
 
     return null;
@@ -489,7 +490,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       const response = await llm.invoke(prompt);
       return response.content.toString();
     } catch (error) {
-      console.error('Error generating summary:', error);
+      logger.error('Error generating summary', { error });
       return `${changes.filter(c => c.change_type === 'added').length} sections added, ${changes.filter(c => c.change_type === 'removed').length} removed, ${changes.filter(c => c.change_type === 'modified').length} modified.`;
     }
   }
@@ -977,7 +978,7 @@ Respond ONLY with valid JSON:
           shared_topics: parsed.shared_topics || []
         });
       } catch (error) {
-        console.warn(`Failed to infer relationship for ${doc.document_name}:`, error);
+        logger.warn('Failed to infer relationship for document', { document_name: doc.document_name, error });
         // Fallback: determine relationship type from similarity score
         const relType = doc.similarity_score > 0.7 ? 'highly related' : doc.similarity_score > 0.4 ? 'related' : 'tangentially related';
         result.push({

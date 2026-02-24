@@ -3,6 +3,7 @@ import { LegalComplianceAgent } from '../services/legalComplianceAgent';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
 import { AuthenticatedRequest } from '../types';
+import logger from '../utils/logger';
 
 const agent = new LegalComplianceAgent();
 
@@ -23,8 +24,7 @@ export const agentQuery = asyncHandler(async (req: AuthenticatedRequest, res: Re
   }
 
   const result = await agent.processQuery(query, adminId);
-  
-  return res.json(result);
+  return res.status(200).json({ success: true, data: result });
 });
 
 /**
@@ -39,12 +39,12 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
     const { query } = req.body;
 
     if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
+      return res.status(400).json({ success: false, message: 'Query is required' });
     }
 
     const adminId = getAdminIdForUser(req.user);
     if (!adminId) {
-      return res.status(500).json({ error: 'User role not properly configured' });
+      return res.status(500).json({ success: false, message: 'User role not properly configured' });
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -78,7 +78,7 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
       res.end();
     }
   } catch (error) {
-    console.error('Agent stream setup error:', error);
-    res.status(500).json({ error: 'Failed to set up stream' });
+    logger.error('Agent stream setup error', { error });
+    res.status(500).json({ success: false, message: 'Failed to set up stream' });
   }
 };

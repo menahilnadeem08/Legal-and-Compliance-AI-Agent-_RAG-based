@@ -5,26 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Mail,
-  Lock,
-  Eye,
-  EyeOff,
   ArrowRight,
   ArrowLeft,
   Sparkles,
   CheckCircle2,
   AlertCircle,
   X,
-  Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PasswordInput } from "@/app/components/PasswordInput";
+import { isPasswordValid } from "@/app/utils/passwordValidation";
 
 type Step = "email" | "otp" | "reset" | "done";
-
-const passwordRules = [
-  { label: "8+ characters", test: (p: string) => p.length >= 8 },
-  { label: "Uppercase", test: (p: string) => /[A-Z]/.test(p) },
-  { label: "Number", test: (p: string) => /\d/.test(p) },
-];
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -33,8 +25,6 @@ export default function ForgotPasswordPage() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,7 +45,6 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  const passwordScore = passwordRules.filter((r) => r.test(password)).length;
   const passwordsMatch = confirm.length > 0 && password === confirm;
   const confirmMismatch = confirm.length > 0 && password !== confirm;
 
@@ -92,8 +81,8 @@ export default function ForgotPasswordPage() {
     }
 
     if (step === "reset") {
-      if (passwordScore < 3) {
-        setError("Please choose a stronger password.");
+      if (!isPasswordValid(password)) {
+        setError("Please choose a stronger password (8+ chars, uppercase, lowercase, number, special character).");
         return;
       }
       if (!passwordsMatch) {
@@ -327,108 +316,30 @@ export default function ForgotPasswordPage() {
               {/* Step: Reset password */}
               {step === "reset" && (
                 <>
-                  <div className="space-y-1.5">
-                    <label htmlFor="fp-password" className="text-sm font-medium text-gray-300">
-                      New password
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
-                      <input
-                        id="fp-password"
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        required
-                        disabled={loading}
-                        autoFocus
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-11 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        disabled={loading}
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors disabled:pointer-events-none"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    {/* Strength bar */}
-                    {password.length > 0 && (
-                      <div className="space-y-1.5 animate-[fadeIn_0.2s_ease]">
-                        <div className="flex gap-1.5">
-                          {passwordRules.map((rule, i) => (
-                            <div
-                              key={i}
-                              className={`flex-1 h-1 rounded-full transition-all duration-300 ${
-                                rule.test(password) ? "bg-blue-500" : "bg-slate-700"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <div className="flex gap-3">
-                          {passwordRules.map((rule, i) => (
-                            <span
-                              key={i}
-                              className={`text-xs transition-colors ${
-                                rule.test(password) ? "text-emerald-400" : "text-gray-600"
-                              }`}
-                            >
-                              {rule.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label htmlFor="fp-confirm" className="text-sm font-medium text-gray-300">
-                      Confirm new password
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
-                      <input
-                        id="fp-confirm"
-                        type={showConfirm ? "text" : "password"}
-                        value={confirm}
-                        onChange={(e) => { setConfirm(e.target.value); setError(""); }}
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        required
-                        disabled={loading}
-                        className={`w-full bg-slate-900 border rounded-xl pl-10 pr-11 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-1 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                          confirm.length === 0
-                            ? "border-slate-700 focus:border-blue-500 focus:ring-blue-500"
-                            : passwordsMatch
-                            ? "border-emerald-500 focus:border-emerald-500 focus:ring-emerald-500"
-                            : "border-red-500 focus:border-red-500 focus:ring-red-500"
-                        }`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm(!showConfirm)}
-                        disabled={loading}
-                        aria-label={showConfirm ? "Hide password" : "Show password"}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors disabled:pointer-events-none"
-                      >
-                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    {confirmMismatch && (
-                      <p className="text-xs text-red-400 flex items-center gap-1 animate-[fadeIn_0.2s_ease]">
-                        <AlertCircle className="w-3 h-3" /> Passwords don't match
-                      </p>
-                    )}
-                    {passwordsMatch && (
-                      <p className="text-xs text-emerald-400 flex items-center gap-1 animate-[fadeIn_0.2s_ease]">
-                        <Check className="w-3 h-3" /> Passwords match
-                      </p>
-                    )}
-                  </div>
+                  <PasswordInput
+                    id="fp-password"
+                    value={password}
+                    onChange={(v) => { setPassword(v); setError(""); }}
+                    label="New password"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    required
+                    disabled={loading}
+                    showValidation
+                    className="space-y-1.5"
+                  />
+                  <PasswordInput
+                    id="fp-confirm"
+                    value={confirm}
+                    onChange={(v) => { setConfirm(v); setError(""); }}
+                    label="Confirm new password"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    required
+                    disabled={loading}
+                    confirmValue={password}
+                    className="space-y-1.5"
+                  />
                 </>
               )}
 
@@ -437,7 +348,7 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={
                   loading ||
-                  (step === "reset" && (!passwordsMatch || passwordScore < 3))
+                  (step === "reset" && (!passwordsMatch || !isPasswordValid(password)))
                 }
                 className="w-full bg-blue-900 hover:bg-blue-800 active:bg-blue-950 text-white font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed group relative overflow-hidden"
               >

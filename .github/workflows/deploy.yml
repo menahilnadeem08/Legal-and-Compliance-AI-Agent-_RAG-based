@@ -56,6 +56,7 @@ jobs:
             GMAIL_PASSWORD=${{ secrets.GMAIL_PASSWORD }}
             APP_URL=${{ secrets.APP_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
+            EASYOCR_URL=http://localhost:8001
             ENVFILE
             
             # Clean and install
@@ -66,6 +67,13 @@ jobs:
             # Start backend
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
+
+            # ========== OCR service (EasyOCR) ==========
+            cd $APP_DIR/ocr-service
+            python3 -m venv .venv
+            .venv/bin/pip install -r requirements.txt --quiet
+            pm2 delete ocr-service 2>/dev/null || true
+            pm2 start ".venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001" --name "ocr-service" --cwd $APP_DIR/ocr-service
             
             # ========== Frontend (new-ui) ==========
             cd $APP_DIR/new-ui

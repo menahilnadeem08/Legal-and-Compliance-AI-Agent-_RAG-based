@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
+import logger from './logger';
 
 const MIN_TEXT_LENGTH = parseInt(process.env.OCR_MIN_TEXT_LENGTH || '50', 10);
 const EASYOCR_URL = process.env.EASYOCR_URL || 'http://localhost:8001';
@@ -39,15 +40,12 @@ export const extractTextFromImage = async (
   try {
     const easyOcrText = await extractWithEasyOCR(imagePath, contentType);
     if (easyOcrText && easyOcrText.trim().length > 0) {
-      console.log('[OCR] ✓ EasyOCR succeeded');
+      logger.info('EasyOCR succeeded', { context: 'OCR' });
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
       return easyOcrText;
     }
   } catch (error: any) {
-    console.warn(
-      '[OCR] ⚠️ EasyOCR unavailable, falling back to Tesseract:',
-      error?.message ?? error
-    );
+    logger.warn('EasyOCR unavailable, falling back to Tesseract', { error: error?.message ?? error });
   }
 
   // Fallback to Tesseract (file still needed); cleanup after
@@ -56,7 +54,7 @@ export const extractTextFromImage = async (
     try {
       fs.unlinkSync(imagePath);
     } catch (e) {
-      console.warn('[OCR] Failed to cleanup image:', e);
+      logger.warn('OCR: failed to cleanup image', { error: e });
     }
   }
   return result;
@@ -67,7 +65,7 @@ const extractWithEasyOCR = async (
   contentType?: string
 ): Promise<string> => {
   try {
-    console.log('[OCR] Sending to EasyOCR:', imagePath);
+    logger.info('Sending to EasyOCR', { imagePath, context: 'OCR' });
 
     const FormData = require('form-data');
     const formData = new FormData();
@@ -94,7 +92,7 @@ const extractWithEasyOCR = async (
     return data.text || '';
   } catch (error: any) {
     const errorText = error.response?.data || error.message;
-    console.error('[OCR] EasyOCR error response:', errorText);
+    logger.error('EasyOCR error response', { errorText, context: 'OCR' });
     throw new Error(`EasyOCR returned ${error.response?.status}: ${errorText}`);
   }
 };
@@ -103,16 +101,16 @@ const extractWithTesseract = async (
   imagePath: string
 ): Promise<string> => {
   try {
-    console.log('[OCR] Running Tesseract fallback...');
+    logger.info('Running Tesseract fallback', { context: 'OCR' });
     const Tesseract = await loadTesseract();
     const result = await Tesseract.recognize(imagePath, 'eng', {
       logger: () => {} // Suppress verbose logging
     });
     const text = result.data.text || '';
-    console.log(`[OCR] ✓ Tesseract extracted ${text.length} chars`);
+    logger.info('Tesseract extracted text', { chars: text.length, context: 'OCR' });
     return text;
   } catch (error: any) {
-    console.error('[OCR] ❌ Tesseract failed:', error.message);
+    logger.error('Tesseract failed', { error: error.message, context: 'OCR' });
     return '';
   }
 };

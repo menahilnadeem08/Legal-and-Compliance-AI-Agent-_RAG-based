@@ -2,25 +2,31 @@
 
 import { useState } from "react";
 import { X, AlertCircle } from "lucide-react";
-import { getAuthTokenForApi, getApiBase } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
+import { mapFieldErrors } from "@/app/utils/formErrors";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AddEmployeeModalProps = {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  onUnauthorized?: () => void;
 };
 
-export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: AddEmployeeModalProps) {
+export function AddEmployeeModal({ open, onClose, onSuccess }: AddEmployeeModalProps) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const getFieldError = (field: string) => fieldErrors[field] ?? fieldErrors[`body.${field}`];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setFieldErrors({});
     const trimmedUsername = username.trim();
     const trimmedEmail = email.trim();
     if (!trimmedUsername) {
@@ -31,39 +37,27 @@ export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: A
       setErrorMessage("Email is required.");
       return;
     }
-    const token = getAuthTokenForApi();
-    if (!token) {
-      onUnauthorized?.();
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setErrorMessage("Please enter a valid email address.");
       return;
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${getApiBase()}/admin/create-user`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          username: trimmedUsername,
-          email: trimmedEmail,
-          name: name.trim() || "",
-        }),
+      const response = await api.post("/admin/create-user", {
+        username: trimmedUsername,
+        email: trimmedEmail,
+        name: name.trim() || "",
       });
-      if (res.status === 401) {
-        onUnauthorized?.();
-        return;
+      if (response.success) {
+        setUsername("");
+        setEmail("");
+        setName("");
+        onSuccess();
+        onClose();
+      } else {
+        setErrorMessage(response.message ?? "Failed to create employee.");
+        if (response.errors) setFieldErrors(mapFieldErrors(response.errors));
       }
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErrorMessage(data.error ?? "Failed to create employee.");
-        return;
-      }
-      setUsername("");
-      setEmail("");
-      setName("");
-      onSuccess();
-      onClose();
     } catch (err) {
       console.error(err);
       setErrorMessage("An error occurred while creating employee.");
@@ -77,6 +71,7 @@ export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: A
     setEmail("");
     setName("");
     setErrorMessage(null);
+    setFieldErrors({});
     onClose();
   };
 
@@ -111,11 +106,16 @@ export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: A
               id="add-employee-username"
               type="text"
               value={username}
-              onChange={(e) => { setUsername(e.target.value); setErrorMessage(null); }}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => { setUsername(e.target.value); setErrorMessage(null); setFieldErrors((prev) => ({ ...prev, username: "", "body.username": "" })); }}
+              className={`w-full rounded-lg border bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("username") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
               placeholder="e.g. jane.doe"
               disabled={submitting}
+              required
+              aria-required="true"
             />
+            {getFieldError("username") && (
+              <p className="text-red-500 text-sm mt-1">{getFieldError("username")}</p>
+            )}
           </div>
           <div>
             <label htmlFor="add-employee-email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -125,11 +125,16 @@ export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: A
               id="add-employee-email"
               type="email"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setErrorMessage(null); }}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => { setEmail(e.target.value); setErrorMessage(null); setFieldErrors((prev) => ({ ...prev, email: "", "body.email": "" })); }}
+              className={`w-full rounded-lg border bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("email") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
               placeholder="e.g. jane@example.com"
               disabled={submitting}
+              required
+              aria-required="true"
             />
+            {getFieldError("email") && (
+              <p className="text-red-500 text-sm mt-1">{getFieldError("email")}</p>
+            )}
           </div>
           <div>
             <label htmlFor="add-employee-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -140,10 +145,13 @@ export function AddEmployeeModal({ open, onClose, onSuccess, onUnauthorized }: A
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full rounded-lg border bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("name") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
               placeholder="e.g. Jane Doe"
               disabled={submitting}
             />
+            {getFieldError("name") && (
+              <p className="text-red-500 text-sm mt-1">{getFieldError("name")}</p>
+            )}
           </div>
           <div className="flex gap-2 pt-2">
             <button

@@ -3,15 +3,18 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
+import { Mail, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
+import { PasswordInput } from "../../../components/PasswordInput";
 import { toast } from "sonner";
-import { setAuth, getAuthToken, clearAuth, getApiBase } from "../../../utils/auth";
+import { setAuth, getAuthToken } from "../../../utils/auth";
+import { api } from "../../../utils/apiClient";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,29 +26,32 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
       setError("Please enter email and password.");
+      return;
+    }
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${getApiBase()}/auth/admin/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
+      const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
+        "/auth/admin/login",
+        { email: trimmedEmail, password },
+        { requiresAuth: false }
+      );
 
-      if (response.status === 401) {
-        clearAuth();
-        router.push("/auth/login");
+      if (!response.success) {
+        setError(response.message ?? "Login failed");
         return;
       }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed");
+      const data = response.data;
+      if (!data?.accessToken || !data?.user) {
+        setError("Invalid response from server.");
         return;
       }
 
@@ -161,33 +167,16 @@ export default function AdminLoginPage() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors disabled:pointer-events-none"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(v) => { setPassword(v); setError(""); }}
+              label="Password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              disabled={loading}
+              className="space-y-1.5"
+            />
 
             <button
               type="submit"

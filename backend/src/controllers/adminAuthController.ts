@@ -2,11 +2,12 @@ import { Response } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
-import { hashPassword, comparePassword, validatePassword } from '../utils/passwordUtils';
+import { hashPassword, comparePassword } from '../utils/passwordUtils';
 import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { JWT_SECRET } from '../config/secrets';
 import { createSession } from '../helpers/sessionHelper';
+import logger from '../utils/logger';
 
 const ACCESS_TOKEN_EXPIRE = '15m';
 const OTP_EXPIRY_MINUTES = 10;
@@ -23,25 +24,6 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
   try {
     const { username, email, password, confirmPassword, companyName } = req.body;
 
-    if (!username || !email || !password || !confirmPassword) {
-      res.status(400).json({ error: 'Username, email, password, and confirm password are required' });
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      res.status(400).json({ error: 'Passwords do not match' });
-      return;
-    }
-
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.valid) {
-      res.status(400).json({
-        error: 'Password does not meet requirements',
-        details: passwordValidation.errors
-      });
-      return;
-    }
-
     const client = await pool.connect();
 
     try {
@@ -51,7 +33,7 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
       );
 
       if (existingUsername.rows.length > 0) {
-        res.status(409).json({ error: 'Username already exists' });
+        res.status(409).json({ success: false, message: 'Username already exists' });
         return;
       }
 
@@ -62,7 +44,7 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
 
       if (existingEmail.rows.length > 0) {
         if (existingEmail.rows[0].email_verified) {
-          res.status(409).json({ error: 'Email already exists' });
+          res.status(409).json({ success: false, message: 'Email already exists' });
           return;
         }
         await client.query('DELETE FROM users WHERE id = $1', [existingEmail.rows[0].id]);
@@ -87,17 +69,17 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
       client.release();
 
       res.status(201).json({
-        message: 'Account created. Please verify your email with the OTP sent to your inbox.',
-        requiresVerification: true,
-        email: user.email
+        success: true,
+        message: 'Admin account created. Please verify your email with the OTP sent to your inbox.',
+        data: { user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role }, requiresVerification: true, email: user.email },
       });
     } catch (error) {
       client.release();
       throw error;
     }
   } catch (error) {
-    console.error('[ADMIN-SIGNUP] Error:', error);
-    res.status(500).json({ error: 'Admin signup failed' });
+    logger.error('Admin signup error', { error });
+    res.status(500).json({ success: false, message: 'Admin signup failed' });
   }
 }
 
@@ -105,11 +87,6 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
   try {
     const { username, email, password } = req.body;
     const loginIdentifier = username || email;
-
-    if (!loginIdentifier || !password) {
-      res.status(400).json({ error: 'Username/email and password are required' });
-      return;
-    }
 
     const userResult = await pool.query(
       `SELECT id, username, email, name, role, password_hash, is_active, auth_provider, email_verified
@@ -119,7 +96,8 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     );
 
     if (userResult.rows.length === 0) {
-      res.status(401).json({ error: 'Invalid credentials' });
+      logger.warn('Admin login failed - invalid credentials', { identifier: loginIdentifier });
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
       return;
     }
 
@@ -127,15 +105,18 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
 
     if (user.auth_provider === 'google' || !user.password_hash) {
       res.status(403).json({
-        error: 'This account uses Google OAuth. Please sign in with Google.',
+        success: false,
+        message: 'This account uses Google OAuth. Please sign in with Google.',
         auth_provider: 'google'
       });
       return;
     }
 
     if (!user.email_verified) {
+      logger.warn('Admin login failed - email not verified', { identifier: loginIdentifier });
       res.status(403).json({
-        error: 'Email verification required. Please check your email.',
+        success: false,
+        message: 'Email verification required. Please check your email.',
         email_verified: false
       });
       return;
@@ -143,7 +124,8 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
 
     const passwordMatch = await comparePassword(password, user.password_hash);
     if (!passwordMatch) {
-      res.status(401).json({ error: 'Invalid credentials' });
+      logger.warn('Admin login failed - wrong password', { identifier: loginIdentifier });
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
       return;
     }
 
@@ -151,33 +133,25 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
-    res.json({
+    logger.info('Admin login success', { username: user.username, email: user.email });
+    res.status(200).json({
+      success: true,
       message: 'Admin login successful',
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        email_verified: user.email_verified
-      }
+      data: {
+        user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role, email_verified: user.email_verified },
+        accessToken,
+        refreshToken,
+      },
     });
   } catch (error) {
-    console.error('[ADMIN-LOGIN] Error:', error);
-    res.status(500).json({ error: 'Admin login failed' });
+    logger.error('Admin login error', { error });
+    res.status(500).json({ success: false, message: 'Admin login failed' });
   }
 }
 
 export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { email, otp } = req.body;
-
-    if (!email || !otp) {
-      res.status(400).json({ error: 'Email and OTP are required' });
-      return;
-    }
 
     const userResult = await pool.query(
       `SELECT id, username, email, name, role, otp_code, otp_expires_at
@@ -187,25 +161,28 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
     );
 
     if (userResult.rows.length === 0) {
-      res.status(404).json({ error: 'No pending verification found for this email' });
+      logger.warn('OTP verification failed - no pending verification', { email });
+      res.status(404).json({ success: false, message: 'No pending verification found for this email' });
       return;
     }
 
     const user = userResult.rows[0];
 
     if (!user.otp_code || !user.otp_expires_at) {
-      res.status(400).json({ error: 'No OTP found. Please request a new one.' });
+      res.status(400).json({ success: false, message: 'No OTP found. Please request a new one.' });
       return;
     }
 
     if (new Date() > new Date(user.otp_expires_at)) {
-      res.status(401).json({ error: 'OTP has expired. Please request a new one.' });
+      logger.warn('OTP verification failed - OTP expired', { email });
+      res.status(401).json({ success: false, message: 'OTP has expired. Please request a new one.' });
       return;
     }
 
     const otpMatch = await comparePassword(otp, user.otp_code);
     if (!otpMatch) {
-      res.status(401).json({ error: 'Invalid OTP' });
+      logger.warn('OTP verification failed - invalid OTP', { email });
+      res.status(401).json({ success: false, message: 'Invalid OTP' });
       return;
     }
 
@@ -220,21 +197,19 @@ export async function verifyOtp(req: AuthenticatedRequest, res: Response): Promi
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
-    res.json({
-      message: 'Email verified successfully',
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      }
+    logger.info('OTP verified successfully', { email: user.email });
+    res.status(200).json({
+      success: true,
+      message: 'OTP verified successfully',
+      data: {
+        user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role },
+        accessToken,
+        refreshToken,
+      },
     });
   } catch (error) {
-    console.error('[VERIFY-OTP] Error:', error);
-    res.status(500).json({ error: 'OTP verification failed' });
+    logger.error('Verify OTP error', { error });
+    res.status(500).json({ success: false, message: 'OTP verification failed' });
   }
 }
 
@@ -242,18 +217,14 @@ export async function resendOtp(req: AuthenticatedRequest, res: Response): Promi
   try {
     const { email } = req.body;
 
-    if (!email) {
-      res.status(400).json({ error: 'Email is required' });
-      return;
-    }
-
     const userResult = await pool.query(
       `SELECT id, name, email FROM users WHERE email = $1 AND role = 'admin' AND email_verified = false`,
       [email]
     );
 
     if (userResult.rows.length === 0) {
-      res.status(404).json({ error: 'No pending verification found for this email' });
+      logger.warn('OTP resend requested - no pending verification', { email });
+      res.status(404).json({ success: false, message: 'No pending verification found for this email' });
       return;
     }
 
@@ -270,9 +241,10 @@ export async function resendOtp(req: AuthenticatedRequest, res: Response): Promi
 
     await EmailService.sendOtpEmail(email, otp, user.name || email);
 
-    res.json({ message: 'A new OTP has been sent to your email' });
+    logger.info('OTP resend sent', { email });
+    res.status(200).json({ success: true, message: 'OTP resent successfully' });
   } catch (error) {
-    console.error('[RESEND-OTP] Error:', error);
-    res.status(500).json({ error: 'Failed to resend OTP' });
+    logger.error('Resend OTP error', { error });
+    res.status(500).json({ success: false, message: 'Failed to resend OTP' });
   }
 }

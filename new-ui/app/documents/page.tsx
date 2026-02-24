@@ -13,7 +13,8 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
@@ -110,48 +111,30 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!getAuthToken()) {
-      router.replace("/auth/login");
-      return;
-    }
     setIsAdmin(isAdminUser());
-    setAuthChecked(true);
-  }, [router]);
+  }, []);
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const fetchDocuments = async () => {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${getApiBase()}/documents`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to view documents.");
+      const response = await api.get<{ documents?: ApiDocument[] }>("/documents");
+      if (response.success && response.data?.documents != null) {
+        setDocuments(response.data.documents.map((d: ApiDocument) => mapDocFromApi(d)));
+      } else {
+        setError(response.message ?? "Failed to load documents.");
         setDocuments([]);
-        return;
       }
-      if (!res.ok) {
-        setError("Failed to load documents. Please try again.");
-        setDocuments([]);
-        return;
-      }
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : [];
-      setDocuments(list.map((d: ApiDocument) => mapDocFromApi(d)));
     } catch (err) {
       console.error(err);
       setError("Failed to load documents. Please try again.");
@@ -162,9 +145,12 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => {
-    if (!authChecked) return;
+    if (!getAuthToken()) {
+      router.replace("/auth/login");
+      return;
+    }
     fetchDocuments();
-  }, [authChecked]);
+  }, [router]);
 
   const filtered = documents.filter((doc) => {
     if (activeTab === "latest") return doc.is_latest;
@@ -176,30 +162,15 @@ export default function DocumentsPage() {
 
   const handleToggleActive = async (doc: DocumentItem) => {
     if (!isAdmin) return;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     const makeActive = !doc.is_latest;
     setToggling(doc.id);
     try {
       const action = makeActive ? "activate" : "deactivate";
-      const res = await fetch(`${getApiBase()}/documents/${doc.id}/${action}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to change document status.");
-        return;
-      }
-      if (res.ok) await fetchDocuments();
+      const response = await api.put(`/documents/${doc.id}/${action}`);
+      if (response.success) {
+        await fetchDocuments();
+        setSuccessMessage(`Document ${makeActive ? "activated" : "deactivated"} successfully.`);
+      } else setError(response.message ?? "Failed to update document status.");
     } catch (err) {
       console.error(err);
       setError("Failed to update document status.");
@@ -210,33 +181,15 @@ export default function DocumentsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setDeleting(deleteTarget.id);
     try {
-      const res = await fetch(`${getApiBase()}/documents/${deleteTarget.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to delete documents.");
-        setDeleteTarget(null);
-        return;
-      }
-      if (res.ok) {
+      const response = await api.delete(`/documents/${deleteTarget.id}`);
+      if (response.success) {
         setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         setDeleteTarget(null);
+        setSuccessMessage("Document deleted successfully.");
       } else {
-        setError("Failed to delete document.");
+        setError(response.message ?? "Failed to delete document.");
       }
     } catch (err) {
       console.error(err);
@@ -246,7 +199,7 @@ export default function DocumentsPage() {
     }
   };
 
-  if (!authChecked || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-blue-600 dark:text-blue-400" />
@@ -267,6 +220,19 @@ export default function DocumentsPage() {
             </p>
           </div>
         </div>
+        {successMessage && (
+          <div className="mb-6 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 px-4 py-3 flex items-center justify-between">
+            <span>{successMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
+              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 px-4 py-3 text-sm border border-red-200 dark:border-red-800">
             {error}

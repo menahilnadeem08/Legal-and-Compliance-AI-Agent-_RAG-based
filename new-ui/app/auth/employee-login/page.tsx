@@ -3,15 +3,16 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Lock, Eye, EyeOff, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
+import { User, Lock, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
+import { PasswordInput } from "../../components/PasswordInput";
 import { toast } from "sonner";
-import { setAuth, getAuthUser, clearAuth, getApiBase } from "../../utils/auth";
+import { setAuth, getAuthUser } from "../../utils/auth";
+import { api } from "../../utils/apiClient";
 
 export default function EmployeeLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -31,23 +32,21 @@ export default function EmployeeLoginPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${getApiBase()}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
-      });
+      const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object; forcePasswordChange?: boolean }>(
+        "/auth/login",
+        { username: username.trim(), password },
+        { requiresAuth: false }
+      );
 
-      if (response.status === 401) {
-        clearAuth();
-        router.push("/auth/login");
+      if (!response.success) {
+        setError(response.message ?? "Login failed");
+        toast.error("Sign in failed.");
         return;
       }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed");
-        toast.error("Sign in failed.");
+      const data = response.data;
+      if (!data?.accessToken || !data?.user) {
+        setError("Invalid response from server.");
         return;
       }
 
@@ -171,41 +170,17 @@ export default function EmployeeLoginPage() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  required
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors disabled:pointer-events-none"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(v) => { setPassword(v); setError(""); }}
+              label="Password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+              disabled={loading}
+              className="space-y-1.5"
+            />
 
             <button
               type="submit"

@@ -13,7 +13,9 @@ async function refreshBackendToken(refreshToken: string) {
     body: JSON.stringify({ refreshToken }),
   });
   if (!res.ok) return null;
-  return res.json() as Promise<{ accessToken: string; refreshToken: string }>;
+  const data = await res.json();
+  // Backend returns { success: true, data: { accessToken, refreshToken } }
+  return data?.data && typeof data.data.accessToken === "string" ? data.data : null;
 }
 
 const handler = NextAuth({
@@ -38,15 +40,20 @@ const handler = NextAuth({
             role: "admin",
           }),
         });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Signin failed with status ${response.status}`);
-        }
         const data = await response.json();
-        user.id = data.user.id;
-        (user as any).accessToken = data.accessToken;
-        (user as any).refreshToken = data.refreshToken;
-        (user as any).role = data.user.role;
+        if (!response.ok) {
+          const message = (data && typeof data.message === "string") ? data.message : `Signin failed with status ${response.status}`;
+          throw new Error(message);
+        }
+        // Backend returns { success: true, data: { user, accessToken, refreshToken } }
+        const payload = data?.data;
+        if (!payload?.user) {
+          throw new Error("Invalid sign-in response");
+        }
+        user.id = payload.user.id;
+        (user as any).accessToken = payload.accessToken;
+        (user as any).refreshToken = payload.refreshToken;
+        (user as any).role = payload.user.role;
         return true;
       } catch (error) {
         console.error("[NEXTAUTH] Sign in error:", error);

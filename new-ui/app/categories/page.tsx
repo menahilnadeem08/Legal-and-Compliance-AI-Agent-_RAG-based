@@ -12,7 +12,8 @@ import {
   Trash2,
   Tag,
 } from "lucide-react";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 import { toast } from "sonner";
 
 type CategoryItem = { id: number | string; name: string; type: "default" | "custom" };
@@ -26,7 +27,6 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -37,36 +37,22 @@ export default function CategoriesPage() {
       router.replace("/");
       return;
     }
-    setAuthChecked(true);
   }, [router]);
 
   const fetchCategories = async () => {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setLoading(true);
     try {
       const [catRes, hiddenRes] = await Promise.all([
-        fetch(`${getApiBase()}/categories`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${getApiBase()}/categories/hidden-defaults`, { headers: { Authorization: `Bearer ${token}` } }),
+        api.get<{ categories?: CategoryItem[] }>("/categories"),
+        api.get<{ categories?: HiddenDefault[] }>("/categories/hidden-defaults"),
       ]);
-      if (catRes.status === 401 || hiddenRes.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (catRes.ok) {
-        const data = await catRes.json();
-        setCategories(Array.isArray(data) ? data : []);
+      if (catRes.success && catRes.data?.categories != null) {
+        setCategories(catRes.data.categories);
       } else {
         setCategories([]);
       }
-      if (hiddenRes.ok) {
-        const data = await hiddenRes.json();
-        setHiddenDefaults(Array.isArray(data) ? data : []);
+      if (hiddenRes.success && hiddenRes.data?.categories != null) {
+        setHiddenDefaults(hiddenRes.data.categories);
       } else {
         setHiddenDefaults([]);
       }
@@ -81,9 +67,8 @@ export default function CategoriesPage() {
   };
 
   useEffect(() => {
-    if (!authChecked) return;
-    fetchCategories();
-  }, [authChecked]);
+    if (getAuthToken() && isAdminUser()) fetchCategories();
+  }, []);
 
   const handleAddCustom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,35 +77,16 @@ export default function CategoriesPage() {
       toast.error("Enter a category name.");
       return;
     }
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setSubmitLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/custom-categories`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name }),
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
+      const response = await api.post("/custom-categories", { name });
+      if (response.success) {
+        toast.success("Category added.");
+        setNewName("");
+        await fetchCategories();
+      } else {
+        toast.error(response.message ?? "Failed to add category.");
       }
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Failed to add category.");
-        return;
-      }
-      toast.success("Category added.");
-      setNewName("");
-      await fetchCategories();
     } catch (err) {
       toast.error("Failed to add category.");
     } finally {
@@ -129,25 +95,14 @@ export default function CategoriesPage() {
   };
 
   const hideDefault = async (defaultCategoryId: number) => {
-    const token = getAuthTokenForApi();
-    if (!token) return;
     setActionLoading(`hide-${defaultCategoryId}`);
     try {
-      const res = await fetch(`${getApiBase()}/categories/hide-default/${defaultCategoryId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.ok) {
+      const response = await api.post(`/categories/hide-default/${defaultCategoryId}`);
+      if (response.success) {
         toast.success("Category hidden from list.");
         await fetchCategories();
       } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Failed to hide category.");
+        toast.error(response.message ?? "Failed to hide category.");
       }
     } catch {
       toast.error("Failed to hide category.");
@@ -157,24 +112,14 @@ export default function CategoriesPage() {
   };
 
   const unhideDefault = async (defaultCategoryId: number) => {
-    const token = getAuthTokenForApi();
-    if (!token) return;
     setActionLoading(`unhide-${defaultCategoryId}`);
     try {
-      const res = await fetch(`${getApiBase()}/categories/hide-default/${defaultCategoryId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.ok) {
+      const response = await api.delete(`/categories/hide-default/${defaultCategoryId}`);
+      if (response.success) {
         toast.success("Category restored to list.");
         await fetchCategories();
       } else {
-        toast.error("Failed to restore category.");
+        toast.error(response.message ?? "Failed to restore category.");
       }
     } catch {
       toast.error("Failed to restore category.");
@@ -184,25 +129,14 @@ export default function CategoriesPage() {
   };
 
   const deleteCustom = async (id: number) => {
-    const token = getAuthTokenForApi();
-    if (!token) return;
     setActionLoading(`del-${id}`);
     try {
-      const res = await fetch(`${getApiBase()}/custom-categories/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.ok) {
+      const response = await api.delete(`/custom-categories/${id}`);
+      if (response.success) {
         toast.success("Category removed.");
         await fetchCategories();
       } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Failed to remove category.");
+        toast.error(response.message ?? "Failed to remove category.");
       }
     } catch {
       toast.error("Failed to remove category.");
@@ -211,7 +145,7 @@ export default function CategoriesPage() {
     }
   };
 
-  if (!authChecked) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="w-10 h-10 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />

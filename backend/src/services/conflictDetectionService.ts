@@ -2,6 +2,7 @@ import pool from '../config/database';
 import { llm } from '../config/openai';
 import { embeddings } from '../config/openai';
 import { Reranker } from '../utils/reranker';
+import logger from '../utils/logger';
 
 export interface ConflictChunk {
   content: string;
@@ -90,7 +91,7 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         topic: parsed.topic || undefined
       };
     } catch (error) {
-      console.error('Failed to parse conflict query:', error);
+      logger.error('Failed to parse conflict query', { error });
       return null;
     }
   }
@@ -131,7 +132,7 @@ Return ONLY the JSON object or null if you cannot extract document information.`
       }
 
       if (docQuery.rows.length === 0) {
-        console.warn(`Document not found: ${docName}`);
+        logger.warn('Document not found', { docName });
         continue;
       }
 
@@ -267,7 +268,7 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
       const conflicts = JSON.parse(cleaned);
 
       if (!Array.isArray(conflicts)) {
-        console.error('LLM did not return an array');
+        logger.error('LLM did not return an array');
         return [];
       }
 
@@ -306,7 +307,7 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
         };
       });
     } catch (error) {
-      console.error('Failed to analyze conflicts:', error);
+      logger.error('Failed to analyze conflicts', { error });
       return [];
     }
   }
@@ -350,7 +351,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
    * Main entry point: Detect conflicts between documents
    */
   async detectConflicts(query: string, adminId?: number): Promise<ConflictAnalysisResult> {
-    console.log('\n🔍 Starting conflict detection:', query);
+    logger.info('Starting conflict detection', { query });
 
     // Parse query to extract documents
     const parsed = await this.parseConflictQuery(query);
@@ -359,8 +360,8 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
       throw new Error('Could not identify at least 2 documents to compare. Please specify document names clearly.');
     }
 
-    console.log('📄 Documents to analyze:', parsed.documents);
-    if (parsed.topic) console.log('🎯 Focus topic:', parsed.topic);
+    logger.info('Documents to analyze', { documents: parsed.documents });
+    if (parsed.topic) logger.info('Focus topic', { topic: parsed.topic });
 
     // Get relevant chunks
     const chunksMap = await this.getDocumentChunks(
@@ -381,11 +382,11 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     }
 
     const totalChunks = Array.from(chunksMap.values()).reduce((sum, chunks) => sum + chunks.length, 0);
-    console.log(`📊 Analyzing ${totalChunks} chunks across ${chunksMap.size} documents...`);
+    logger.info('Analyzing chunks', { totalChunks, documentCount: chunksMap.size });
 
     // Analyze for conflicts
     const conflicts = await this.analyzeConflicts(chunksMap, parsed.topic);
-    console.log(`⚠️ Found ${conflicts.length} conflicts`);
+    logger.info('Conflicts found', { count: conflicts.length });
 
     // Generate summary
     const summary = await this.generateConflictSummary(conflicts);
@@ -437,7 +438,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
             results.push(result);
           }
         } catch (error) {
-          console.error(`Failed to compare ${documents[i]} and ${documents[j]}:`, error);
+          logger.error('Failed to compare documents', { docA: documents[i], docB: documents[j], error });
         }
       }
     }

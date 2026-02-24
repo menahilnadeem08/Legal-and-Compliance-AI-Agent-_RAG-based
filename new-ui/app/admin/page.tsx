@@ -11,7 +11,8 @@ import {
   UserX,
   Loader2,
 } from "lucide-react";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth, isEmployeeUser } from "@/app/utils/auth";
+import { getAuthToken, isEmployeeUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 type Employee = {
   id: number;
@@ -42,7 +43,6 @@ export default function AddEmployee() {
     employee: Employee;
     action: "activate" | "deactivate";
   } | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (isEmployeeUser()) {
@@ -53,39 +53,19 @@ export default function AddEmployee() {
       router.replace("/auth/login");
       return;
     }
-    setAuthChecked(true);
   }, [router]);
 
   const loadEmployees = async () => {
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${getApiBase()}/admin/employees`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to view employees.");
+      const response = await api.get<{ employees?: Employee[] }>("/admin/employees");
+      if (response.success && response.data?.employees != null) {
+        setEmployees(response.data.employees);
+      } else {
+        setError(response.message ?? "Failed to load employees.");
         setEmployees([]);
-        return;
       }
-      if (!res.ok) {
-        setError("Failed to load employees.");
-        setEmployees([]);
-        return;
-      }
-      const data = await res.json();
-      setEmployees(data.employees ?? []);
     } catch (err) {
       console.error(err);
       setError("Failed to load employees.");
@@ -96,9 +76,8 @@ export default function AddEmployee() {
   };
 
   useEffect(() => {
-    if (!authChecked) return;
-    loadEmployees();
-  }, [authChecked]);
+    if (getAuthToken() && !isEmployeeUser()) loadEmployees();
+  }, []);
 
   const clearMessages = () => {
     setSuccessMessage(null);
@@ -108,40 +87,21 @@ export default function AddEmployee() {
   const handleConfirmToggle = async () => {
     if (!confirmTarget) return;
     const { employee, action } = confirmTarget;
-    const token = getAuthTokenForApi();
-    if (!token) {
-      clearAuth();
-      router.replace("/auth/login");
-      return;
-    }
     setTogglingId(employee.id);
     try {
-      const res = await fetch(
-        `${getApiBase()}/admin/employees/${employee.id}/${action}`,
-        { method: "PUT", headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (res.status === 401) {
-        clearAuth();
-        router.replace("/auth/login");
-        return;
-      }
-      if (res.status === 403) {
-        setError("You do not have permission to update this employee.");
+      const response = await api.put(`/admin/employees/${employee.id}/${action}`);
+      if (response.success) {
+        setSuccessMessage(
+          action === "activate"
+            ? `${employee.username} is now active.`
+            : `${employee.username} has been deactivated.`
+        );
+        await loadEmployees();
         setConfirmTarget(null);
-        return;
-      }
-      if (!res.ok) {
-        setError(`Failed to ${action} employee.`);
+      } else {
+        setError(response.message ?? `Failed to ${action} employee.`);
         setConfirmTarget(null);
-        return;
       }
-      setSuccessMessage(
-        action === "activate"
-          ? `${employee.username} is now active.`
-          : `${employee.username} has been deactivated.`
-      );
-      await loadEmployees();
-      setConfirmTarget(null);
     } catch (err) {
       console.error(err);
       setError("An error occurred.");
@@ -151,7 +111,7 @@ export default function AddEmployee() {
     }
   };
 
-  if (!authChecked || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-blue-600 dark:text-blue-400" />
@@ -305,10 +265,6 @@ export default function AddEmployee() {
         onSuccess={() => {
           setSuccessMessage("Employee created successfully. A temporary password has been sent to their email.");
           loadEmployees();
-        }}
-        onUnauthorized={() => {
-          clearAuth();
-          router.replace("/auth/login");
         }}
       />
 

@@ -66,8 +66,9 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
   if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
   // Standardized response
-  return res.json({
+  return res.status(200).json({
+    success: true,
     message: 'Document uploaded and ingested successfully',
-    documentId,
+    data: { documentId },
   });
 });

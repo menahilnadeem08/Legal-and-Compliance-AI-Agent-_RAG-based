@@ -5,6 +5,7 @@ import { Reranker } from '../utils/reranker';
 import { embeddings } from '../config/openai';
 import { DocumentService } from './documentService';
 import { VersionComparisonService } from './versionComparisonService';
+import logger from '../utils/logger';
 
 // Types
 export interface QueryResult {
@@ -514,11 +515,11 @@ Answer (be specific and cite sources):`;
    * ENHANCED: Main query processing with intelligent version comparison
    */
   async processQuery(query: string, adminId?: number, debug: boolean = true): Promise<QueryResult> {
-    console.log('\n🔍 Starting query processing:', query);
+    logger.info('Starting query processing', { query });
 
     // Check if this might be a version comparison query
     if (this.isVersionComparisonQuery(query)) {
-      console.log('🔄 Potential version comparison detected, attempting intelligent parsing...');
+      logger.info('Potential version comparison detected, attempting intelligent parsing');
 
       const result = await this.versionComparisonService.processComparison(query);
 
@@ -564,7 +565,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
         };
       } else if (result.error) {
         // If it looked like a comparison but failed, fall through to regular RAG
-        console.log('⚠️ Version comparison parsing failed, falling back to RAG:', result.error);
+        logger.warn('Version comparison parsing failed, falling back to RAG', { error: result.error });
       }
     }
 
@@ -572,17 +573,13 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
     const results = await this.search(query, 30, undefined, adminId);
 
     if (debug) {
-      console.log('\n[DEBUG] Retrieved Chunks (after hybrid search):', results.length);
-      console.log('Top 5 results:');
-      results.slice(0, 5).forEach((c, i) => {
-        console.log({
+      logger.debug('Retrieved chunks after hybrid search', {
+        count: results.length,
+        topResults: results.slice(0, 5).map((c, i) => ({
           idx: i,
           similarity: c.similarity?.toFixed(3),
-          vector_score: c.vector_score?.toFixed(3),
-          keyword_score: c.keyword_score?.toFixed(3),
           document_name: c.document_name,
-          preview: c.content.substring(0, 100) + '...'
-        });
+        })),
       });
     }
 
@@ -595,9 +592,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
     }
 
     const deduplicated = this.removeDuplicates(results);
-    if (debug) {
-      console.log('\n[DEBUG] After deduplication:', deduplicated.length);
-    }
+    if (debug) logger.debug('After deduplication', { count: deduplicated.length });
 
     // MMR reranking - synchronous, no async
     let reranked: RetrievedChunk[] = [];
@@ -612,54 +607,27 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
           0.7    // lambda - relevance-focused for legal documents
         );
 
-        if (debug) {
-          console.log('\n[DEBUG] After MMR reranking:', reranked.length);
-          if (reranked.length > 0) {
-            console.log('Top 5 reranked:');
-            reranked.slice(0, 5).forEach((c, i) => {
-              console.log({
-                idx: i,
-                mmr_score: c.rerank_score?.toFixed(3),
-                relevance: c.component_scores?.relevance?.toFixed(3),
-                diversity: c.component_scores?.diversity?.toFixed(3),
-                document_name: c.document_name,
-                preview: c.content.substring(0, 80) + '...'
-              });
-            });
-          }
-        }
+        if (debug) logger.debug('After MMR reranking', { count: reranked.length });
       } else {
         // Fallback if no embeddings available
         reranked = deduplicated.slice(0, 8);
-        if (debug) console.log('⚠️ No embeddings available, using top results without reranking');
+        if (debug) logger.warn('No embeddings available, using top results without reranking');
       }
     } catch (error) {
-      console.error('MMR reranking error:', error);
+      logger.error('MMR reranking error', { error });
       reranked = deduplicated.slice(0, 8);
     }
 
     const finalChunks = reranked.length > 0 ? reranked : deduplicated.slice(0, 8);
 
-    if (debug) {
-      console.log('\n[DEBUG] Final chunks for generation:', finalChunks.length);
-      console.log('Using:', reranked.length > 0 ? 'reranked results' : 'original results (reranking failed/empty)');
-    }
+    if (debug) logger.debug('Final chunks for generation', { count: finalChunks.length, source: reranked.length > 0 ? 'reranked' : 'original' });
 
     const compressed = this.compress(finalChunks, 4000);
-    if (debug) {
-      console.log('[DEBUG] After compression:', compressed.length);
-    }
+    if (debug) logger.debug('After compression', { count: compressed.length });
 
     const result = await this.generateAnswer(query, compressed);
 
-    if (debug) {
-      console.log('\n[DEBUG] Final Result:');
-      console.log({
-        confidence: result.confidence,
-        citations: result.citations.length,
-        answer_length: result.answer.length
-      });
-    }
+    if (debug) logger.debug('Final result', { confidence: result.confidence, citationsCount: result.citations.length, answerLength: result.answer.length });
 
     return result;
   }

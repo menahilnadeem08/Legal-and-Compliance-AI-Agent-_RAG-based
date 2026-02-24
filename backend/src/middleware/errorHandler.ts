@@ -1,13 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { ZodError } from 'zod';
+import logger from '../utils/logger';
 
 export interface ApiError extends Error {
   statusCode?: number;
   details?: any;
+  code?: string;
 }
 
 /**
  * Centralized error handling middleware
- * Catches all errors from controllers and formats them consistently
+ * Catches all errors from controllers and formats them consistently.
+ * Never leaks stack traces in production.
  */
 export const errorHandler = (
   error: ApiError,
@@ -15,28 +20,66 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  const statusCode = error.statusCode || 500;
-  const message = error.message || 'An unexpected error occurred';
+  let statusCode = error.statusCode || 500;
+  let message = error.message || 'Internal Server Error';
+  let errors: { field: string; message: string }[] | undefined;
 
-  console.error(`[${new Date().toISOString()}] Error:`, JSON.stringify({
-    method: req.method,
-    path: req.path,
-    statusCode,
-    message,
-    details: error.details,
-    stack: error.stack,
-  }, null, 2));
+  // JWT errors
+  if (error instanceof jwt.TokenExpiredError) {
+    statusCode = 401;
+    message = 'Token expired';
+    logger.warn('Expired token used', { ip: req.ip, url: req.url });
+  } else if (error instanceof jwt.JsonWebTokenError) {
+    statusCode = 401;
+    message = 'Invalid token';
+    logger.warn('Invalid token used', { ip: req.ip, url: req.url });
+  }
+  // Zod errors that bypassed validate middleware
+  else if (error instanceof ZodError) {
+    statusCode = 400;
+    message = 'Validation failed';
+    const issues = (error as ZodError & { issues: Array<{ path: (string | number)[]; message: string }> }).issues;
+    errors = issues.map((e) => ({
+      field: e.path.join('.'),
+      message: e.message,
+    }));
+    logger.warn('Validation failed (error handler)', { method: req.method, url: req.url, errors, ip: req.ip });
+  }
+  // PostgreSQL unique violation (duplicate key)
+  else if (error.code === '23505') {
+    statusCode = 409;
+    message = 'A record with this value already exists';
+    logger.warn('Duplicate key violation', { code: error.code, url: req.url, ip: req.ip });
+  }
+  // PostgreSQL foreign key / not found style
+  else if (error.code === '23503') {
+    statusCode = 400;
+    message = 'Referenced record does not exist';
+    logger.warn('Foreign key violation', { code: error.code, url: req.url, ip: req.ip });
+  }
+  // Generic log for unhandled
+  else {
+    logger.error(`${req.method} ${req.url} - ${message}`, {
+      stack: error.stack,
+      statusCode,
+      ip: req.ip,
+      details: error.details,
+    });
+  }
 
-  // Prevent sending response twice
   if (res.headersSent) {
     return next(error);
   }
 
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && { details: error.details }),
-    ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
-  });
+  const payload: Record<string, unknown> = {
+    success: false,
+    message,
+  };
+  if (errors && errors.length > 0) payload.errors = errors;
+  if (process.env.NODE_ENV === 'development' && error.details) payload.details = error.details;
+  if (process.env.NODE_ENV === 'development' && error.stack) payload.stack = error.stack;
+
+  res.status(statusCode).json(payload);
 };
 
 /**

@@ -1,4 +1,5 @@
 import { embeddings } from '../config/openai';
+import logger from './logger';
 
 /**
  * Generate embedding for a given text using the configured embedding model
@@ -10,7 +11,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const embedding = await embeddings.embedQuery(text);
     return embedding;
   } catch (error) {
-    console.error('Embedding generation error:', error);
+    logger.error('Embedding generation error', { error });
     throw new Error('Failed to generate embedding');
   }
 }
@@ -27,7 +28,7 @@ export async function generateEmbeddingsBatch(texts: string[]): Promise<number[]
     );
     return embeddings_array;
   } catch (error) {
-    console.error('Batch embedding generation error:', error);
+    logger.error('Batch embedding generation error', { error });
     throw new Error('Failed to generate batch embeddings');
   }
 }

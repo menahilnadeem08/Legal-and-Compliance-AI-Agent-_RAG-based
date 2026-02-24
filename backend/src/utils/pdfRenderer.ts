@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const sharp = require('sharp');
+const logger = require('./logger').default;
 
 export const renderPageToImage = async (
   pdfPath: string,
@@ -54,15 +55,11 @@ export const renderPageToImage = async (
       .png({ quality: 100 })
       .toFile(outputPath);
 
-    console.log(
-      `[PDF-RENDERER] Page ${pageNumber} rendered to ${outputPath}`
-    );
+    logger.info('PDF page rendered', { pageNumber, outputPath });
     return outputPath;
 
   } catch (error) {
-    console.error(
-      `[PDF-RENDERER] Failed to render page ${pageNumber}:`, error
-    );
+    logger.error('Failed to render PDF page', { pageNumber, error });
     throw error;
   }
 };

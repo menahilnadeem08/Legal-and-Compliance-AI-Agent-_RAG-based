@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { llm } from '../config/openai';
 import { isTextMeaningful, extractTextFromImage } from './ocrService';
+import logger from './logger';
 
 export interface ParsedDocument {
   text: string;
@@ -65,15 +66,15 @@ Rules:
       const sections = JSON.parse(cleaned);
       
       if (!Array.isArray(sections)) {
-        console.warn('LLM did not return array, using fallback');
+        logger.warn('LLM did not return array, using fallback');
         return [];
       }
 
-      console.log(`🎯 LLM detected ${sections.length} sections in first 100 lines`);
+      logger.info('LLM detected sections', { count: sections.length });
       return sections.filter(s => s.line_index < lines.length);
       
     } catch (error) {
-      console.error('LLM section detection failed:', error);
+      logger.error('LLM section detection failed', { error });
       return [];
     }
   }
@@ -82,7 +83,7 @@ Rules:
    * Fallback: Traditional overlap chunking (when no sections detected)
    */
   private fallbackChunk(text: string, pageNumber?: number): ChunkWithMetadata[] {
-    console.log('⚠️  Using fallback chunking (no sections detected)');
+    logger.info('Using fallback chunking (no sections detected)');
     const chunks: ChunkWithMetadata[] = [];
     const cleanText = text.replace(/\s+/g, ' ').trim();
     
@@ -114,7 +115,7 @@ Rules:
     const sections = await this.detectSectionsWithLLM(lines);
     
     if (sections.length === 0) {
-      console.log('No sections detected by LLM, using fallback');
+      logger.info('No sections detected by LLM, using fallback');
       return this.fallbackChunk(text, pageNumber);
     }
 
@@ -157,7 +158,7 @@ Rules:
       }
     }
 
-    console.log(`✨ Intelligent chunking: ${sections.length} sections → ${chunks.length} chunks`);
+    logger.info('Intelligent chunking complete', { sections: sections.length, chunks: chunks.length });
     return chunks;
   }
 
@@ -210,16 +211,13 @@ Rules:
         
         const pageText = lines.join('\n');
         
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`PAGE ${i} - Extracted ${lines.length} lines`);
-        console.log(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
-        console.log(`${'='.repeat(60)}\n`);
+        logger.debug('PDF page extracted', { page: i, lines: lines.length });
         
         // OCR fallback for scanned PDFs
         let finalText = pageText;
 
         if (!isTextMeaningful(pageText)) {
-          console.log(`[Parser] Page ${i} has minimal text — attempting OCR`);
+          logger.info('Page has minimal text, attempting OCR', { page: i });
           try {
             // Lazy load pdfRenderer to avoid DOMMatrix errors at startup
             const { renderPageToImage } = await import('./pdfRenderer');
@@ -227,12 +225,12 @@ Rules:
             const ocrText = await extractTextFromImage(imagePath);
             if (ocrText.trim().length > 0) {
               finalText = ocrText;
-              console.log(`[Parser] ✓ OCR recovered ${ocrText.length} chars from page ${i}`);
+              logger.info('OCR recovered text from page', { page: i, chars: ocrText.length });
             } else {
-              console.warn(`[Parser] ⚠️ OCR returned empty for page ${i}`);
+              logger.warn('OCR returned empty for page', { page: i });
             }
           } catch (ocrError) {
-            console.error(`[Parser] ❌ OCR failed for page ${i}:`, ocrError);
+            logger.error('OCR failed for page', { page: i, error: ocrError });
             finalText = pageText;
           }
         }
@@ -244,7 +242,7 @@ Rules:
       const fullText = allChunks.map(c => c.content).join('\n\n');
       
       const sectionsDetected = allChunks.filter(c => c.section_name).length;
-      console.log(`\n✨ PDF Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections\n`);
+      logger.info('PDF processing complete', { totalChunks: allChunks.length, sectionsDetected });
       
       return {
         text: fullText,
@@ -259,9 +257,7 @@ Rules:
   async parseDOCX(filePath: string): Promise<ParsedDocument> {
     const result = await mammoth.extractRawText({ path: filePath });
     
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`DOCX - Using LLM for section detection`);
-    console.log(`${'='.repeat(60)}\n`);
+    logger.info('DOCX: using LLM for section detection');
     
     const charsPerPage = 3000;
     const estimatedPageCount = Math.ceil(result.value.length / charsPerPage);
@@ -280,8 +276,7 @@ Rules:
     }
 
     const sectionsDetected = allChunks.filter(c => c.section_name).length;
-    console.log(`\n✨ DOCX Processing Complete: ${allChunks.length} total chunks, ${sectionsDetected} with sections`);
-    console.log(`📄 Estimated pages: ${estimatedPageCount} (based on ~${charsPerPage} chars/page)\n`);
+    logger.info('DOCX processing complete', { totalChunks: allChunks.length, sectionsDetected, estimatedPageCount });
 
     const fullText = allChunks.map(c => c.content).join('\n\n');
 
@@ -294,16 +289,14 @@ Rules:
 
   async parseImage(filePath: string, fileExtension: string): Promise<ParsedDocument> {
     try {
-      console.log(`\n${'='.repeat(60)}`);
-      console.log(`IMAGE - Running OCR on image file`);
-      console.log(`${'='.repeat(60)}\n`);
+      logger.info('IMAGE: running OCR on image file');
 
       // Extract text from image using OCR (pass extension so EasyOCR receives correct Content-Type)
       const { extractTextFromImage } = await import('./ocrService');
       const ocrText = await extractTextFromImage(filePath, fileExtension);
 
       if (!ocrText || ocrText.trim().length === 0) {
-        console.warn('⚠️  OCR returned no text from image');
+        logger.warn('OCR returned no text from image');
         return {
           text: '',
           chunks: [],
@@ -311,7 +304,7 @@ Rules:
         };
       }
 
-      console.log(`[Parser] ✓ OCR extracted ${ocrText.length} chars from image`);
+      logger.info('OCR extracted text from image', { chars: ocrText.length });
 
       // Chunk the extracted text
       const chunks = await this.intelligentChunk(ocrText, 1);
@@ -319,7 +312,7 @@ Rules:
       const fullText = chunks.map(c => c.content).join('\n\n');
       const sectionsDetected = chunks.filter(c => c.section_name).length;
 
-      console.log(`\n✨ Image Processing Complete: ${chunks.length} chunks, ${sectionsDetected} with sections\n`);
+      logger.info('Image processing complete', { chunks: chunks.length, sectionsDetected });
 
       return {
         text: fullText,

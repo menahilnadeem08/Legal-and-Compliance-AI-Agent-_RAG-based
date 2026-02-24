@@ -1,4 +1,5 @@
 import pool from './database';
+import logger from '../utils/logger';
 
 export async function initializeAuthTables() {
   const client = await pool.connect();
@@ -248,9 +249,9 @@ export async function initializeAuthTables() {
       );
     }
 
-    console.log('Auth tables initialized successfully');
+    logger.info('Auth tables initialized successfully');
   } catch (error) {
-    console.error('Error initializing auth tables:', error);
+    logger.error('Error initializing auth tables', { error });
     throw error;
   } finally {
     client.release();

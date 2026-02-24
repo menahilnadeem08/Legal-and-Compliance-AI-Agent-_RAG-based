@@ -5,17 +5,14 @@ import { AuthenticatedRequest } from '../types';
 import { EmailService } from '../utils/emailService';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
+import logger from '../utils/logger';
 
 // Create employee user (admin only)
 // Generates temporary password and sends welcome email
 export async function createEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    console.log('[ADMIN-CREATE-EMPLOYEE] 📨 Create Employee endpoint called');
-    
-    // Check if user is admin
     if (!req.user || req.user.role !== 'admin') {
-      console.log('[ADMIN-CREATE-EMPLOYEE] ❌ Access denied: user is not admin');
-      res.status(403).json({ error: 'Only admins can create employees' });
+      res.status(403).json({ success: false, message: 'Only admins can create employees' });
       return;
     }
 
@@ -24,55 +21,35 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
     const ipAddress = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    console.log('[ADMIN-CREATE-EMPLOYEE] Request details:', {
-      username,
-      email,
-      name,
-      adminId
-    });
-
-    // Validation
-    if (!username || !email) {
-      console.log('[ADMIN-CREATE-EMPLOYEE] ❌ Missing required fields');
-      res.status(400).json({ error: 'Username and email are required' });
-      return;
-    }
+    logger.info('Create employee request', { username, email, name, adminId });
 
     const client = await pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      // Check if username already exists
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Checking if username exists...');
       const existingUser = await client.query(
         'SELECT id FROM users WHERE username = $1',
         [username]
       );
 
       if (existingUser.rows.length > 0) {
-        console.log('[ADMIN-CREATE-EMPLOYEE] ❌ Username already exists:', username);
-        res.status(409).json({ error: 'Username already exists' });
+        logger.warn('Create employee: username already exists', { username });
+        res.status(409).json({ success: false, message: 'Username already exists' });
         return;
       }
 
-      // Check if email already exists
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Checking if email exists...');
       const existingEmail = await client.query(
         'SELECT id FROM users WHERE email = $1',
         [email]
       );
 
       if (existingEmail.rows.length > 0) {
-        console.log('[ADMIN-CREATE-EMPLOYEE] ❌ Email already exists:', email);
-        res.status(409).json({ error: 'Email already exists' });
+        logger.warn('Create employee: email already exists', { email });
+        res.status(409).json({ success: false, message: 'Email already exists' });
         return;
       }
 
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Username and email are unique');
-
-      // Generate temporary password
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Generating temporary password...');
       const tempPassword = TempPasswordService.generateSecurePassword();
       const tempPasswordHash = await hashPassword(tempPassword);
 
@@ -80,8 +57,6 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 2);
 
-      // Create employee user with temporary password
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Creating user record with temporary credentials...');
       const newUser = await client.query(
         `INSERT INTO users (
           username, password_hash, email, name, role, auth_provider, admin_id, is_active,
@@ -106,7 +81,7 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       );
 
       const user = newUser.rows[0];
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ User created with ID:', user.id);
+      logger.info('Employee user created', { userId: user.id, username: user.username, email: user.email });
 
       await client.query('COMMIT');
       client.release();
@@ -129,12 +104,8 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
           userAgent
         );
       } catch (auditError) {
-        console.error('[ADMIN-CREATE-EMPLOYEE] ⚠️  Audit log failed (non-critical):', auditError);
-        // Non-critical error, continue
+        logger.warn('Create employee: audit log failed (non-critical)', { error: auditError });
       }
-
-      // Send welcome email with temporary credentials
-      console.log('[ADMIN-CREATE-EMPLOYEE] ✓ Sending welcome email with temporary credentials...');
       
       try {
         // Get admin's name for the from field
@@ -155,35 +126,19 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
           expiresAt
         );
 
-        console.log('[ADMIN-CREATE-EMPLOYEE] ✅ User created and welcome email sent successfully');
+        logger.info('Employee created', { username: user.username, email: user.email, role: user.role, createdBy: adminId });
 
         res.status(201).json({
-          message: 'Employee created successfully. Temporary password sent to email (valid for 2 hours)',
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            is_active: user.is_active,
-            created_at: user.created_at
-          }
+          success: true,
+          message: 'Employee created successfully',
+          data: { employee: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role, is_active: user.is_active, created_at: user.created_at } },
         });
       } catch (emailError) {
-        // Email failed but user was created, so return warning
-        console.error('[ADMIN-CREATE-EMPLOYEE] ⚠️  Email sending failed:', emailError);
+        logger.warn('Create employee: welcome email failed', { error: emailError, userId: user.id });
         res.status(201).json({
+          success: true,
           message: 'Employee created successfully but welcome email could not be sent',
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            is_active: user.is_active,
-            created_at: user.created_at
-          },
-          warning: 'Email sending failed. Please resend credentials manually.'
+          data: { employee: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role, is_active: user.is_active, created_at: user.created_at }, warning: 'Email sending failed. Please resend credentials manually.' },
         });
       }
     } catch (error) {
@@ -192,17 +147,15 @@ export async function createEmployee(req: AuthenticatedRequest, res: Response): 
       throw error;
     }
   } catch (error) {
-    console.error('[ADMIN-CREATE-EMPLOYEE] ❌ Error:', error);
-    console.error('[ADMIN-CREATE-EMPLOYEE] Stack:', error instanceof Error ? error.stack : '');
-    res.status(500).json({ error: 'Failed to create employee' });
+    logger.error('Create employee error', { error, stack: error instanceof Error ? error.stack : undefined });
+    res.status(500).json({ success: false, message: 'Failed to create employee' });
   }
 }
 
-// Get all employees (admin only)
 export async function getEmployees(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Only admins can view employees' });
+      res.status(403).json({ success: false, message: 'Only admins can view employees' });
       return;
     }
 
@@ -214,18 +167,17 @@ export async function getEmployees(req: AuthenticatedRequest, res: Response): Pr
       [req.user.id]
     );
 
-    res.json({ employees: result.rows });
+    res.status(200).json({ success: true, data: { employees: result.rows } });
   } catch (error) {
-    console.error('Error fetching employees:', error);
-    res.status(500).json({ error: 'Failed to fetch employees' });
+    logger.error('Error fetching employees', { error });
+    res.status(500).json({ success: false, message: 'Failed to fetch employees' });
   }
 }
 
-// Deactivate employee (admin only)
 export async function deactivateEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Only admins can deactivate employees' });
+      res.status(403).json({ success: false, message: 'Only admins can deactivate employees' });
       return;
     }
 
@@ -237,14 +189,15 @@ export async function deactivateEmployee(req: AuthenticatedRequest, res: Respons
     );
 
     if (result.rows.length === 0) {
-      res.status(404).json({ error: 'Employee not found' });
+      res.status(404).json({ success: false, message: 'Employee not found' });
       return;
     }
 
-    res.json({ message: 'Employee deactivated', user: result.rows[0] });
+    logger.warn('Employee deactivated', { id, deletedBy: req.user.id });
+    res.status(200).json({ success: true, message: 'Employee deactivated successfully', data: { employee: result.rows[0] } });
   } catch (error) {
-    console.error('Error deactivating employee:', error);
-    res.status(500).json({ error: 'Failed to deactivate employee' });
+    logger.error('Error deactivating employee', { error });
+    res.status(500).json({ success: false, message: 'Failed to deactivate employee' });
   }
 }
 
@@ -252,7 +205,7 @@ export async function deactivateEmployee(req: AuthenticatedRequest, res: Respons
 export async function resendCredentials(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Only admins can resend credentials' });
+      res.status(403).json({ success: false, message: 'Only admins can resend credentials' });
       return;
     }
 
@@ -265,7 +218,7 @@ export async function resendCredentials(req: AuthenticatedRequest, res: Response
     );
 
     if (employeeResult.rows.length === 0) {
-      res.status(404).json({ error: 'Employee not found' });
+      res.status(404).json({ success: false, message: 'Employee not found' });
       return;
     }
 
@@ -315,32 +268,25 @@ export async function resendCredentials(req: AuthenticatedRequest, res: Response
           req.headers['user-agent'] || 'unknown'
         );
       } catch (auditError) {
-        console.error('[RESEND-CREDENTIALS] Audit log failed (non-critical):', auditError);
+        logger.warn('Resend credentials: audit log failed (non-critical)', { error: auditError });
       }
 
-      res.json({
-        message: 'New temporary credentials sent successfully',
-        expiresAt: expiresAt.toISOString()
-      });
+      logger.info('Employee credentials resent', { id: employee.id, email: employee.email });
+      res.status(200).json({ success: true, message: 'Credentials resent successfully', data: { expiresAt: expiresAt.toISOString() } });
     } catch (emailError) {
-      console.error('[RESEND-CREDENTIALS] Email sending failed:', emailError);
-      res.json({
-        message: 'Credentials reset but email could not be sent',
-        warning: 'Email sending failed. Contact support to resend.',
-        expiresAt: expiresAt.toISOString()
-      });
+      logger.warn('Resend credentials: email failed', { error: emailError });
+      res.status(200).json({ success: true, message: 'Credentials reset but email could not be sent', data: { expiresAt: expiresAt.toISOString(), warning: 'Email sending failed. Contact support to resend.' } });
     }
   } catch (error) {
-    console.error('[RESEND-CREDENTIALS] Error:', error);
-    res.status(500).json({ error: 'Failed to resend credentials' });
+    logger.error('Resend credentials error', { error });
+    res.status(500).json({ success: false, message: 'Failed to resend credentials' });
   }
 }
 
-// Activate employee (admin only)
 export async function activateEmployee(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     if (!req.user || req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Only admins can activate employees' });
+      res.status(403).json({ success: false, message: 'Only admins can activate employees' });
       return;
     }
 
@@ -352,13 +298,14 @@ export async function activateEmployee(req: AuthenticatedRequest, res: Response)
     );
 
     if (result.rows.length === 0) {
-      res.status(404).json({ error: 'Employee not found' });
+      res.status(404).json({ success: false, message: 'Employee not found' });
       return;
     }
 
-    res.json({ message: 'Employee activated', user: result.rows[0] });
+    logger.info('Employee activated', { id, activatedBy: req.user.id });
+    res.status(200).json({ success: true, message: 'Employee activated successfully', data: { employee: result.rows[0] } });
   } catch (error) {
-    console.error('Error activating employee:', error);
-    res.status(500).json({ error: 'Failed to activate employee' });
+    logger.error('Error activating employee', { error });
+    res.status(500).json({ success: false, message: 'Failed to activate employee' });
   }
 }
