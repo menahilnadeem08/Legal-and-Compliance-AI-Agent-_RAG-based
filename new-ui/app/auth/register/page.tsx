@@ -3,38 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  User,
-  ArrowRight,
-  Sparkles,
-  Check,
-  AlertCircle,
-  X,
-} from "lucide-react";
+import { Mail, User, ArrowRight, Sparkles, AlertCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/app/utils/auth";
-
-const passwordRules = [
-  { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
-  { label: "One uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
-  { label: "One number", test: (p: string) => /\d/.test(p) },
-];
-
-function getStrengthLabel(score: number) {
-  if (score === 0) return { label: "", color: "" };
-  if (score === 1) return { label: "Weak", color: "text-red-400" };
-  if (score === 2) return { label: "Fair", color: "text-amber-400" };
-  return { label: "Strong", color: "text-emerald-400" };
-}
+import { PasswordInput } from "@/app/components/PasswordInput";
+import { isPasswordValid } from "@/app/utils/passwordValidation";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -44,7 +20,6 @@ export default function RegisterPage() {
     confirm: "",
   });
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (getAuthToken()) router.replace("/dashboard");
   }, [router]);
@@ -54,8 +29,6 @@ export default function RegisterPage() {
     setError("");
   };
 
-  const passwordScore = passwordRules.filter((r) => r.test(form.password)).length;
-  const strength = getStrengthLabel(passwordScore);
   const passwordsMatch = form.confirm.length > 0 && form.password === form.confirm;
   const confirmMismatch = form.confirm.length > 0 && form.password !== form.confirm;
 
@@ -71,8 +44,8 @@ export default function RegisterPage() {
       setError("Please enter your email address.");
       return;
     }
-    if (passwordScore < 3) {
-      setError("Please choose a stronger password.");
+    if (!isPasswordValid(form.password)) {
+      setError("Please choose a stronger password (8+ chars, uppercase, lowercase, number, special character).");
       return;
     }
     if (!passwordsMatch) {
@@ -231,119 +204,34 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Password */}
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={form.password}
-                  onChange={set("password")}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  required
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors disabled:pointer-events-none"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+            <PasswordInput
+              id="password"
+              value={form.password}
+              onChange={(v) => setForm((f) => ({ ...f, password: v }))}
+              label="Password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              required
+              disabled={loading}
+              showValidation
+              className="space-y-1.5"
+            />
+            <PasswordInput
+              id="confirm"
+              value={form.confirm}
+              onChange={(v) => setForm((f) => ({ ...f, confirm: v }))}
+              label="Confirm password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              required
+              disabled={loading}
+              confirmValue={form.password}
+              className="space-y-1.5"
+            />
 
-              {/* Strength bar + label */}
-              {form.password.length > 0 && (
-                <div className="space-y-1.5 animate-[fadeIn_0.2s_ease]">
-                  <div className="flex gap-1.5">
-                    {passwordRules.map((rule, i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 h-1 rounded-full transition-all duration-300 ${
-                          rule.test(form.password) ? "bg-blue-500" : "bg-slate-700"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs font-medium ${strength.color}`}>
-                      {strength.label}
-                    </span>
-                    <div className="flex gap-3">
-                      {passwordRules.map((rule, i) => (
-                        <span
-                          key={i}
-                          className={`text-xs transition-colors ${
-                            rule.test(form.password) ? "text-emerald-400" : "text-gray-600"
-                          }`}
-                        >
-                          {rule.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Confirm password */}
-            <div className="space-y-1.5">
-              <label htmlFor="confirm" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Confirm password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                <input
-                  id="confirm"
-                  type={showConfirm ? "text" : "password"}
-                  value={form.confirm}
-                  onChange={set("confirm")}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  required
-                  disabled={loading}
-                  className={`w-full bg-white dark:bg-slate-900 border rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                    form.confirm.length === 0
-                      ? "border-slate-300 dark:border-slate-700 focus:border-blue-500 focus:ring-blue-500"
-                      : passwordsMatch
-                      ? "border-emerald-500 focus:border-emerald-500 focus:ring-emerald-500"
-                      : "border-red-500 focus:border-red-500 focus:ring-red-500"
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  disabled={loading}
-                  aria-label={showConfirm ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors disabled:pointer-events-none"
-                >
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {confirmMismatch && (
-                <p className="text-xs text-red-400 flex items-center gap-1 animate-[fadeIn_0.2s_ease]">
-                  <AlertCircle className="w-3 h-3" /> Passwords don't match
-                </p>
-              )}
-              {passwordsMatch && (
-                <p className="text-xs text-emerald-400 flex items-center gap-1 animate-[fadeIn_0.2s_ease]">
-                  <Check className="w-3 h-3" /> Passwords match
-                </p>
-              )}
-            </div>
-
-            {/* Submit */}
             <button
               type="submit"
-              disabled={loading || confirmMismatch || form.confirm.length === 0}
+              disabled={loading || confirmMismatch || form.confirm.length === 0 || !isPasswordValid(form.password)}
               className="w-full bg-blue-900 hover:bg-blue-800 active:bg-blue-950 text-white font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed group relative overflow-hidden"
             >
               {loading && (

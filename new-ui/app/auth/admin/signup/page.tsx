@@ -7,20 +7,18 @@ import {
   Sparkles,
   User,
   Mail,
-  Lock,
   Building2,
   ArrowRight,
   AlertCircle,
   CheckCircle,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { setAuth, getAuthToken } from "../../../utils/auth";
 import { api } from "../../../utils/apiClient";
 import { mapFieldErrors } from "../../../utils/formErrors";
+import { PasswordInput } from "../../../components/PasswordInput";
+import { isPasswordValid } from "../../../utils/passwordValidation";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 8;
 
 type Step = "signup" | "otp";
 
@@ -32,8 +30,6 @@ export default function AdminSignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState("");
@@ -76,8 +72,8 @@ export default function AdminSignupPage() {
       setError("Password is required.");
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    if (!isPasswordValid(password)) {
+      setError("Password must be at least 8 characters with uppercase, lowercase, number, and special character.");
       return;
     }
     if (password !== confirmPassword) {
@@ -359,64 +355,30 @@ export default function AdminSignupPage() {
               </div>
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                At least {MIN_PASSWORD_LENGTH} characters
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Confirm password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl pl-10 pr-11 py-3 text-slate-900 dark:text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  disabled={loading}
-                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                >
-                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(v) => { setPassword(v); setError(""); }}
+              label="Password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              disabled={loading}
+              required
+              showValidation
+              className=""
+            />
+            <PasswordInput
+              id="confirmPassword"
+              value={confirmPassword}
+              onChange={(v) => { setConfirmPassword(v); setError(""); }}
+              label="Confirm password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              disabled={loading}
+              required
+              confirmValue={password}
+              className=""
+            />
 
             <div>
               <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">

@@ -3,21 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
-import {
-  User,
-  Mail,
-  AtSign,
-  Shield,
-  CheckCircle,
-  Key,
-  LogOut,
-  X,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { User, Mail, AtSign, Shield, CheckCircle, Key, LogOut, X } from "lucide-react";
 import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { mapFieldErrors } from "@/app/utils/formErrors";
+import { PasswordInput } from "@/app/components/PasswordInput";
+import { isPasswordValid } from "@/app/utils/passwordValidation";
 
 type UserInfo = {
   username: string;
@@ -36,9 +27,6 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [modalMessage, setModalMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -70,8 +58,8 @@ export default function ProfilePage() {
       setModalMessage({ type: "error", text: "New password and confirmation do not match." });
       return;
     }
-    if (newPassword.length < 6) {
-      setModalMessage({ type: "error", text: "New password must be at least 6 characters." });
+    if (!isPasswordValid(newPassword)) {
+      setModalMessage({ type: "error", text: "New password must be at least 8 characters with uppercase, lowercase, number, and special character." });
       return;
     }
     setPasswordLoading(true);
@@ -111,9 +99,6 @@ export default function ProfilePage() {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
-    setShowCurrentPassword(false);
-    setShowNewPassword(false);
-    setShowConfirmPassword(false);
     setModalMessage(null);
     setFieldErrors({});
   };
@@ -242,87 +227,44 @@ export default function ProfilePage() {
                   {modalMessage.text}
                 </div>
               )}
-              <div>
-                <label htmlFor="current-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Current password
-                </label>
-                <div className="relative">
-                  <input
-                    id="current-password"
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("currentPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
-                    placeholder="Enter current password"
-                    disabled={passwordLoading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    aria-label={showCurrentPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                  >
-                    {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {getFieldError("currentPassword") && (
-                  <p className="text-red-500 text-sm mt-1">{getFieldError("currentPassword")}</p>
-                )}
-              </div>
-              <div>
-                <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  New password
-                </label>
-                <div className="relative">
-                  <input
-                    id="new-password"
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("newPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
-                    placeholder="Enter new password"
-                    disabled={passwordLoading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    aria-label={showNewPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                  >
-                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {getFieldError("newPassword") && (
-                  <p className="text-red-500 text-sm mt-1">{getFieldError("newPassword")}</p>
-                )}
-              </div>
-              <div>
-                <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Confirm new password
-                </label>
-                <div className="relative">
-                  <input
-                    id="confirm-password"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${getFieldError("confirmPassword") ? "border-red-500" : "border-slate-300 dark:border-slate-600"}`}
-                    placeholder="Confirm new password"
-                    disabled={passwordLoading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {getFieldError("confirmPassword") && (
-                  <p className="text-red-500 text-sm mt-1">{getFieldError("confirmPassword")}</p>
-                )}
-              </div>
+              <PasswordInput
+                id="current-password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+                label="Current password"
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                disabled={passwordLoading}
+                error={getFieldError("currentPassword")}
+                variant="compact"
+                className=""
+              />
+              <PasswordInput
+                id="new-password"
+                value={newPassword}
+                onChange={setNewPassword}
+                label="New password"
+                placeholder="Enter new password"
+                autoComplete="new-password"
+                disabled={passwordLoading}
+                error={getFieldError("newPassword")}
+                showValidation
+                variant="compact"
+                className=""
+              />
+              <PasswordInput
+                id="confirm-password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                label="Confirm new password"
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+                disabled={passwordLoading}
+                error={getFieldError("confirmPassword")}
+                confirmValue={newPassword}
+                variant="compact"
+                className=""
+              />
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"

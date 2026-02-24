@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, ArrowRight, Sparkles, AlertCircle, CheckCircle } from "lucide-react";
+import { ArrowRight, Sparkles, AlertCircle, CheckCircle } from "lucide-react";
 import { setAuth, getAuthToken, getAuthUser } from "../../utils/auth";
 import { api } from "../../utils/apiClient";
 import { mapFieldErrors } from "../../utils/formErrors";
+import { PasswordInput } from "../../components/PasswordInput";
+import { isPasswordValid } from "../../utils/passwordValidation";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -34,8 +36,7 @@ export default function ChangePasswordPage() {
     }
   }, [router]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const setFormField = (name: keyof typeof formData) => (value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -56,17 +57,8 @@ export default function ChangePasswordPage() {
       setLoading(false);
       return;
     }
-    if (formData.newPassword.length < 8) {
-      setError("New password must be at least 8 characters");
-      setLoading(false);
-      return;
-    }
-    const hasUppercase = /[A-Z]/.test(formData.newPassword);
-    const hasLowercase = /[a-z]/.test(formData.newPassword);
-    const hasNumber = /[0-9]/.test(formData.newPassword);
-    const hasSpecial = /[!@#$%^&*()_+\-=[\]{};:'",.<>?/\\|`~]/.test(formData.newPassword);
-    if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
-      setError("Password must contain uppercase, lowercase, number, and special character");
+    if (!isPasswordValid(formData.newPassword)) {
+      setError("Password must be at least 8 characters with uppercase, lowercase, number, and special character");
       setLoading(false);
       return;
     }
@@ -150,64 +142,42 @@ export default function ChangePasswordPage() {
 
           <form onSubmit={handleChangePassword} className="space-y-4">
             {!isForcedPasswordChange && (
-              <div>
-                <label htmlFor="currentPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Current password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <input
-                    type="password"
-                    id="currentPassword"
-                    name="currentPassword"
-                    value={formData.currentPassword}
-                    onChange={handleInputChange}
-                    placeholder="Enter your current password"
-                    disabled={loading}
-                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                  />
-                </div>
-              </div>
+              <PasswordInput
+                id="currentPassword"
+                name="currentPassword"
+                value={formData.currentPassword}
+                onChange={setFormField("currentPassword")}
+                label="Current password"
+                placeholder="Enter your current password"
+                autoComplete="current-password"
+                disabled={loading}
+                error={fieldErrors.currentPassword}
+              />
             )}
-            <div>
-              <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                New password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                  type="password"
-                  id="newPassword"
-                  name="newPassword"
-                  value={formData.newPassword}
-                  onChange={handleInputChange}
-                  placeholder="Min 8 characters"
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Uppercase, lowercase, number, special character
-              </p>
-            </div>
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Confirm password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                  type="password"
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  placeholder="Confirm new password"
-                  disabled={loading}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
-            </div>
+            <PasswordInput
+              id="newPassword"
+              name="newPassword"
+              value={formData.newPassword}
+              onChange={setFormField("newPassword")}
+              label="New password"
+              placeholder="Min 8 characters"
+              autoComplete="new-password"
+              disabled={loading}
+              error={fieldErrors.newPassword}
+              showValidation
+            />
+            <PasswordInput
+              id="confirmPassword"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={setFormField("confirmPassword")}
+              label="Confirm password"
+              placeholder="Confirm new password"
+              autoComplete="new-password"
+              disabled={loading}
+              error={fieldErrors.confirmPassword}
+              confirmValue={formData.newPassword}
+            />
             <button
               type="submit"
               disabled={loading}
