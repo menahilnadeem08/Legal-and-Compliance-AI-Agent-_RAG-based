@@ -50,5 +50,8 @@ next-env.d.ts
 # PDF files
 *.pdf
 
+# Tesseract language data (not used by tesseract.js; large binary)
+*.traineddata
+
 node_modules/
 .next/
