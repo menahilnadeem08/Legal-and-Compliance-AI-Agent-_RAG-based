@@ -171,9 +171,9 @@ export class LegalComplianceAgent {
         .map((doc: any) => ({
           document_name: doc.name,
           version: doc.latest_version,
-          type: doc.type,
+          category: doc.category,
           available_versions: doc.versions.join(', '),
-          content: `Document: ${doc.name} | Type: ${doc.type} | Latest: v${doc.latest_version}`,
+          content: `Document: ${doc.name} | Category: ${doc.category} | Latest: v${doc.latest_version}`,
           relevance_score: 0.9
         }));
     }
@@ -411,17 +411,18 @@ export class LegalComplianceAgent {
           console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
           // Group by document name
           const grouped = docs.reduce((acc: any, doc: any) => {
-            if (!acc[doc.name]) {
-              acc[doc.name] = {
-                name: doc.name,
-                type: doc.type,
+            const key = doc.filename;
+            if (!acc[key]) {
+              acc[key] = {
+                name: doc.filename,
+                category: doc.category,
                 versions: [],
                 latest_version: null
               };
             }
-            acc[doc.name].versions.push(doc.version);
-            if (doc.is_latest) {
-              acc[doc.name].latest_version = doc.version;
+            acc[key].versions.push(doc.version);
+            if (doc.is_active) {
+              acc[key].latest_version = doc.version;
             }
             return acc;
           }, {});
@@ -611,7 +612,7 @@ ${result.conflicts.map((c: any, i: number) =>
       case "list_available_documents":
         return {
           text: `Available Documents:\n${result.map((d: any) => 
-            `- ${d.name} (${d.type}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
+            `- ${d.name} (${d.category || 'N/A'}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
           ).join('\n')}`,
           citations: this.extractDocumentListCitations(result)
         };

@@ -1,6 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
+paddle_env/
 /node_modules
 /.pnp
 .pnp.*
@@ -23,7 +24,9 @@
 # misc
 .DS_Store
 *.pem
-
+docs/
+frontend/
+/frontend/
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -46,6 +49,9 @@ next-env.d.ts
 
 # PDF files
 *.pdf
+
+# Tesseract language data (not used by tesseract.js; large binary)
+*.traineddata
 
 node_modules/
 .next/

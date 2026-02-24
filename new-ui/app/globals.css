@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Tailwind v4: class-based dark mode (required for theme toggle) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* Smooth color transitions for theme changes */
+  * {
+    @apply transition-colors duration-200;
+  }
+
+  /* Light mode (default) */
+  html {
+    color-scheme: light;
+  }
+
+  /* Dark mode */
+  html.dark {
+    color-scheme: dark;
+  }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -2,6 +2,7 @@ import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { llm } from '../config/openai';
+import { isTextMeaningful, extractTextFromImage } from './ocrService';
 
 export interface ParsedDocument {
   text: string;
@@ -162,10 +163,17 @@ Rules:
 
   async parsePDF(filePath: string): Promise<ParsedDocument> {
     try {
-      const pdfjsLib: any = (await import('pdfjs-dist/build/pdf'))?.default ?? (await import('pdfjs-dist'));
+      // Import pdfjs with proper Node.js compatibility
+      const pdfjs = require('pdfjs-dist/build/pdf');
+      
       const raw = fs.readFileSync(filePath);
       const uint8 = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-      const loadingTask = pdfjsLib.getDocument({ data: uint8 });
+      
+      // Set standardFontDataUrl to fix missing fonts warning
+      const pdfjsLibPath = require('path').dirname(require.resolve('pdfjs-dist/package.json'));
+      const standardFontDataUrl = require('path').join(pdfjsLibPath, 'standard_fonts/');
+      
+      const loadingTask = pdfjs.getDocument({ data: uint8, standardFontDataUrl });
       const doc = await loadingTask.promise;
       
       const allChunks: ChunkWithMetadata[] = [];
@@ -207,8 +215,30 @@ Rules:
         console.log(`First 3 lines: ${lines.slice(0, 3).join(' | ')}`);
         console.log(`${'='.repeat(60)}\n`);
         
-        const pageChunks = await this.intelligentChunk(pageText, i);
-        allChunks.push(...pageChunks);
+        // OCR fallback for scanned PDFs
+        let finalText = pageText;
+
+        if (!isTextMeaningful(pageText)) {
+          console.log(`[Parser] Page ${i} has minimal text — attempting OCR`);
+          try {
+            // Lazy load pdfRenderer to avoid DOMMatrix errors at startup
+            const { renderPageToImage } = await import('./pdfRenderer');
+            const imagePath = await renderPageToImage(filePath, i);
+            const ocrText = await extractTextFromImage(imagePath);
+            if (ocrText.trim().length > 0) {
+              finalText = ocrText;
+              console.log(`[Parser] ✓ OCR recovered ${ocrText.length} chars from page ${i}`);
+            } else {
+              console.warn(`[Parser] ⚠️ OCR returned empty for page ${i}`);
+            }
+          } catch (ocrError) {
+            console.error(`[Parser] ❌ OCR failed for page ${i}:`, ocrError);
+            finalText = pageText;
+          }
+        }
+
+        const pageChunks = await this.intelligentChunk(finalText, i);
+        if (pageChunks.length > 0) allChunks.push(...pageChunks);
       }
       
       const fullText = allChunks.map(c => c.content).join('\n\n');
@@ -262,12 +292,55 @@ Rules:
     };
   }
 
-  async parse(filePath: string, fileType: string): Promise<ParsedDocument> {
-    if (fileType === 'pdf') {
-      return this.parsePDF(filePath);
-    } else if (fileType === 'docx') {
-      return this.parseDOCX(filePath);
+  async parseImage(filePath: string, fileExtension: string): Promise<ParsedDocument> {
+    try {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`IMAGE - Running OCR on image file`);
+      console.log(`${'='.repeat(60)}\n`);
+
+      // Extract text from image using OCR (pass extension so EasyOCR receives correct Content-Type)
+      const { extractTextFromImage } = await import('./ocrService');
+      const ocrText = await extractTextFromImage(filePath, fileExtension);
+
+      if (!ocrText || ocrText.trim().length === 0) {
+        console.warn('⚠️  OCR returned no text from image');
+        return {
+          text: '',
+          chunks: [],
+          metadata: { pageCount: 1 },
+        };
+      }
+
+      console.log(`[Parser] ✓ OCR extracted ${ocrText.length} chars from image`);
+
+      // Chunk the extracted text
+      const chunks = await this.intelligentChunk(ocrText, 1);
+
+      const fullText = chunks.map(c => c.content).join('\n\n');
+      const sectionsDetected = chunks.filter(c => c.section_name).length;
+
+      console.log(`\n✨ Image Processing Complete: ${chunks.length} chunks, ${sectionsDetected} with sections\n`);
+
+      return {
+        text: fullText,
+        chunks,
+        metadata: { pageCount: 1 },
+      };
+    } catch (err) {
+      throw new Error('Failed to parse image: ' + String(err));
     }
-    throw new Error('Unsupported file type');
+  }
+
+  async parse(filePath: string, fileType: string): Promise<ParsedDocument> {
+    const normalizedType = fileType.toLowerCase();
+
+    if (normalizedType === 'pdf') {
+      return this.parsePDF(filePath);
+    } else if (normalizedType === 'docx') {
+      return this.parseDOCX(filePath);
+    } else if (['jpg', 'jpeg', 'png', 'tiff', 'tif', 'webp'].includes(normalizedType)) {
+      return this.parseImage(filePath, normalizedType);
+    }
+    throw new Error(`Unsupported file type: ${fileType}`);
   }
 }

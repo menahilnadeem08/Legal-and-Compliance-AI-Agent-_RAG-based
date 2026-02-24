@@ -44,13 +44,13 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     throw new AppError('No file uploaded', 400);
   }
 
-  const { version = '1.0', type = 'policy' } = req.body;
+  const { category = 'Federal Legislation / Acts' } = req.body;
   const fileExt = path.extname(req.file.originalname).slice(1);
 
   // Validation: Check file type
   if (!uploadService.validateFileType(fileExt)) {
-    fs.unlinkSync(req.file.path);
-    throw new AppError('Only PDF and DOCX files are supported', 400);
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    throw new AppError('Supported file types: PDF, DOCX, JPG, PNG, TIFF, WebP', 400);
   }
 
   // Business logic: Process document with admin_id
@@ -58,13 +58,12 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     req.file.path,
     req.file.originalname,
     fileExt,
-    version,
-    type,
+    category,
     req.user.id // Pass admin_id
   );
 
-  // Clean up uploaded file on success
-  fs.unlinkSync(req.file.path);
+  // Clean up uploaded file on success (image may already be removed by OCR service)
+  if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
   // Standardized response
   return res.json({

@@ -1,0 +1,391 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { AppNav } from "@/app/components/AppNav";
+import {
+  User,
+  Mail,
+  AtSign,
+  Shield,
+  CheckCircle,
+  Key,
+  LogOut,
+  X,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser, getApiBase } from "@/app/utils/auth";
+
+type UserInfo = {
+  username: string;
+  email: string;
+  name: string;
+  role: "employee" | "admin" | "viewer";
+  status: string;
+  authMethod: string;
+};
+
+export default function ProfilePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [modalMessage, setModalMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    const stored = getAuthUser();
+    if (stored) {
+      setUser({
+        username: stored.username ?? stored.email ?? "User",
+        email: stored.email ?? "",
+        name: stored.name ?? stored.username ?? "",
+        role: (stored.role as "employee" | "admin" | "viewer") ?? "employee",
+        status: "Active",
+        authMethod: stored.role === "employee" ? "Local Login" : "Admin",
+      });
+    } else if (!getAuthToken()) {
+      router.replace("/auth/login");
+      return;
+    }
+    setLoading(false);
+  }, [router]);
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalMessage(null);
+    if (newPassword !== confirmPassword) {
+      setModalMessage({ type: "error", text: "New password and confirmation do not match." });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setModalMessage({ type: "error", text: "New password must be at least 6 characters." });
+      return;
+    }
+    const token = getAuthTokenForApi();
+    if (!token) {
+      clearAuth();
+      router.replace("/auth/login");
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      const res = await fetch(`${getApiBase()}/auth/change-password`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+          confirmPassword,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        clearAuth();
+        router.replace("/auth/login");
+        return;
+      }
+      if (!res.ok) {
+        setModalMessage({ type: "error", text: data.error ?? "Failed to change password." });
+        return;
+      }
+      if (data.accessToken) {
+        const currentUser = getAuthUser();
+        setAuth(data.accessToken, currentUser ?? {}, data.refreshToken);
+      }
+      setModalMessage({ type: "success", text: "Password changed successfully." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => {
+        setPasswordModalOpen(false);
+        setModalMessage(null);
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      setModalMessage({ type: "error", text: "An error occurred while changing password." });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModalOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setModalMessage(null);
+  };
+
+  const handleLogoutConfirm = async () => {
+    setLogoutConfirmOpen(false);
+    const token = getAuthTokenForApi();
+    const refresh = getRefreshToken();
+    try {
+      if (token) {
+        await fetch(`${getApiBase()}/auth/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ refreshToken: refresh }),
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    clearAuth();
+    router.replace("/auth/login");
+  };
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <AppNav />
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <h1 className="text-3xl font-bold mb-8">Profile</h1>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-6 sm:p-8 space-y-6">
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                <AtSign className="w-4 h-4" />
+                Username
+              </span>
+              <span className="text-slate-900 dark:text-white font-medium">{user.username}</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                <Mail className="w-4 h-4" />
+                Email
+              </span>
+              <span className="text-slate-900 dark:text-white font-medium">{user.email}</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                <User className="w-4 h-4" />
+                Full Name
+              </span>
+              <span className="text-slate-900 dark:text-white font-medium">{user.name}</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                <Shield className="w-4 h-4" />
+                Role
+              </span>
+              <span className="text-slate-900 dark:text-white font-medium capitalize">{user.role}</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                Status
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                <CheckCircle className="w-4 h-4" />
+                {user.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
+                Authentication method
+              </span>
+              <span className="text-slate-900 dark:text-white font-medium">{user.authMethod}</span>
+            </div>
+          </div>
+
+          <div className="px-6 sm:px-8 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-3">
+            {isEmployeeUser() && (
+              <button
+                type="button"
+                onClick={() => setPasswordModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium text-sm"
+              >
+                <Key className="w-4 h-4" />
+                Change Password
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setLogoutConfirmOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-medium text-sm"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
+        </div>
+      </main>
+
+      {/* Change Password Modal */}
+      {passwordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+              <h2 className="text-lg font-semibold">Change Password</h2>
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleChangePasswordSubmit} className="p-4 space-y-4">
+              {modalMessage && (
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    modalMessage.type === "success"
+                      ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
+                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
+                  }`}
+                >
+                  {modalMessage.text}
+                </div>
+              )}
+              <div>
+                <label htmlFor="current-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Current password
+                </label>
+                <div className="relative">
+                  <input
+                    id="current-password"
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter current password"
+                    disabled={passwordLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    aria-label={showCurrentPassword ? "Hide password" : "Show password"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  New password
+                </label>
+                <div className="relative">
+                  <input
+                    id="new-password"
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter new password"
+                    disabled={passwordLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    aria-label={showNewPassword ? "Hide password" : "Show password"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Confirm new password
+                </label>
+                <div className="relative">
+                  <input
+                    id="confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-3 pr-10 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Confirm new password"
+                    disabled={passwordLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closePasswordModal}
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+                >
+                  {passwordLoading ? "Updating…" : "Submit"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Logout confirmation */}
+      {logoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6">
+            <h2 className="text-lg font-semibold mb-2">Log out?</h2>
+            <p className="text-slate-600 dark:text-slate-400 text-sm mb-6">
+              You will be redirected to the login page.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLogoutConfirmOpen(false)}
+                className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLogoutConfirm}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

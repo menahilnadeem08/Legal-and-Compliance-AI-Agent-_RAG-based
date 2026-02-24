@@ -46,11 +46,11 @@ export class RetrievalService {
     c.content,
     c.section_name,
     c.page_number,
-    d.name as document_name,
+    d.filename as document_name,
     c.embedding
    FROM chunks c
    JOIN documents d ON c.document_id = d.id
-   WHERE d.is_latest = true AND d.admin_id = $1
+   WHERE d.is_active = true AND d.admin_id = $1
    LIMIT $2`,
         [adminId, 50]
       );
@@ -66,11 +66,11 @@ export class RetrievalService {
           c.content,
           c.section_name,
           c.page_number,
-          d.name as document_name,
+          d.filename as document_name,
           ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', $1::text)) as rank
          FROM chunks c
          JOIN documents d ON c.document_id = d.id
-         WHERE d.is_latest = true AND d.admin_id = $2
+         WHERE d.is_active = true AND d.admin_id = $2
          AND to_tsvector('english', c.content) @@ plainto_tsquery('english', $1::text)
          ORDER BY rank DESC
          LIMIT $3`,
