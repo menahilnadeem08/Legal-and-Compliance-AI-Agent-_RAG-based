@@ -98,7 +98,7 @@ export default function DashboardPage() {
         <div className="max-w-6xl mx-auto">
           {/* Welcome Section */}
           <div className="mb-12">
-            <h1 className="text-4xl font-bold mb-2">Welcome back, {user.name}! 👋</h1>
+            <h1 className="text-4xl font-bold mb-2">Welcome back, {user?.name ?? "User"}! 👋</h1>
             <p className="text-slate-600 dark:text-slate-400 text-lg">
               Your Legal RAG Dashboard
             </p>

@@ -56,6 +56,7 @@ jobs:
             GMAIL_PASSWORD=${{ secrets.GMAIL_PASSWORD }}
             APP_URL=${{ secrets.APP_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
+            EASYOCR_URL=http://localhost:8001
             ENVFILE
             
             # Clean and install
@@ -66,13 +67,24 @@ jobs:
             # Start backend
             pm2 delete backend 2>/dev/null || true
             pm2 start npm --name "backend" -- start
+
+            # ========== OCR service (EasyOCR) ==========
+            cd $APP_DIR/ocr-service
+            python3 -m venv .venv
+            .venv/bin/pip install -r requirements.txt --quiet
+            pm2 delete ocr-service 2>/dev/null || true
+            pm2 start ".venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001" --name "ocr-service" --cwd $APP_DIR/ocr-service
             
-            # ========== Frontend ==========
-            cd $APP_DIR/frontend
-            
+            # ========== Frontend (new-ui) ==========
+            cd $APP_DIR/new-ui
+
+            # Enable pnpm (Node 16.13+)
+            corepack enable
+            corepack prepare pnpm@latest --activate
+
             # Clean old build and cache
-            rm -rf .next node_modules/.cache
-            
+            rm -rf .next node_modules .pnpm-store
+
             # Create .env
             cat > .env << 'ENVFILE'
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
@@ -81,21 +93,21 @@ jobs:
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             ENVFILE
-            
-            # Install and build
-            npm install
-            npm run build
-            
+
+            # Install and build with pnpm
+            pnpm install --frozen-lockfile
+            pnpm run build
+
             # Verify build exists
             if [ ! -d ".next" ]; then
               echo "Build failed - .next directory not found"
               exit 1
             fi
-            
-            # Start frontend with clean restart
-            pm2 delete frontend 2>/dev/null || true
-            pm2 start npm --name "frontend" -- start
-            pm2 restart frontend --update-env
+
+            # Start new-ui with clean restart
+            pm2 delete new-ui 2>/dev/null || true
+            pm2 start pnpm --name "new-ui" -- start
+            pm2 restart new-ui --update-env
             
             # Save PM2 state
             pm2 save
