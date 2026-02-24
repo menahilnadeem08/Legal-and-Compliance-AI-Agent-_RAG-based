@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth } from "@/app/utils/auth";
@@ -34,7 +34,7 @@ type StreamEvent =
   | { type: "complete" }
   | { type: "error"; error?: string };
 
-export default function ChatPage() {
+function ChatContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const conversationIdFromUrl = searchParams.get("conversation");
@@ -573,5 +573,22 @@ export default function ChatPage() {
       </div>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span>Loading…</span>
+          </div>
+        </div>
+      }
+    >
+      <ChatContent />
+    </Suspense>
   );
 }

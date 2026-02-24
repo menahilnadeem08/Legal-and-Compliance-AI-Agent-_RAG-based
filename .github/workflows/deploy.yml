@@ -70,8 +70,12 @@ jobs:
             # ========== Frontend (new-ui) ==========
             cd $APP_DIR/new-ui
 
+            # Enable pnpm (Node 16.13+)
+            corepack enable
+            corepack prepare pnpm@latest --activate
+
             # Clean old build and cache
-            rm -rf .next node_modules/.cache
+            rm -rf .next node_modules .pnpm-store
 
             # Create .env
             cat > .env << 'ENVFILE'
@@ -82,9 +86,9 @@ jobs:
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             ENVFILE
 
-            # Install and build
-            npm install
-            npm run build
+            # Install and build with pnpm
+            pnpm install --frozen-lockfile
+            pnpm run build
 
             # Verify build exists
             if [ ! -d ".next" ]; then
@@ -94,7 +98,7 @@ jobs:
 
             # Start new-ui with clean restart
             pm2 delete new-ui 2>/dev/null || true
-            pm2 start npm --name "new-ui" -- start
+            pm2 start pnpm --name "new-ui" -- start
             pm2 restart new-ui --update-env
             
             # Save PM2 state
