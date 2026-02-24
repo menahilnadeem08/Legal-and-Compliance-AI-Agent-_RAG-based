@@ -92,10 +92,10 @@ jobs:
               exit 1
             fi
 
-            # Start frontend with clean restart
-            pm2 delete frontend 2>/dev/null || true
-            pm2 start npm --name "frontend" -- start
-            pm2 restart frontend --update-env
+            # Start new-ui with clean restart
+            pm2 delete new-ui 2>/dev/null || true
+            pm2 start npm --name "new-ui" -- start
+            pm2 restart new-ui --update-env
             
             # Save PM2 state
             pm2 save
