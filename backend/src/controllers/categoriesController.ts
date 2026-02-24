@@ -39,7 +39,7 @@ export const getCategories = asyncHandler(async (req: AuthenticatedRequest, res:
     ...custom.rows.map((r: any) => ({ id: r.id, name: r.name, type: 'custom' as const })),
   ].sort((a, b) => a.name.localeCompare(b.name));
 
-  return res.json(combined);
+  return res.status(200).json({ success: true, data: { categories: combined } });
 });
 
 /**
@@ -59,7 +59,7 @@ export const getHiddenDefaultCategories = asyncHandler(async (req: Authenticated
      ORDER BY d.name`,
     [adminId]
   );
-  return res.json(result.rows);
+  return res.status(200).json({ success: true, data: { categories: result.rows } });
 });
 
 /**
@@ -89,7 +89,7 @@ export const createCustomCategory = asyncHandler(async (req: AuthenticatedReques
      RETURNING id, admin_id, name, created_at, updated_at`,
     [adminId, trimmed]
   );
-  return res.status(201).json(insert.rows[0]);
+  return res.status(201).json({ success: true, message: 'Custom category created', data: { category: insert.rows[0] } });
 });
 
 /**
@@ -131,7 +131,7 @@ export const updateCustomCategory = asyncHandler(async (req: AuthenticatedReques
      RETURNING id, admin_id, name, created_at, updated_at`,
     [trimmed, id, adminId]
   );
-  return res.json(update.rows[0]);
+  return res.status(200).json({ success: true, message: 'Custom category updated successfully', data: { category: update.rows[0] } });
 });
 
 /**
@@ -169,7 +169,7 @@ export const deleteCustomCategory = asyncHandler(async (req: AuthenticatedReques
     );
   }
   await pool.query('DELETE FROM custom_categories WHERE id = $1 AND admin_id = $2', [id, adminId]);
-  return res.status(204).send();
+  return res.status(200).json({ success: true, message: 'Custom category deleted' });
 });
 
 /**
@@ -196,7 +196,7 @@ export const hideDefaultCategory = asyncHandler(async (req: AuthenticatedRequest
      ON CONFLICT (admin_id, default_category_id) DO NOTHING`,
     [adminId, defaultCategoryId]
   );
-  return res.status(204).send();
+  return res.status(200).json({ success: true, message: 'Default category hidden' });
 });
 
 /**
@@ -217,5 +217,5 @@ export const unhideDefaultCategory = asyncHandler(async (req: AuthenticatedReque
     'DELETE FROM admin_hidden_defaults WHERE admin_id = $1 AND default_category_id = $2',
     [adminId, defaultCategoryId]
   );
-  return res.status(204).send();
+  return res.status(200).json({ success: true, message: 'Default category unhidden' });
 });

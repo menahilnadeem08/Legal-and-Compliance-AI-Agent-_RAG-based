@@ -3,6 +3,7 @@ import pool from '../config/database';
 import { DocumentParser, ChunkWithMetadata } from '../utils/documentParser';
 import { generateEmbedding } from '../utils/emdedding';
 import { DocumentService } from './documentService';
+import logger from '../utils/logger';
 
 export class UploadService {
   private parser: DocumentParser;
@@ -57,7 +58,7 @@ export class UploadService {
 
       // Generate embeddings and store chunks with metadata
       const chunks = parsed.chunks;
-      console.log(`Processing ${chunks.length} chunks for ${fileName}...`);
+      logger.info('Processing chunks for upload', { chunks: chunks.length, fileName });
       
       for (let i = 0; i < chunks.length; i++) {
         const chunk: ChunkWithMetadata = chunks[i];
@@ -66,7 +67,7 @@ export class UploadService {
 
         // Log section detection for debugging
         if (chunk.section_name) {
-          console.log(`Chunk ${i}: Section="${chunk.section_name.substring(0, 50)}..." Page=${chunk.page_number || 'N/A'}`);
+          logger.debug('Chunk section', { i, section: chunk.section_name?.substring(0, 50), page: chunk.page_number });
         }
 
         await client.query(
@@ -87,7 +88,7 @@ export class UploadService {
       await client.query('COMMIT');
 
       const sectionsDetected = chunks.filter(c => c.section_name).length;
-      console.log(`Document ${fileName} ingested as version ${nextVersion} with ${chunks.length} chunks (${sectionsDetected} with sections detected)`);
+      logger.info('Document ingested', { fileName, version: nextVersion, chunks: chunks.length, sectionsDetected });
       return documentId;
     } catch (error) {
       await client.query('ROLLBACK');

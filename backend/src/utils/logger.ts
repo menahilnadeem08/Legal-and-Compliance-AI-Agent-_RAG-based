@@ -1,58 +1,36 @@
-/**
- * Simple logger utility that respects NODE_ENV
- * - Development: Verbose logging
- * - Production: Only error logs
- */
+import winston from "winston";
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const isDevelopment = NODE_ENV === 'development';
-
-export const logger = {
-  /**
-   * Log info messages (only in development)
-   */
-  info: (prefix: string, message: string, data?: any) => {
-    if (isDevelopment) {
-      if (data) {
-        console.log(`[${prefix}] ${message}`, data);
-      } else {
-        console.log(`[${prefix}] ${message}`);
-      }
-    }
-  },
-
-  /**
-   * Log success messages (only in development)
-   */
-  success: (prefix: string, message: string, data?: any) => {
-    if (isDevelopment) {
-      if (data) {
-        console.log(`[${prefix}] ✓ ${message}`, data);
-      } else {
-        console.log(`[${prefix}] ✓ ${message}`);
-      }
-    }
-  },
-
-  /**
-   * Log error messages (always logged)
-   */
-  error: (prefix: string, message: string, error?: any) => {
-    if (error) {
-      console.error(`[${prefix}] ❌ ${message}`, error);
-    } else {
-      console.error(`[${prefix}] ❌ ${message}`);
-    }
-  },
-
-  /**
-   * Log warning messages (always logged)
-   */
-  warn: (prefix: string, message: string, data?: any) => {
-    if (data) {
-      console.warn(`[${prefix}] ⚠️ ${message}`, data);
-    } else {
-      console.warn(`[${prefix}] ⚠️ ${message}`);
-    }
-  },
+const levels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 3,
+  debug: 4,
 };
+
+const logger = winston.createLogger({
+  level: "info",
+  levels,
+  format: winston.format.combine(
+    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+    new winston.transports.File({ filename: "logs/combined.log" }),
+  ],
+});
+
+if (process.env.NODE_ENV !== "production") {
+  logger.add(
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      ),
+    })
+  );
+}
+
+export default logger;

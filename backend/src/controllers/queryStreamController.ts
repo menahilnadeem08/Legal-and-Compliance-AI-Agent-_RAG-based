@@ -7,6 +7,7 @@ import { sessionMemory } from '../utils/sessionMemory';
 import { AuthenticatedRequest } from '../types';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
 import { AppError } from '../middleware/errorHandler';
+import logger from '../utils/logger';
 
 const retrievalService = new RetrievalService();
 const answerGenerator = new AnswerGenerator();
@@ -17,12 +18,12 @@ export const queryStreamController = async (req: AuthenticatedRequest, res: Resp
     const { query, sessionId } = req.body;
 
     if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
+      return res.status(400).json({ success: false, message: 'Query is required' });
     }
 
     const adminId = getAdminIdForUser(req.user);
     if (!adminId) {
-      return res.status(500).json({ error: 'User role not properly configured' });
+      return res.status(500).json({ success: false, message: 'User role not properly configured' });
     }
 
     // Set headers for Server-Sent Events streaming
@@ -128,7 +129,7 @@ export const queryStreamController = async (req: AuthenticatedRequest, res: Resp
       res.end();
     }
   } catch (error) {
-    console.error('Stream setup error:', error);
-    res.status(500).json({ error: 'Failed to set up stream' });
+    logger.error('Stream setup error', { error });
+    res.status(500).json({ success: false, message: 'Failed to set up stream' });
   }
 };

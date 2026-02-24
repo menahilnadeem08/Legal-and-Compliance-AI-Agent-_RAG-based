@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { AuthenticatedRequest } from '../types';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 import { JWT_SECRET } from '../config/secrets';
 
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -10,8 +10,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {
-      logger.warn('AUTH', 'No token provided');
-      return res.status(401).json({ error: 'No token provided' });
+      logger.warn('Unauthorized access attempt - no token', { url: req.url, ip: req.ip });
+      return res.status(401).json({ success: false, message: 'No token provided' });
     }
 
     const decoded = jwt.verify(token, JWT_SECRET) as any;
@@ -22,29 +22,27 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     );
 
     if (userResult.rows.length === 0) {
-      logger.warn('AUTH', 'User not found');
-      return res.status(401).json({ error: 'User not found' });
+      logger.warn('Deleted user attempted access', { userId: decoded.id, ip: req.ip, url: req.url });
+      return res.status(401).json({ success: false, message: 'User not found' });
     }
 
     const user = userResult.rows[0];
 
-    // Check if user account is active (not deactivated)
     if (!user.is_active) {
-      logger.warn('AUTH', 'Attempt to login with deactivated account', `${user.username}`);
-      return res.status(401).json({ error: 'Account has been deactivated' });
+      logger.warn('Login failed - account inactive', { username: user.username, ip: req.ip, url: req.url });
+      return res.status(401).json({ success: false, message: 'Account has been deactivated' });
     }
 
-    // Reject access tokens issued before the last session revocation
     if (user.sessions_revoked_at) {
       const tokenIssuedAt = decoded.iat;
       const revokedAtSeconds = Math.floor(new Date(user.sessions_revoked_at).getTime() / 1000);
       if (tokenIssuedAt < revokedAtSeconds) {
-        logger.warn('AUTH', 'Token issued before session revocation');
-        return res.status(401).json({ error: 'Session revoked. Please log in again.' });
+        logger.warn('Token issued before session revocation', { url: req.url, ip: req.ip });
+        return res.status(401).json({ success: false, message: 'Session revoked. Please log in again.' });
       }
     }
 
-    logger.success('AUTH', 'User authenticated', `${user.username} (${user.role})`);
+    logger.info('User authenticated', { username: user.username, role: user.role, ip: req.ip });
 
     req.user = {
       id: user.id,
@@ -57,22 +55,28 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
 
     next();
   } catch (error) {
-    logger.error('AUTH', 'Authentication error', error instanceof Error ? error.message : error);
     if (error instanceof jwt.TokenExpiredError) {
-      return res.status(401).json({ error: 'Token expired' });
+      logger.warn('Expired token used', { ip: req.ip, url: req.url });
+      return res.status(401).json({ success: false, message: 'Token expired' });
     }
-    return res.status(401).json({ error: 'Invalid token' });
+    if (error instanceof jwt.JsonWebTokenError) {
+      logger.warn('Invalid token used', { ip: req.ip, url: req.url });
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    logger.error('Authentication error', { error: error instanceof Error ? error.message : error, ip: req.ip, url: req.url });
+    return res.status(401).json({ success: false, message: 'Invalid token' });
   }
 }
 
 export function requireRole(...allowedRoles: string[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
 
     if (!allowedRoles.includes(req.user.role || '')) {
-      return res.status(403).json({ error: `Access denied. Required role: ${allowedRoles.join(' or ')}` });
+      logger.warn('Access denied - insufficient role', { role: req.user.role, required: allowedRoles, ip: req.ip, url: req.url });
+      return res.status(403).json({ success: false, message: `Access denied. Required role: ${allowedRoles.join(' or ')}` });
     }
 
     next();

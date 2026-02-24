@@ -10,7 +10,7 @@ import * as conversationService from '../services/conversationService';
 export async function createConversation(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const { title, metadata } = req.body;
@@ -18,10 +18,10 @@ export async function createConversation(req: AuthenticatedRequest, res: Respons
     const conversation = await conversationService.createConversation(req.user.id, title, metadata);
 
     logger.info('CONTROLLER', 'Conversation created', { conversationId: conversation.id });
-    return res.status(201).json(conversation);
+    return res.status(201).json({ success: true, message: 'Conversation created', data: { conversation } });
   } catch (error) {
     logger.error('CONVERSATION_CREATE_CONTROLLER_ERROR', 'Error creating conversation', error);
-    return res.status(500).json({ error: 'Failed to create conversation' });
+    return res.status(500).json({ success: false, message: 'Failed to create conversation' });
   }
 }
 
@@ -32,7 +32,7 @@ export async function createConversation(req: AuthenticatedRequest, res: Respons
 export async function listConversations(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -41,10 +41,10 @@ export async function listConversations(req: AuthenticatedRequest, res: Response
     const result = await conversationService.listConversations(req.user.id, limit, offset);
 
     logger.info('CONTROLLER', 'Listed conversations', { userId: req.user.id, count: result.conversations.length });
-    return res.json(result);
+    return res.status(200).json({ success: true, data: { conversations: result.conversations, total: result.total } });
   } catch (error) {
     logger.error('CONVERSATIONS_LIST_CONTROLLER_ERROR', 'Error listing conversations', error);
-    return res.status(500).json({ error: 'Failed to list conversations' });
+    return res.status(500).json({ success: false, message: 'Failed to list conversations' });
   }
 }
 
@@ -55,26 +55,26 @@ export async function listConversations(req: AuthenticatedRequest, res: Response
 export async function getConversation(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const conversation = await conversationService.getConversation(conversationId, req.user.id);
 
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     logger.info('CONTROLLER', 'Retrieved conversation', { conversationId });
-    return res.json(conversation);
+    return res.status(200).json({ success: true, data: { conversation } });
   } catch (error) {
     logger.error('CONVERSATION_GET_CONTROLLER_ERROR', 'Error getting conversation', error);
-    return res.status(500).json({ error: 'Failed to get conversation' });
+    return res.status(500).json({ success: false, message: 'Failed to get conversation' });
   }
 }
 
@@ -85,13 +85,13 @@ export async function getConversation(req: AuthenticatedRequest, res: Response) 
 export async function updateConversation(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const { title, metadata } = req.body;
@@ -104,14 +104,14 @@ export async function updateConversation(req: AuthenticatedRequest, res: Respons
     );
 
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     logger.info('CONTROLLER', 'Updated conversation', { conversationId });
-    return res.json(conversation);
+    return res.status(200).json({ success: true, message: 'Conversation updated successfully', data: { conversation } });
   } catch (error) {
     logger.error('CONVERSATION_UPDATE_CONTROLLER_ERROR', 'Error updating conversation', error);
-    return res.status(500).json({ error: 'Failed to update conversation' });
+    return res.status(500).json({ success: false, message: 'Failed to update conversation' });
   }
 }
 
@@ -122,26 +122,26 @@ export async function updateConversation(req: AuthenticatedRequest, res: Respons
 export async function deleteConversation(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const deleted = await conversationService.deleteConversation(conversationId, req.user.id);
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     logger.info('CONTROLLER', 'Deleted conversation', { conversationId });
-    return res.json({ ok: true });
+    return res.status(200).json({ success: true, message: 'Conversation deleted' });
   } catch (error) {
     logger.error('CONVERSATION_DELETE_CONTROLLER_ERROR', 'Error deleting conversation', error);
-    return res.status(500).json({ error: 'Failed to delete conversation' });
+    return res.status(500).json({ success: false, message: 'Failed to delete conversation' });
   }
 }
 
@@ -152,38 +152,38 @@ export async function deleteConversation(req: AuthenticatedRequest, res: Respons
 export async function addMessage(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const { role, content, metadata } = req.body;
 
     if (!role || !content) {
-      return res.status(400).json({ error: 'Role and content are required' });
+      return res.status(400).json({ success: false, message: 'Role and content are required' });
     }
 
     if (!['user', 'assistant', 'system'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
+      return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
     // Verify conversation exists and belongs to user
     const conversation = await conversationService.getConversation(conversationId, req.user.id);
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     const message = await conversationService.addMessage(conversationId, role, content, metadata);
 
     logger.info('CONTROLLER', 'Added message', { conversationId, messageId: message.id });
-    return res.status(201).json(message);
+    return res.status(201).json({ success: true, message: 'Message added', data: { message } });
   } catch (error) {
     logger.error('MESSAGE_ADD_CONTROLLER_ERROR', 'Error adding message', error);
-    return res.status(500).json({ error: 'Failed to add message' });
+    return res.status(500).json({ success: false, message: 'Failed to add message' });
   }
 }
 
@@ -194,13 +194,13 @@ export async function addMessage(req: AuthenticatedRequest, res: Response) {
 export async function getRecentMessages(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
@@ -208,16 +208,16 @@ export async function getRecentMessages(req: AuthenticatedRequest, res: Response
     // Verify conversation exists and belongs to user
     const conversation = await conversationService.getConversation(conversationId, req.user.id);
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     const messages = await conversationService.getRecentMessages(conversationId, req.user.id, limit);
 
     logger.info('CONTROLLER', 'Retrieved recent messages', { conversationId, count: messages.length });
-    return res.json(messages);
+    return res.status(200).json({ success: true, data: { messages } });
   } catch (error) {
     logger.error('MESSAGES_GET_CONTROLLER_ERROR', 'Error getting messages', error);
-    return res.status(500).json({ error: 'Failed to get messages' });
+    return res.status(500).json({ success: false, message: 'Failed to get messages' });
   }
 }
 
@@ -228,26 +228,26 @@ export async function getRecentMessages(req: AuthenticatedRequest, res: Response
 export async function clearConversationMessages(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const cleared = await conversationService.clearConversationMessages(conversationId, req.user.id);
 
     if (!cleared) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     logger.info('CONTROLLER', 'Cleared conversation messages', { conversationId });
-    return res.json({ ok: true });
+    return res.status(200).json({ success: true, message: 'Conversation cleared' });
   } catch (error) {
     logger.error('CONVERSATION_CLEAR_CONTROLLER_ERROR', 'Error clearing conversation', error);
-    return res.status(500).json({ error: 'Failed to clear conversation' });
+    return res.status(500).json({ success: false, message: 'Failed to clear conversation' });
   }
 }
 
@@ -258,13 +258,13 @@ export async function clearConversationMessages(req: AuthenticatedRequest, res: 
 export async function getMessageCount(req: AuthenticatedRequest, res: Response) {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const conversationId = parseInt(req.params.conversationId as string);
 
     if (isNaN(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation ID' });
+      return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
     const count = await conversationService.getMessageCount(conversationId, req.user.id);
@@ -273,14 +273,14 @@ export async function getMessageCount(req: AuthenticatedRequest, res: Response) 
       // Check if conversation exists
       const conversation = await conversationService.getConversation(conversationId, req.user.id);
       if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
+        return res.status(404).json({ success: false, message: 'Conversation not found' });
       }
     }
 
     logger.info('CONTROLLER', 'Retrieved message count', { conversationId, count });
-    return res.json({ conversationId, count });
+    return res.status(200).json({ success: true, data: { conversationId, count } });
   } catch (error) {
     logger.error('MESSAGE_COUNT_CONTROLLER_ERROR', 'Error getting message count', error);
-    return res.status(500).json({ error: 'Failed to get message count' });
+    return res.status(500).json({ success: false, message: 'Failed to get message count' });
   }
 }

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import pool from '../config/database';
+import logger from '../utils/logger';
 
 const REFRESH_TOKEN_DURATION = '7 days';
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -70,19 +71,19 @@ export async function cleanExpiredSessions(): Promise<number> {
   const result = await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
   const count = result.rowCount ?? 0;
   if (count > 0) {
-    console.log(`[SESSION-CLEANUP] Removed ${count} expired session(s)`);
+    logger.info('Session cleanup: removed expired sessions', { count });
   }
   return count;
 }
 
 export function startSessionCleanupScheduler(): NodeJS.Timeout {
   cleanExpiredSessions().catch((err) =>
-    console.error('[SESSION-CLEANUP] Initial cleanup failed:', err)
+    logger.error('Session cleanup: initial cleanup failed', { error: err })
   );
 
   return setInterval(() => {
     cleanExpiredSessions().catch((err) =>
-      console.error('[SESSION-CLEANUP] Scheduled cleanup failed:', err)
+      logger.error('Session cleanup: scheduled cleanup failed', { error: err })
     );
   }, CLEANUP_INTERVAL_MS);
 }

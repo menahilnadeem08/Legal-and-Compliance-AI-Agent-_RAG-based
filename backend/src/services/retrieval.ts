@@ -3,6 +3,7 @@ import { embeddings } from '../config/openai';
 import { QueryRewriter } from '../utils/queryRewriter';
 import { Reranker } from '../utils/reranker';
 import { pipelineLogger } from './logger';
+import logger from '../utils/logger';
 
 export interface RetrievedChunk {
   content: string;
@@ -31,7 +32,7 @@ export class RetrievalService {
       originalQuery: query,
       rewrittenQueries: queries,
     });
-    console.log('Rewritten queries:', queries);
+    logger.debug('Rewritten queries', { queries });
 
     const allResults = new Map<string, RetrievedChunk>();
 
@@ -106,7 +107,7 @@ export class RetrievalService {
             }
           }
         } catch (e) {
-          console.warn('Failed to parse embedding for chunk', row.id, e);
+          logger.warn('Failed to parse embedding for chunk', { chunkId: row.id, error: e });
         }
       });
 
@@ -164,7 +165,7 @@ export class RetrievalService {
 
       return reranked;
     } catch (err) {
-      console.warn('Reranker failed, returning initial results:', err);
+      logger.warn('Reranker failed, returning initial results', { error: err });
       pipelineLogger.warn(
         'RERANKING_FAILED',
         'Reranker failed, returning initial results',

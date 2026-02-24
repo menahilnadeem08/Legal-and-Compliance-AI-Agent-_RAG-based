@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import winstonLogger from '../utils/logger';
 
 export interface LogEntry {
   timestamp: string;
@@ -33,7 +34,7 @@ export class PipelineLogger extends EventEmitter {
     };
     this.addLog(entry);
     this.emit('log', entry);
-    console.log(`[${stage}] ${message}`, data || '');
+    winstonLogger.info(message, { stage, data });
   }
 
   /**
@@ -49,7 +50,7 @@ export class PipelineLogger extends EventEmitter {
     };
     this.addLog(entry);
     this.emit('log', entry);
-    console.debug(`[${stage}] ${message}`, data || '');
+    winstonLogger.debug(message, { stage, data });
   }
 
   /**
@@ -65,7 +66,7 @@ export class PipelineLogger extends EventEmitter {
     };
     this.addLog(entry);
     this.emit('log', entry);
-    console.warn(`[${stage}] ${message}`, data || '');
+    winstonLogger.warn(message, { stage, data });
   }
 
   /**
@@ -81,7 +82,7 @@ export class PipelineLogger extends EventEmitter {
     };
     this.addLog(entry);
     this.emit('log', entry);
-    console.error(`[${stage}] ${message}`, error || '');
+    winstonLogger.error(message, { stage, error });
   }
 
   /**

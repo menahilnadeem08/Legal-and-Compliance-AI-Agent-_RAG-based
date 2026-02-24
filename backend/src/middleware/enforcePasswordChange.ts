@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import logger from '../utils/logger';
 
 /**
  * Global middleware — applied via router.use() after auth routes.
@@ -26,7 +27,8 @@ export function enforcePasswordChange(req: Request, res: Response, next: NextFun
 
     if (!isAllowed) {
       res.status(403).json({
-        error: 'You must change your password before accessing other features',
+        success: false,
+        message: 'You must change your password before accessing other features',
         code: 'FORCE_PASSWORD_CHANGE',
         redirectUrl: '/auth/change-password',
       });
@@ -35,7 +37,7 @@ export function enforcePasswordChange(req: Request, res: Response, next: NextFun
 
     next();
   } catch (error) {
-    console.error('[ENFORCE-PASSWORD-CHANGE] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    logger.error('Enforce password change middleware error', { error });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 }

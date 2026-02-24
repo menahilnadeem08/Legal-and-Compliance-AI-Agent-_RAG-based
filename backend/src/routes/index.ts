@@ -20,6 +20,21 @@ import { adminSignup, adminLogin, verifyOtp, resendOtp } from '../controllers/ad
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee, resendCredentials } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
 import { enforcePasswordChange } from '../middleware/enforcePasswordChange';
+import { asyncHandler } from '../middleware/errorHandler';
+import validate from '../middleware/validate';
+import {
+  loginSchema,
+  adminLoginSchema,
+  adminSignupSchema,
+  changePasswordSchema,
+  verifyOtpSchema,
+  resendOtpSchema,
+  refreshSchema,
+  googleSignInSchema,
+} from '../validators/authValidators';
+import { addEmployeeSchema, employeeIdSchema } from '../validators/employeeValidators';
+import { documentIdParamSchema } from '../validators/documentValidators';
+import { authLimiter, resendLimiter, adminLimiter } from '../middleware/rateLimiter';
 
 import {
   createConversation,
@@ -45,20 +60,23 @@ import {
 const router = express.Router();
 
 // ===== Public Routes (no authentication required) =====
-router.post('/auth/signin', handleGoogleSignIn as any);
-router.post('/auth/login', login as any);
-router.post('/auth/admin/signup', adminSignup as any);
-router.post('/auth/admin/verify-otp', verifyOtp as any);
-router.post('/auth/admin/resend-otp', resendOtp as any);
-router.post('/auth/admin/login', adminLogin as any);
-router.post('/auth/refresh', refresh as any);
+router.post('/auth/signin', validate(googleSignInSchema), asyncHandler(handleGoogleSignIn as any));
+router.post('/auth/login', authLimiter, validate(loginSchema), asyncHandler(login as any));
+router.post('/auth/admin/signup', adminLimiter, validate(adminSignupSchema), asyncHandler(adminSignup as any));
+router.post('/auth/admin/verify-otp', authLimiter, validate(verifyOtpSchema), asyncHandler(verifyOtp as any));
+router.post('/auth/admin/resend-otp', resendLimiter, validate(resendOtpSchema), asyncHandler(resendOtp as any));
+router.post('/auth/admin/login', authLimiter, validate(adminLoginSchema), asyncHandler(adminLogin as any));
+router.post('/auth/refresh', authLimiter, validate(refreshSchema), asyncHandler(refresh as any));
 
 router.get('/health', (req: any, res: any) => {
-  res.json({
-    status: 'ok',
-    message: 'Backend is running and connected',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+  res.status(200).json({
+    success: true,
+    data: {
+      status: 'ok',
+      message: 'Backend is running and connected',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    },
   });
 });
 
@@ -67,16 +85,16 @@ router.use(authenticate as any);
 router.use(enforcePasswordChange as any);
 
 // ===== Auth Routes (allowed through enforcePasswordChange via ALLOWED_PATHS) =====
-router.post('/auth/logout', logout as any);
-router.get('/auth/me', getCurrentUser as any);
-router.post('/auth/change-password', changePassword as any);
+router.post('/auth/logout', asyncHandler(logout as any));
+router.get('/auth/me', asyncHandler(getCurrentUser as any));
+router.post('/auth/change-password', validate(changePasswordSchema), asyncHandler(changePassword as any));
 
 // ===== Admin Routes =====
-router.post('/admin/create-user', requireRole('admin') as any, createEmployee as any);
-router.get('/admin/employees', requireRole('admin') as any, getEmployees as any);
-router.put('/admin/employees/:id/deactivate', requireRole('admin') as any, deactivateEmployee as any);
-router.put('/admin/employees/:id/activate', requireRole('admin') as any, activateEmployee as any);
-router.post('/admin/employees/:id/resend-credentials', requireRole('admin') as any, resendCredentials as any);
+router.post('/admin/create-user', adminLimiter, requireRole('admin') as any, validate(addEmployeeSchema), asyncHandler(createEmployee as any));
+router.get('/admin/employees', requireRole('admin') as any, asyncHandler(getEmployees as any));
+router.put('/admin/employees/:id/deactivate', requireRole('admin') as any, validate(employeeIdSchema), asyncHandler(deactivateEmployee as any));
+router.put('/admin/employees/:id/activate', requireRole('admin') as any, validate(employeeIdSchema), asyncHandler(activateEmployee as any));
+router.post('/admin/employees/:id/resend-credentials', resendLimiter, requireRole('admin') as any, validate(employeeIdSchema), asyncHandler(resendCredentials as any));
 
 // ===== Agent/Query Endpoints =====
 router.post('/query', 
@@ -121,13 +139,13 @@ router.delete('/categories/hide-default/:defaultCategoryId', requireRole('admin'
 // ===== Document Management =====
 router.get('/documents', listDocuments as any);
 
-router.put('/documents/:id/activate', activateDocument as any);
-router.put('/documents/:id/deactivate', deactivateDocument as any);
+router.put('/documents/:id/activate', validate(documentIdParamSchema), asyncHandler(activateDocument as any));
+router.put('/documents/:id/deactivate', validate(documentIdParamSchema), asyncHandler(deactivateDocument as any));
 
 router.delete('/documents/:id',
   validateDeleteDocument,
   handleValidationErrors,
-  deleteDocument as any
+  asyncHandler(deleteDocument as any)
 );
 
 // ===== Conversation Routes =====

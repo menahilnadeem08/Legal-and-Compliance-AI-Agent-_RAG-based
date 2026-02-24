@@ -4,6 +4,7 @@ import { VersionComparisonService } from './versionComparisonService';
 import { ConflictDetectionService } from './conflictDetectionService';
 import { DocumentService } from './documentService';
 import { GapAnalysisService } from './gapAnalysisService';
+import logger from '../utils/logger';
 
 export interface AgentResult {
   answer: string;
@@ -379,20 +380,20 @@ export class LegalComplianceAgent {
    */
   private async executeTool(toolName: string, args: any, adminId: number): Promise<any> {
     const startTime = Date.now();
-    console.log(`🔧 [START] ${toolName} (args: ${JSON.stringify(args).substring(0, 60)}...)`);
+    logger.info('Tool start', { toolName, argsPreview: JSON.stringify(args).substring(0, 60) });
 
     try {
       switch (toolName) {
         case "search_documents":
           const searchResult = await this.queryService.processQuery(args.query, adminId);
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return searchResult;
 
         case "compare_document_versions":
           const versionResult = await this.versionService.processComparison(
             `compare ${args.document_name} version ${args.version1} and ${args.version2}`
           );
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
             return versionResult.comparison;
           }
@@ -403,12 +404,12 @@ export class LegalComplianceAgent {
             ? `Check conflicts between ${args.document1} and ${args.document2} regarding ${args.topic}`
             : `Check conflicts between ${args.document1} and ${args.document2}`;
           const conflictResult = await this.conflictService.detectConflicts(query, adminId);
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return conflictResult;
 
         case "list_available_documents":
           const docs = await this.documentService.listDocuments(adminId);
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           // Group by document name
           const grouped = docs.reduce((acc: any, doc: any) => {
             const key = doc.filename;
@@ -431,7 +432,7 @@ export class LegalComplianceAgent {
         case "get_document_versions":
           const versions = await this.documentService.getDocumentVersions(args.document_name, adminId);
           const resolvedName = await this.documentService.findDocumentByName(args.document_name, adminId);
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: resolvedName || args.document_name,
             versions: versions
@@ -524,7 +525,7 @@ Be specific about business/compliance impact.`;
               total_versions_tracked: versionsList.length
             };
 
-            console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
             return result;
           } else {
             throw new Error('Only one version exists; no changes to track');
@@ -536,7 +537,7 @@ Be specific about business/compliance impact.`;
             adminId,
             args.limit || 5
           );
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: args.document_name,
             related_documents: relatedDocs
@@ -549,14 +550,14 @@ Be specific about business/compliance impact.`;
             adminId,
             args.focus_area
           );
-          console.log(`✓ [${Date.now() - startTime}ms] ${toolName} completed`);
+          logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return gapResult;
 
         default:
           throw new Error(`Unknown tool: ${toolName}`);
       }
     } catch (error: any) {
-      console.error(`Tool execution error (${toolName}):`, error);
+      logger.error('Tool execution error', { toolName, error });
       return {
         error: true,
         message: error.message,
@@ -712,8 +713,7 @@ ${result.llm_summary}`,
     onLog?: (stage: string, message: string) => void
   ): Promise<AgentResult> {
     const log = onLog || (() => {});
-    console.log('\n🤖 Legal Compliance Agent starting...');
-    console.log('📝 Query:', userQuery);
+    logger.info('Legal Compliance Agent starting', { query: userQuery });
     log('AGENT_START', 'Processing your question...');
 
     // Reset metadata storage
@@ -789,7 +789,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
     while (iteration < maxIterations) {
       iteration++;
-      console.log(`\n🔄 Iteration ${iteration}/${maxIterations}`);
+      logger.debug('Agent iteration', { iteration, maxIterations });
       log('LLM_THINKING', 'Analyzing your question and deciding which tools to use...');
 
       // Call LLM with tools
@@ -802,7 +802,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       
       // Check if LLM wants to use tools
       if (message.additional_kwargs?.tool_calls && message.additional_kwargs.tool_calls.length > 0) {
-        console.log(`📞 LLM requesting ${message.additional_kwargs.tool_calls.length} tool call(s)`);
+        logger.debug('LLM requesting tool calls', { count: message.additional_kwargs.tool_calls.length });
 
         const toolResults: any[] = [];
         
@@ -811,7 +811,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           const toolArgs = JSON.parse(toolCall.function.arguments);
           
           toolCalls.push(toolName);
-          console.log(`  → ${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...) [PARALLEL]`);
+          logger.debug('Parallel tool call', { toolName, argsPreview: JSON.stringify(toolArgs).substring(0, 100) });
 
           const friendlyNames: Record<string, string> = {
             search_documents: 'Searching documents...',
@@ -838,13 +838,13 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
         const startTime = Date.now();
         const parallelResults = await Promise.all(toolPromises);
         const elapsed = Date.now() - startTime;
-        console.log(`⚡ Parallel execution completed in ${elapsed}ms`);
+        logger.debug('Parallel execution completed', { elapsed });
 
         // Collect results and citations
         for (const { toolCall, toolName, formattedResult } of parallelResults) {
           // UNIVERSAL CITATION COLLECTION
           if (formattedResult.citations) {
-            console.log(`  ✓ Collected ${formattedResult.citations.length} citations from ${toolName}`);
+            logger.debug('Collected citations from tool', { toolName, count: formattedResult.citations.length });
             allCitations.push(...formattedResult.citations);
           }
           if (formattedResult.conflicts) {
@@ -872,7 +872,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
         // No more tool calls - LLM has final answer
         log('GENERATING', 'Generating final answer...');
         finalAnswer = message.content.toString();
-        console.log('\n✅ Agent completed');
+        logger.info('Agent completed');
         break;
       }
     }
@@ -902,7 +902,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       ? relevantCitations 
       : uniqueCitations.slice(0, 5); // Fallback: keep top 5
 
-    console.log(`\n📚 Total citations collected: ${uniqueCitations.length} → Relevant: ${finalCitations.length}`);
+    logger.info('Total citations collected', { total: uniqueCitations.length, relevant: finalCitations.length });
 
     // Calculate actual confidence from tool results
     let aggregatedConfidence = 0;
