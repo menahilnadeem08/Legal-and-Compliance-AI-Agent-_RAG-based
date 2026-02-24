@@ -30,10 +30,14 @@ export default function FileUpload() {
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
+      // Accept PDF, DOCX, and image formats
       if (
         droppedFile.type === 'application/pdf' ||
-        droppedFile.type ===
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        droppedFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        droppedFile.type === 'image/jpeg' ||
+        droppedFile.type === 'image/png' ||
+        droppedFile.type === 'image/tiff' ||
+        droppedFile.type === 'image/webp'
       ) {
         setFile(droppedFile);
       }
@@ -185,7 +189,7 @@ export default function FileUpload() {
                   <input
                     type="file"
                     id="file-upload"
-                    accept=".pdf,.docx"
+                    accept=".pdf,.docx,.jpg,.jpeg,.png,.tiff,.webp"
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
                     className="hidden"
                   />
@@ -210,7 +214,7 @@ export default function FileUpload() {
                         <p className="text-sm text-white font-medium">
                           Choose File
                         </p>
-                        <p className="text-sm text-gray-500 mt-2">PDF or DOCX</p>
+                        <p className="text-sm text-gray-500 mt-2">PDF, DOCX, or Image</p>
                       </div>
                     )}
                   </label>

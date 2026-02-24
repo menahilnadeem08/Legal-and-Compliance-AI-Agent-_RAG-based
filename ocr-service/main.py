@@ -1,22 +1,30 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 import easyocr
 from PIL import Image, ImageEnhance
 import cv2
 import numpy as np
 import io
+import os
 
 app = FastAPI()
 
 # Initialize EasyOCR reader once at startup
 reader = easyocr.Reader(['en'], gpu=False)
 
+# Configuration from environment variables
+OCR_CONFIDENCE_THRESHOLD = float(os.getenv('OCR_CONFIDENCE_THRESHOLD', '0.3'))
+IMAGE_MAX_WIDTH = int(os.getenv('IMAGE_MAX_WIDTH', '2000'))
+CONTRAST_ENHANCE = float(os.getenv('CONTRAST_ENHANCE', '1.8'))
+MAX_FILE_SIZE = int(os.getenv('OCR_MAX_FILE_SIZE', '20971520'))  # 20MB default
+ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png', 'image/tiff', 'image/webp'}
+
 def preprocess_image(image: Image.Image) -> np.ndarray:
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
     # Resize if too large
-    max_width = 2000
+    max_width = IMAGE_MAX_WIDTH
     if image.width > max_width:
         ratio = max_width / image.width
         new_height = int(image.height * ratio)
@@ -27,7 +35,7 @@ def preprocess_image(image: Image.Image) -> np.ndarray:
     
     # Enhance contrast
     enhancer = ImageEnhance.Contrast(image)
-    image = enhancer.enhance(1.8)
+    image = enhancer.enhance(CONTRAST_ENHANCE)
     
     # Convert to numpy
     img_np = np.array(image)
@@ -54,6 +62,13 @@ def test():
 @app.post('/ocr')
 async def extract_text(file: UploadFile = File(...)):
     try:
+        # Validate file type
+        if file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f'Invalid file type. Allowed: {list(ALLOWED_MIME_TYPES)}'
+            )
+        
         contents = await file.read()
         if not contents:
             return JSONResponse(
@@ -61,6 +76,16 @@ async def extract_text(file: UploadFile = File(...)):
                 content={ 
                     'success': False, 
                     'error': 'Empty file' 
+                }
+            )
+        
+        # Validate file size
+        if len(contents) > MAX_FILE_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    'success': False,
+                    'error': f'File too large. Max size: {MAX_FILE_SIZE / (1024*1024):.1f} MB'
                 }
             )
 
@@ -72,7 +97,7 @@ async def extract_text(file: UploadFile = File(...)):
 
         extracted = []
         for (bbox, text, confidence) in results:
-            if confidence > 0.3:
+            if confidence > OCR_CONFIDENCE_THRESHOLD:
                 extracted.append({
                     'text': text,
                     'confidence': round(confidence, 3)

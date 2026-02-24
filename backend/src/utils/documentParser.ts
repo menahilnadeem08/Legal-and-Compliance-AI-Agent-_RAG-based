@@ -292,12 +292,55 @@ Rules:
     };
   }
 
-  async parse(filePath: string, fileType: string): Promise<ParsedDocument> {
-    if (fileType === 'pdf') {
-      return this.parsePDF(filePath);
-    } else if (fileType === 'docx') {
-      return this.parseDOCX(filePath);
+  async parseImage(filePath: string): Promise<ParsedDocument> {
+    try {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`IMAGE - Running OCR on image file`);
+      console.log(`${'='.repeat(60)}\n`);
+
+      // Extract text from image using OCR
+      const { extractTextFromImage } = await import('./ocrService');
+      const ocrText = await extractTextFromImage(filePath);
+
+      if (!ocrText || ocrText.trim().length === 0) {
+        console.warn('⚠️  OCR returned no text from image');
+        return {
+          text: '',
+          chunks: [],
+          metadata: { pageCount: 1 },
+        };
+      }
+
+      console.log(`[Parser] ✓ OCR extracted ${ocrText.length} chars from image`);
+
+      // Chunk the extracted text
+      const chunks = await this.intelligentChunk(ocrText, 1);
+
+      const fullText = chunks.map(c => c.content).join('\n\n');
+      const sectionsDetected = chunks.filter(c => c.section_name).length;
+
+      console.log(`\n✨ Image Processing Complete: ${chunks.length} chunks, ${sectionsDetected} with sections\n`);
+
+      return {
+        text: fullText,
+        chunks,
+        metadata: { pageCount: 1 },
+      };
+    } catch (err) {
+      throw new Error('Failed to parse image: ' + String(err));
     }
-    throw new Error('Unsupported file type');
+  }
+
+  async parse(filePath: string, fileType: string): Promise<ParsedDocument> {
+    const normalizedType = fileType.toLowerCase();
+
+    if (normalizedType === 'pdf') {
+      return this.parsePDF(filePath);
+    } else if (normalizedType === 'docx') {
+      return this.parseDOCX(filePath);
+    } else if (['jpg', 'jpeg', 'png', 'tiff', 'webp'].includes(normalizedType)) {
+      return this.parseImage(filePath);
+    }
+    throw new Error(`Unsupported file type: ${fileType}`);
   }
 }

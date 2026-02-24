@@ -35,9 +35,10 @@ export const renderPageToImage = async (
     const scale = 2.0; // Higher scale = better OCR quality
     const viewport = page.getViewport({ scale });
 
+    // Use viewport dimensions instead of fixed size for better OCR quality
     const canvas = createCanvas(
-      1700,
-      2200
+      Math.ceil(viewport.width),
+      Math.ceil(viewport.height)
     );
     const context = canvas.getContext('2d');
 

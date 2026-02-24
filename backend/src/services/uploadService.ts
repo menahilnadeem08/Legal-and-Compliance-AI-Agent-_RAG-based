@@ -14,7 +14,8 @@ export class UploadService {
   }
 
   validateFileType(fileExtension: string): boolean {
-    return ['pdf', 'docx'].includes(fileExtension.toLowerCase());
+    // Support: PDF, DOCX, and image formats (JPG, PNG, TIFF, WebP)
+    return ['pdf', 'docx', 'jpg', 'jpeg', 'png', 'tiff', 'webp'].includes(fileExtension.toLowerCase());
   }
 
   async ingestDocument(

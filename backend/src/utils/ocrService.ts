@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 
-const MIN_TEXT_LENGTH = 50;
+const MIN_TEXT_LENGTH = parseInt(process.env.OCR_MIN_TEXT_LENGTH || '50', 10);
 const EASYOCR_URL = process.env.EASYOCR_URL || 'http://localhost:8001';
 
 // Lazy load Tesseract to avoid issues if not needed
@@ -55,15 +55,15 @@ const extractWithEasyOCR = async (
   try {
     console.log('[OCR] Sending to EasyOCR:', imagePath);
 
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(imagePath));
+
     const response = await axios.post(
       `${EASYOCR_URL}/ocr`,
+      formData,
       {
-        file: fs.createReadStream(imagePath)
-      },
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
+        headers: formData.getHeaders(),
         timeout: 60000,
         maxBodyLength: Infinity,
         maxContentLength: Infinity

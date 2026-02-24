@@ -1,7 +1,7 @@
-fastapi
-uvicorn
-easyocr
-opencv-python-headless
-python-multipart
-Pillow
-numpy
+fastapi>=0.104,<1.0
+uvicorn>=0.24,<1.0
+easyocr>=1.7,<2.0
+opencv-python-headless>=4.8,<5.0
+python-multipart>=0.0.6,<1.0
+Pillow>=10.0,<11.0
+numpy>=1.24,<2.0
