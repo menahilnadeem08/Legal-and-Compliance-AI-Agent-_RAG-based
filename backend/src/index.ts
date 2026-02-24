@@ -1,43 +1,46 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
+import fs from 'fs';
+import express, { Request, Response, NextFunction } from 'express';
 import routes from './routes';
 import pool from './config/database';
-import { errorHandler } from './middleware/errorHandler';
+import { errorHandler, AppError } from './middleware/errorHandler';
 import { initializeAuthTables } from './config/initDb';
 import { startSessionCleanupScheduler } from './helpers/sessionHelper';
+import requestLogger from './middleware/requestLogger';
+import { applySecurityMiddleware } from './middleware/security';
+import { generalLimiter } from './middleware/rateLimiter';
+import logger from './utils/logger';
+
+if (!fs.existsSync('logs')) {
+  fs.mkdirSync('logs');
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Initialize database tables
 async function startServer() {
   try {
     await initializeAuthTables();
-    console.log('Database initialized');
+    logger.info('Database initialized');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    logger.error('Failed to initialize database', { error });
     process.exit(1);
   }
 
-  // Middleware
-  app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
-  }));
+  applySecurityMiddleware(app);
+  app.use(requestLogger);
+  app.use('/api', generalLimiter);
   app.use(express.json());
 
-  // Routes
   app.use('/api', routes);
 
-  // Health check
   app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.status(200).json({ success: true, data: { status: 'ok' } });
   });
 
-  // 404 handler
-  app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+  // 404 handler — pass to error handler
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    next(new AppError(`Route ${req.originalUrl} not found`, 404));
   });
 
   // Centralized error handling middleware (MUST be last)
@@ -45,7 +48,7 @@ async function startServer() {
 
   // Start server
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
   });
 
   // Clean expired sessions on startup + every 24 hours
@@ -60,3 +63,14 @@ async function startServer() {
 }
 
 startServer();
+
+// Unhandled errors
+process.on('unhandledRejection', (err: any) => {
+  logger.error('UNHANDLED REJECTION:', { message: err?.message, stack: err?.stack });
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err: any) => {
+  logger.error('UNCAUGHT EXCEPTION:', { message: err?.message, stack: err?.stack });
+  process.exit(1);
+});
