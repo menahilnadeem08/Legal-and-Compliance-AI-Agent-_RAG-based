@@ -54,7 +54,6 @@ jobs:
             GMAIL_PASSWORD=${{ secrets.GMAIL_PASSWORD }}
             APP_URL=${{ secrets.APP_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
-            EASYOCR_URL=http://localhost:8001
             ENVFILE
 
             # Install only if node_modules missing
@@ -66,20 +65,6 @@ jobs:
 
             pm2 delete backend 2>/dev/null || true
             pm2 start dist/index.js --name backend
-
-            # ====================================================
-            # OCR SERVICE
-            # ====================================================
-            cd $APP_DIR/ocr-service
-
-            if [ ! -d ".venv" ]; then
-              python3 -m venv .venv
-              .venv/bin/pip install -r requirements.txt
-            fi
-
-            pm2 delete ocr-service 2>/dev/null || true
-            pm2 start ".venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001" \
-              --name ocr-service --cwd $APP_DIR/ocr-service
 
             # ====================================================
             # FRONTEND (Next.js with pnpm)
