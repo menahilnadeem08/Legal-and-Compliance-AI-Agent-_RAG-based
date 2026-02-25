@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, User, ArrowRight, Sparkles, AlertCircle, X } from "lucide-react";
+import { Mail, User, ArrowRight, Sparkles, Check, AlertCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/app/utils/auth";
 import { PasswordInput } from "@/app/components/PasswordInput";

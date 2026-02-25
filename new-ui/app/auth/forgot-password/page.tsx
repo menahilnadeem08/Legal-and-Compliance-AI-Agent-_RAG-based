@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  Check
 } from "lucide-react";
 import { toast } from "sonner";
 import { PasswordInput } from "@/app/components/PasswordInput";
