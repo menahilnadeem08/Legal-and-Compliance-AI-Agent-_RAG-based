@@ -382,6 +382,14 @@ export class DocumentService {
     return result.rows[0];
   }
 
+  async updateDocumentFilepath(documentId: string, adminId: number, filepath: string) {
+    const result = await pool.query(
+      'UPDATE documents SET filepath = $1 WHERE id = $2 AND admin_id = $3 RETURNING id',
+      [filepath, documentId, adminId]
+    );
+    if (result.rows.length === 0) throw new Error('Document not found or access denied');
+  }
+
   /**
    * Mark a document version as latest (when new version uploaded)
    * Uses is_active: deactivate others in same category, activate this one.

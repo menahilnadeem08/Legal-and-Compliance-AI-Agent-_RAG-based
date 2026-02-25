@@ -4,10 +4,10 @@ import {
   listDocuments, 
   deleteDocument,
   activateDocument,
-  deactivateDocument
+  deactivateDocument,
+  downloadDocument
 } from '../controllers/documentController';
 import { agentQuery, agentQueryStream } from '../controllers/agentController';
-import { queryStreamController } from '../controllers/queryStreamController';
 import { clearSessionController } from '../controllers/sessionController';
 import { handleValidationErrors } from '../middleware/validation';
 import {
@@ -103,12 +103,6 @@ router.post('/query',
   agentQuery as any
 );
 
-router.post('/query/stream', 
-  validateAgentQuery,
-  handleValidationErrors,
-  queryStreamController as any
-);
-
 router.post('/query/agent-stream',
   validateAgentQuery,
   handleValidationErrors,
@@ -147,6 +141,8 @@ router.delete('/documents/:id',
   handleValidationErrors,
   asyncHandler(deleteDocument as any)
 );
+
+router.get('/documents/:id/download', validate(documentIdParamSchema), asyncHandler(downloadDocument as any));
 
 // ===== Conversation Routes =====
 router.post('/conversations', createConversation as any);

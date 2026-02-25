@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { getAuthToken, isAdminUser } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
+import { parseAsUTC } from "@/app/utils/date";
+import { DocumentPreviewModal } from "@/app/components/DocumentPreviewModal";
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
@@ -112,6 +114,7 @@ export default function DocumentsPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<DocumentItem | null>(null);
 
   useEffect(() => {
     setIsAdmin(isAdminUser());
@@ -279,7 +282,16 @@ export default function DocumentsPage() {
               return (
                 <div
                   key={doc.id}
-                  className={`rounded-xl border bg-white dark:bg-slate-900 overflow-hidden ${config.border}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setPreviewDocument(doc)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setPreviewDocument(doc);
+                    }
+                  }}
+                  className={`rounded-xl border bg-white dark:bg-slate-900 overflow-hidden cursor-pointer transition-shadow hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${config.border}`}
                 >
                   <div
                     className={`h-2 bg-gradient-to-r ${config.gradient}`}
@@ -323,7 +335,7 @@ export default function DocumentsPage() {
                         <dt className="text-slate-500 dark:text-slate-400">Date uploaded</dt>
                         <dd className="text-slate-700 dark:text-slate-300 font-medium">
                           {doc.upload_date
-                            ? new Date(doc.upload_date).toLocaleDateString("en-US", {
+                            ? parseAsUTC(doc.upload_date).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
                                 year: "numeric",
@@ -344,7 +356,10 @@ export default function DocumentsPage() {
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                         <button
                           type="button"
-                          onClick={() => handleToggleActive(doc)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleActive(doc);
+                          }}
                           disabled={toggling === doc.id || deleting === doc.id}
                           className="flex items-center gap-2 w-full text-left text-sm rounded-lg py-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
                         >
@@ -367,7 +382,10 @@ export default function DocumentsPage() {
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                         <button
                           type="button"
-                          onClick={() => setDeleteTarget(doc)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(doc);
+                          }}
                           disabled={deleting === doc.id}
                           className="flex items-center gap-2 w-full text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg py-2 px-3 disabled:opacity-50"
                         >
@@ -390,6 +408,14 @@ export default function DocumentsPage() {
           )}
         </footer>
       </main>
+
+      {/* Document preview modal */}
+      {previewDocument && (
+        <DocumentPreviewModal
+          document={previewDocument}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
 
       {/* Delete confirmation */}
       {deleteTarget && (

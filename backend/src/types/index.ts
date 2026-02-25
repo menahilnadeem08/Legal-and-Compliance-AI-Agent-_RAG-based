@@ -47,6 +47,7 @@ export interface Document {
   }
   
   export interface Citation {
+    document_id?: string | null; // Document UUID for opening in preview/download
     document_name: string;
     document_version?: string;  // Version of the document
     section?: string;            // Section/clause name

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/database';
 import { DocumentParser, ChunkWithMetadata } from '../utils/documentParser';
-import { generateEmbedding } from '../utils/emdedding';
+import { generateEmbeddingsBatch } from '../utils/emdedding';
 import { DocumentService } from './documentService';
 import logger from '../utils/logger';
 
@@ -56,16 +56,18 @@ export class UploadService {
         [documentId, adminId, fileName, filePath, category, nextVersion, true, JSON.stringify(parsed.metadata), new Date()]
       );
 
-      // Generate embeddings and store chunks with metadata
+      // Batch-embed all chunks (single API call per BATCH_SIZE texts), then insert
       const chunks = parsed.chunks;
       logger.info('Processing chunks for upload', { chunks: chunks.length, fileName });
-      
+
+      const texts = chunks.map((c: ChunkWithMetadata) => c.content);
+      const allEmbeddings = await generateEmbeddingsBatch(texts);
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk: ChunkWithMetadata = chunks[i];
         const chunkId = uuidv4();
-        const embedding = await generateEmbedding(chunk.content);
+        const embedding = allEmbeddings[i];
 
-        // Log section detection for debugging
         if (chunk.section_name) {
           logger.debug('Chunk section', { i, section: chunk.section_name?.substring(0, 50), page: chunk.page_number });
         }
@@ -74,10 +76,10 @@ export class UploadService {
           `INSERT INTO chunks (id, document_id, content, embedding, chunk_index, section_name, page_number) 
            VALUES ($1, $2, $3, $4::vector, $5, $6, $7)`,
           [
-            chunkId, 
-            documentId, 
-            chunk.content, 
-            JSON.stringify(embedding), 
+            chunkId,
+            documentId,
+            chunk.content,
+            JSON.stringify(embedding),
             i,
             chunk.section_name || null,
             chunk.page_number || null

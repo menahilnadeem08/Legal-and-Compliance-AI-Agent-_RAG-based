@@ -1,4 +1,4 @@
-import { RetrievedChunk } from './retrieval';
+import { RetrievedChunk } from './queryService';
 import { pipelineLogger } from './logger';
 
 export class ContextCompressor {

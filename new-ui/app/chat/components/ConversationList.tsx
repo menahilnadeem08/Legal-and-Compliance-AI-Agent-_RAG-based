@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Gavel, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { parseAsUTC } from "@/app/utils/date";
 
 export type ConversationItem = {
   id: string;
@@ -10,10 +11,10 @@ export type ConversationItem = {
   created_at?: string;
 };
 
-/** Format conversation timestamp as date and time from DB (e.g. "Feb 24, 2026, 7:58 AM"). */
+/** Format conversation timestamp as date and time in user's local time (e.g. "Feb 24, 2026, 7:58 AM"). */
 function formatConversationDateTime(updatedAt?: string): string {
   if (!updatedAt) return "";
-  const d = new Date(updatedAt);
+  const d = parseAsUTC(updatedAt);
   return d.toLocaleString(undefined, {
     month: "short",
     day: "numeric",

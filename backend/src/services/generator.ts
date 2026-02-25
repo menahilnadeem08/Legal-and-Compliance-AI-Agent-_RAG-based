@@ -1,5 +1,5 @@
 import { llm } from '../config/openai';
-import { RetrievedChunk } from './retrieval';
+import { RetrievedChunk } from './queryService';
 import { QueryResult, Citation } from '../types';
 import { pipelineLogger } from './logger';
 
@@ -105,6 +105,7 @@ export class AnswerGenerator {
     for (const idx of citedIndices) {
       const chunk = chunks[idx];
       citations.push({
+        document_id: chunk.document_id ?? null,
         document_name: chunk.document_name,
         section: chunk.section_name || 'N/A',
         page: chunk.page_number,
