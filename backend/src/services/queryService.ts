@@ -456,6 +456,7 @@ Answer (be specific and cite sources):`;
     for (const idx of citedIndices) {
       const chunk = chunks[idx];
       citations.push({
+        document_id: chunk.document_id ?? null,
         document_name: chunk.document_name,
         version: chunk.document_version || 'N/A',
         section: chunk.section_name || 'N/A',

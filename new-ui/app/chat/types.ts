@@ -1,5 +1,6 @@
 /** Citation from RAG/agent response */
 export type Citation = {
+  document_id?: string | null;
   document_name?: string;
   section?: string;
   content?: string;
