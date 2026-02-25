@@ -1,5 +1,5 @@
 import { llm } from '../config/openai';
-import { RetrievedChunk } from './retrieval';
+import { RetrievedChunk } from './queryService';
 import { QueryResult, Citation } from '../types';
 import { pipelineLogger } from './logger';
 

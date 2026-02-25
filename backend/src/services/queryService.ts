@@ -513,8 +513,9 @@ Answer (be specific and cite sources):`;
 
   /**
    * ENHANCED: Main query processing with intelligent version comparison
+   * @param sessionContext - Optional short-term conversation context for the generator
    */
-  async processQuery(query: string, adminId?: number, debug: boolean = true): Promise<QueryResult> {
+  async processQuery(query: string, adminId?: number, debug: boolean = true, sessionContext?: string): Promise<QueryResult> {
     logger.info('Starting query processing', { query });
 
     // Check if this might be a version comparison query
@@ -625,7 +626,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
     const compressed = this.compress(finalChunks, 4000);
     if (debug) logger.debug('After compression', { count: compressed.length });
 
-    const result = await this.generateAnswer(query, compressed);
+    const result = await this.generateAnswer(query, compressed, sessionContext);
 
     if (debug) logger.debug('Final result', { confidence: result.confidence, citationsCount: result.citations.length, answerLength: result.answer.length });
 
