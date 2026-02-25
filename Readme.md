@@ -218,7 +218,7 @@ cd backend
 touch .env
 ```
 
-Add the  environment variables
+Add the required environment variables (see `backend/.env.example`). Optionally use [Supabase](https://supabase.com) for the database and/or document file storage – see [docs/supabase.md](docs/supabase.md).
 
 ## 🏃 Running the Application
 
