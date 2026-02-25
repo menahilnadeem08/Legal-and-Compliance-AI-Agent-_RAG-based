@@ -21,10 +21,9 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            set -e   # 🚀 Stop immediately if any command fails
+            set -e
 
             APP_DIR="/home/${{ secrets.EC2_USER }}/app"
-
             mkdir -p $APP_DIR
             cd $APP_DIR
 
@@ -39,7 +38,12 @@ jobs:
             fi
 
             # ====================================================
-            # BACKEND
+            # INSTALL GLOBAL DEPENDENCIES
+            # ====================================================
+            sudo npm install -g pnpm pm2
+
+            # ====================================================
+            # BACKEND (pnpm)
             # ====================================================
             cd $APP_DIR/backend
 
@@ -55,29 +59,22 @@ jobs:
             APP_URL=${{ secrets.APP_URL }}
             NODE_TLS_REJECT_UNAUTHORIZED=0
             ENVFILE
-            
-            # Clean and install (full install so TypeScript + @types/express are available for build)
-            rm -rf node_modules .next dist build
-            npm install
-            npm run build
-            
-            # Start backend
+
+            rm -rf node_modules dist build
+            pnpm install --frozen-lockfile
+            pnpm build
+
             pm2 delete backend 2>/dev/null || true
             pm2 start dist/index.js --name backend
 
             # ====================================================
-            # FRONTEND (Next.js with pnpm)
+            # FRONTEND (Next.js + pnpm)
             # ====================================================
             cd $APP_DIR/new-ui
 
-            corepack enable
-            corepack prepare pnpm@latest --activate
-
-            if [ ! -d "node_modules" ]; then
-              pnpm install --frozen-lockfile
-            fi
-
-            pnpm run build
+            rm -rf node_modules .next
+            pnpm install --frozen-lockfile
+            pnpm build
 
             pm2 delete new-ui 2>/dev/null || true
             pm2 start "pnpm start" --name new-ui
