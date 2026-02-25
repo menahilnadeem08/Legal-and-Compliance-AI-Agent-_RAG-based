@@ -29,3 +29,22 @@
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Chat: pulsing dot for thinking state */
+@keyframes chatPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.1); }
+}
+
+.chat-pulsing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgb(59 130 246);
+  flex-shrink: 0;
+  animation: chatPulse 1.2s ease-in-out infinite;
+}
+
+.dark .chat-pulsing-dot {
+  background-color: rgb(96 165 250);
+}

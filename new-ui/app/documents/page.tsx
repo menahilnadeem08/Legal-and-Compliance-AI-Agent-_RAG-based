@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { getAuthToken, isAdminUser } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
+import { parseAsUTC } from "@/app/utils/date";
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
@@ -323,7 +324,7 @@ export default function DocumentsPage() {
                         <dt className="text-slate-500 dark:text-slate-400">Date uploaded</dt>
                         <dd className="text-slate-700 dark:text-slate-300 font-medium">
                           {doc.upload_date
-                            ? new Date(doc.upload_date).toLocaleDateString("en-US", {
+                            ? parseAsUTC(doc.upload_date).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
                                 year: "numeric",

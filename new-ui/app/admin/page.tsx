@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getAuthToken, isEmployeeUser } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
+import { parseAsUTC } from "@/app/utils/date";
 
 type Employee = {
   id: number;
@@ -219,7 +220,7 @@ export default function AddEmployee() {
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
                           {emp.created_at
-                            ? new Date(emp.created_at).toLocaleDateString()
+                            ? parseAsUTC(emp.created_at).toLocaleDateString()
                             : "—"}
                         </td>
                         <td className="px-4 py-3">
