@@ -3,6 +3,7 @@ import { LegalComplianceAgent } from '../services/legalComplianceAgent';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
 import { AuthenticatedRequest } from '../types';
+import * as conversationService from '../services/conversationService';
 import logger from '../utils/logger';
 
 const agent = new LegalComplianceAgent();
@@ -36,7 +37,11 @@ export const agentQuery = asyncHandler(async (req: AuthenticatedRequest, res: Re
  */
 export const agentQueryStream = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { query } = req.body;
+    const { query, conversationHistory, conversationId } = req.body as {
+      query: string;
+      conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      conversationId?: number | string;
+    };
 
     if (!query) {
       return res.status(400).json({ success: false, message: 'Query is required' });
@@ -45,6 +50,27 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
     const adminId = getAdminIdForUser(req.user);
     if (!adminId) {
       return res.status(500).json({ success: false, message: 'User role not properly configured' });
+    }
+
+    let history: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
+    if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+      history = conversationHistory.slice(-10).filter(
+        (m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+      );
+    }
+    if ((!history || history.length === 0) && conversationId != null && req.user?.id != null) {
+      const convId = typeof conversationId === 'string' ? parseInt(conversationId, 10) : conversationId;
+      if (!isNaN(convId)) {
+        try {
+          const messages = await conversationService.getRecentMessages(convId, req.user.id, 10);
+          history = messages.map((m) => ({
+            role: (m.role === 'user' || m.role === 'assistant' ? m.role : 'user') as 'user' | 'assistant',
+            content: typeof m.content === 'string' ? m.content : '',
+          }));
+        } catch {
+          // ignore; history stays empty
+        }
+      }
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -63,7 +89,7 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
     };
 
     try {
-      const result = await agent.processQuery(query, adminId, 5, sendLog);
+      const result = await agent.processQuery(query, adminId, 5, sendLog, history);
 
       res.write(`data: ${JSON.stringify({ type: 'answer', answer: result })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);

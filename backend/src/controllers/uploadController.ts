@@ -57,9 +57,12 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     throw new AppError('Supported file types: PDF, DOCX, JPG, PNG, TIFF, WebP', 400);
   }
 
+  // Store absolute path so DB has a full, unambiguous path (not just "upload" or relative)
+  const absolutePath = path.resolve(req.file.path);
+
   // Business logic: Process document with admin_id
   const documentId = await uploadService.ingestDocument(
-    req.file.path,
+    absolutePath,
     req.file.originalname,
     fileExt,
     category,

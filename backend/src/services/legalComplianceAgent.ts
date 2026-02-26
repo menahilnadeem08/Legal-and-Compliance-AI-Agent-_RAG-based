@@ -69,7 +69,10 @@ export class LegalComplianceAgent {
    * Extract citations from version comparison results
    */
   private extractVersionCitations(comparison: any): any[] {
-    if (!comparison.changes || comparison.changes.length === 0) {
+    if (!comparison?.changes || comparison.changes.length === 0) {
+      return [];
+    }
+    if (!comparison.version1 || !comparison.version2) {
       return [];
     }
 
@@ -209,7 +212,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "search_documents",
-          description: "Search across legal documents using RAG (Retrieval-Augmented Generation). Use this for general questions about document content, policies, regulations, or compliance requirements.",
+          description: "Use for direct factual questions about document content, policies, rules, definitions. Do NOT use for greetings, version comparisons, or conflict checks.",
           parameters: {
             type: "object",
             properties: {
@@ -226,24 +229,28 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Compare two versions of the SAME document to identify changes, additions, deletions, and modifications. Use when user asks about version differences, updates, or changes between document versions.",
+          description: "Use when user asks what changed, evolved, or differs WITHIN the same document over time. Works by CATEGORY — all versions of the same logical document are grouped by category. User may say category name OR document name — pass whatever they said as input, system resolves automatically. If user does not specify versions → set compare_all=true. Triggers: 'what changed in X', 'any updates in X', 'show history of X', 'compare versions of X', 'what is different in X', 'has X changed', 'what was updated in X', 'evolution of X', 'latest changes in X'.",
           parameters: {
             type: "object",
             properties: {
-              document_name: {
+              input: {
                 type: "string",
-                description: "Name of the document (supports fuzzy matching)"
+                description: "The document or category the user is referring to. Can be a category name, document name, or any informal reference like 'NOC', 'constitution', 'hr rules'. System resolves automatically."
               },
               version1: {
                 type: "string",
-                description: "First version (supports 'latest', 'previous', or version numbers like '2.4')"
+                description: "Optional. First version number, or 'latest', 'previous'. Omit if comparing all versions."
               },
               version2: {
                 type: "string",
-                description: "Second version (supports 'latest', 'previous', or version numbers)"
+                description: "Optional. Second version number. Omit if comparing all versions."
+              },
+              compare_all: {
+                type: "boolean",
+                description: "Set true when user does not specify versions or asks for full history. Default to true when versions not specified."
               }
             },
-            required: ["document_name", "version1", "version2"]
+            required: ["input"]
           }
         }
       },
@@ -251,7 +258,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "detect_policy_conflicts",
-          description: "Detect conflicts, contradictions, or inconsistencies between DIFFERENT documents. Use when user asks if policies conflict, contradict each other, or have inconsistencies.",
+          description: "Use ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories. Do NOT use for version comparisons within the same document.",
           parameters: {
             type: "object",
             properties: {
@@ -276,7 +283,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "list_available_documents",
-          description: "List all documents available in the system with their versions. Use when user wants to know what documents exist or explore available policies.",
+          description: "Use when user asks what documents exist, what is available, or what categories are present.",
           parameters: {
             type: "object",
             properties: {},
@@ -288,7 +295,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "get_document_versions",
-          description: "Get all available versions of a specific document. Use when user wants to see version history or available versions.",
+          description: "Use when user asks which versions exist, version history, or available version numbers for a specific document. Do NOT use to compare content between versions (use compare_document_versions for that).",
           parameters: {
             type: "object",
             properties: {
@@ -304,33 +311,8 @@ export class LegalComplianceAgent {
       {
         type: "function" as const,
         function: {
-          name: "track_policy_changes",
-          description: "Track how a policy or document has evolved across all versions over time. Returns a chronological timeline of changes, what was added/removed/modified in each version, severity of changes, and AI summary of the evolution. Use when user asks 'what changed', 'how has this policy evolved', 'show me the history'.",
-          parameters: {
-            type: "object",
-            properties: {
-              document_name: {
-                type: "string",
-                description: "Name of the document to track"
-              },
-              from_version: {
-                type: "string",
-                description: "Starting version (optional, defaults to earliest)"
-              },
-              to_version: {
-                type: "string",
-                description: "Ending version (optional, defaults to latest)"
-              }
-            },
-            required: ["document_name"]
-          }
-        }
-      },
-      {
-        type: "function" as const,
-        function: {
           name: "find_related_documents",
-          description: "Find documents that are semantically related to a given document using embedding similarity. Returns ranked list of related documents with relationship scores and shared topics. Use when user asks 'what documents relate to X', 'find similar policies', 'what else covers this topic'.",
+          description: "Use when user asks which documents relate to a given document, find similar policies, or what else covers a topic (discovery of related documents). Do NOT use to answer a factual question from document content (use search_documents) or to find conflicts (use detect_policy_conflicts).",
           parameters: {
             type: "object",
             properties: {
@@ -351,7 +333,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "gap_analysis",
-          description: "Compare two documents and identify topics, obligations, or clauses that exist in one but are missing in the other. Returns coverage scores and recommendations. Use when user asks 'what is missing from', 'does this contract cover', 'compare coverage between', 'what does Doc A have that Doc B doesnt'.",
+          description: "Use ONLY when user asks what is missing, not covered, or absent compared to another document. Do NOT use for version-by-version changes within one document.",
           parameters: {
             type: "object",
             properties: {
@@ -378,26 +360,59 @@ export class LegalComplianceAgent {
   /**
    * Execute tool functions
    */
-  private async executeTool(toolName: string, args: any, adminId: number): Promise<any> {
+  private async executeTool(
+    toolName: string,
+    args: any,
+    adminId: number,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<any> {
     const startTime = Date.now();
     logger.info('Tool start', { toolName, argsPreview: JSON.stringify(args).substring(0, 60) });
 
     try {
       switch (toolName) {
-        case "search_documents":
-          const searchResult = await this.queryService.processQuery(args.query, adminId);
+        case "search_documents": {
+          let sessionContext: string | undefined;
+          if (conversationHistory && conversationHistory.length >= 2) {
+            const lastExchange = conversationHistory.slice(-4);
+            sessionContext = 'Previous exchange(s):\n' + lastExchange
+              .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+              .join('\n');
+          }
+          const searchResult = await this.queryService.processQuery(
+            args.query,
+            adminId,
+            false,
+            sessionContext
+          );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return searchResult;
+        }
 
-        case "compare_document_versions":
+        case "compare_document_versions": {
+          const input = args.input;
+          const compare_all = args.compare_all !== false; // Default to true
+          
+          if (compare_all) {
+            const allResult = await this.versionService.compareAllVersions(input, adminId);
+            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
+            if ('error' in allResult) {
+              throw new Error(allResult.error || 'Compare all versions failed');
+            }
+            return allResult;
+          }
+          
+          // Compare specific two versions
           const versionResult = await this.versionService.processComparison(
-            `compare ${args.document_name} version ${args.version1} and ${args.version2}`
+            `compare ${input} version ${args.version1 ?? 'latest'} and ${args.version2 ?? 'previous'}`,
+            adminId
           );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
             return versionResult.comparison;
           }
           throw new Error(versionResult.error || 'Version comparison failed');
+        }
 
         case "detect_policy_conflicts":
           const query = args.topic
@@ -438,99 +453,6 @@ export class LegalComplianceAgent {
             versions: versions
           };
 
-        case "track_policy_changes":
-          // Find actual document name
-          const actualDocName = await this.documentService.findDocumentByName(args.document_name, adminId);
-          if (!actualDocName) {
-            throw new Error(`Document "${args.document_name}" not found`);
-          }
-
-          // Get full version history with metadata
-          const versionHistory = await this.documentService.getDocumentVersionHistory(actualDocName, adminId);
-          let versionsList = [...versionHistory.versions].sort(
-            (a: any, b: any) => new Date(a.upload_date).getTime() - new Date(b.upload_date).getTime()
-          );
-
-          // Filter by from_version/to_version if provided
-          if (args.from_version) {
-            const fromIdx = versionsList.findIndex((v: any) => v.version === args.from_version);
-            if (fromIdx === -1) throw new Error(`Version "${args.from_version}" not found`);
-            versionsList = versionsList.slice(fromIdx);
-          }
-          if (args.to_version) {
-            const toIdx = versionsList.findIndex((v: any) => v.version === args.to_version);
-            if (toIdx === -1) throw new Error(`Version "${args.to_version}" not found`);
-            versionsList = versionsList.slice(0, toIdx + 1);
-          }
-
-          // Build timeline by comparing consecutive versions
-          const timeline: any[] = [];
-          for (let i = 0; i < versionsList.length - 1; i++) {
-            const v1 = versionsList[i];
-            const v2 = versionsList[i + 1];
-
-            const comparison = await this.documentService.compareVersionsDetailed(actualDocName, v1.version, v2.version, adminId);
-
-            // Determine severity based on change statistics
-            let severity = 'low';
-            if (comparison.statistics.change_percentage > 30) severity = 'high';
-            else if (comparison.statistics.change_percentage > 10) severity = 'medium';
-
-            timeline.push({
-              from: v1.version,
-              to: v2.version,
-              date: new Date(v2.upload_date).toISOString().split('T')[0],
-              summary: comparison.summary,
-              changes_added: comparison.statistics.chunks_added,
-              changes_removed: comparison.statistics.chunks_removed,
-              changes_modified: comparison.statistics.chunks_modified,
-              change_percentage: comparison.statistics.change_percentage,
-              severity: severity,
-              impact_analysis: comparison.impact_analysis,
-              key_changes: comparison.changes
-                .filter((c: any) => c.change_type !== 'unchanged')
-                .slice(0, 5)
-                .map((c: any) => ({
-                  type: c.change_type,
-                  section: c.section_name || 'N/A',
-                  page: c.page_number
-                }))
-            });
-          }
-
-          // Generate overall evolution summary
-          if (timeline.length > 0) {
-            const timelineSummary = timeline
-              .map(t => `v${t.from} → v${t.to} (${t.date}): ${t.changes_added} added, ${t.changes_removed} removed, ${t.changes_modified} modified (${t.change_percentage.toFixed(0)}% change)`)
-              .join('\n');
-
-            const overallSummaryPrompt = `You are a legal compliance expert. Summarize the evolution of "${actualDocName}" across versions:
-
-${timelineSummary}
-
-Provide a concise executive summary (2-3 bullet points) highlighting:
-1. Major shifts and trends in the policy
-2. Key milestones in its evolution
-3. Overall direction of policy changes
-
-Be specific about business/compliance impact.`;
-
-            const overallResponse = await llm.invoke(overallSummaryPrompt);
-            const overallSummary = overallResponse.content.toString();
-
-            const result = {
-              document_name: actualDocName,
-              timeline,
-              overall_summary: overallSummary,
-              total_versions_tracked: versionsList.length
-            };
-
-            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
-            return result;
-          } else {
-            throw new Error('Only one version exists; no changes to track');
-          }
-
         case "find_related_documents":
           const relatedDocs = await this.documentService.findRelatedDocuments(
             args.document_name,
@@ -556,11 +478,13 @@ Be specific about business/compliance impact.`;
         default:
           throw new Error(`Unknown tool: ${toolName}`);
       }
-    } catch (error: any) {
-      logger.error('Tool execution error', { toolName, error });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      logger.error('Tool execution error', { toolName, message, stack });
       return {
         error: true,
-        message: error.message,
+        message: message || 'An unexpected error occurred',
         tool: toolName
       };
     }
@@ -586,7 +510,35 @@ Be specific about business/compliance impact.`;
           citations: result.citations
         };
 
-      case "compare_document_versions":
+      case "compare_document_versions": {
+        // compareAllVersions returns { category, comparisons: [{ from_version, to_version, changes }] } with no version1/version2 at top level
+        const isCompareAll = Array.isArray(result.comparisons) && result.comparisons.length > 0 && !result.version1;
+        if (isCompareAll) {
+          const docName = result.document_name ?? result.category ?? 'Document';
+          const lines = [`Document: ${docName} (all version pairs)\n`];
+          const allCitations: any[] = [];
+          for (const item of result.comparisons) {
+            const comparison = item.changes ?? item;
+            const label = item.from_version != null && item.to_version != null
+              ? `v${item.from_version} → v${item.to_version}`
+              : 'Versions';
+            const stats = comparison.statistics || {};
+            lines.push(`${label}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change. ${comparison.summary ?? ''}`);
+            if (comparison.document_name || comparison.version1) {
+              allCitations.push(...this.extractVersionCitations(comparison));
+            }
+          }
+          return {
+            text: `Version Comparison (all versions):\n${lines.join('\n')}`,
+            citations: allCitations
+          };
+        }
+        if (!result.version1 || !result.version2) {
+          return {
+            text: result.message ?? result.error ?? 'Version comparison could not be completed.',
+            citations: []
+          };
+        }
         return {
           text: `Version Comparison Results:
 Document: ${result.document_name}
@@ -596,19 +548,24 @@ Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
 Summary: ${result.summary}`,
           citations: this.extractVersionCitations(result)
         };
+      }
 
-      case "detect_policy_conflicts":
+      case "detect_policy_conflicts": {
+        const comparedLine = result.documents_resolved && result.documents_resolved.length >= 2
+          ? `I compared ${result.documents_resolved.map((r: { userTerm: string; actualFilename: string }) => `${r.actualFilename} (matched from '${r.userTerm}')`).join(' and ')}.\n\n`
+          : '';
         return {
-          text: `Conflict Detection Results:
+          text: `${comparedLine}Conflict Detection Results:
 Documents: ${result.documents_analyzed.join(', ')}
 Conflicts Found: ${result.conflicts_found}
 Summary: ${result.summary}
-${result.conflicts.map((c: any, i: number) => 
-  `\nConflict ${i+1} [${c.severity}]: ${c.description}`
-).join('')}`,
+${result.conflicts.map((c: any, i: number) =>
+          `\nConflict ${i+1} [${c.severity}]: ${c.description}`
+        ).join('')}`,
           conflicts: result.conflicts,
           citations: this.extractConflictCitations(result)
         };
+      }
 
       case "list_available_documents":
         return {
@@ -622,18 +579,6 @@ ${result.conflicts.map((c: any, i: number) =>
         return {
           text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`,
           citations: this.extractVersionListCitations(result)
-        };
-
-      case "track_policy_changes":
-        const timelineText = result.timeline
-          .map((t: any) => `v${t.from} → v${t.to} (${t.date}) [${t.severity}]: +${t.changes_added} -${t.changes_removed} ~${t.changes_modified}\n${t.summary}`)
-          .join('\n\n');
-        return {
-          text: `Policy Evolution Timeline for ${result.document_name}:\n\n${timelineText}\n\nOverall Evolution:\n${result.overall_summary}`,
-          citations: this.extractVersionCitations({  // Reuse version citation extractor
-            document_name: result.document_name,
-            changes: result.timeline.flatMap((t: any) => t.key_changes || [])
-          })
         };
 
       case "find_related_documents":
@@ -704,13 +649,15 @@ ${result.llm_summary}`,
   }
 
   /**
-   * Main agent processing with function calling and UNIVERSAL citation tracking
+   * Main agent processing with function calling and UNIVERSAL citation tracking.
+   * Optional conversationHistory: when provided, last 3-5 exchanges are included so follow-up questions have context.
    */
   async processQuery(
     userQuery: string,
     adminId: number,
     maxIterations: number = 5,
-    onLog?: (stage: string, message: string) => void
+    onLog?: (stage: string, message: string) => void,
+    conversationHistoryParam?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<AgentResult> {
     const log = onLog || (() => {});
     logger.info('Legal Compliance Agent starting', { query: userQuery });
@@ -724,10 +671,7 @@ ${result.llm_summary}`,
     const allCitations: any[] = [];
     const allConflicts: any[] = [];
 
-    let conversationHistory: any[] = [
-      {
-        role: "system",
-        content: `You are a Legal & Compliance AI Agent with access to specialized tools.
+    const systemContent = `You are a Legal & Compliance AI Agent with access to specialized tools.
 
 ⚠️ CRITICAL: HALLUCINATION PREVENTION RULES
 - NEVER generate, assume, or infer information not in retrieved documents
@@ -737,11 +681,70 @@ ${result.llm_summary}`,
 - Every factual claim MUST be directly supported by tool results
 - If unsure about any aspect, explicitly state the limitation
 
+UNDERSTANDING USER INPUT:
+Identify which type of input the user sent before deciding what to do:
+
+1. QUESTION - user wants information from documents
+   Examples: "what is the notice period?", "what are the penalties?"
+   Action: call appropriate search/retrieval tool
+
+2. INSTRUCTION - user wants you to do something with existing answer
+   Examples: "summarize that", "make it shorter", "give me a table", "translate to urdu", "bullet points", "no citations", "explain simply", "elaborate", "reformat this"
+   Action: use previous answer from conversation history, do NOT call any tool
+
+3. COMMAND - user wants agent to perform a specific action
+   Examples: "compare constitution and rules", "check all documents for conflicts", "list available documents"
+   Action: call the specific tool immediately
+
+4. FOLLOW-UP - continuing from previous message
+   Examples: "is it same in all versions?", "any conflicts?", "what changed?", "tell me more"
+   Action: use conversation history for context, call appropriate tool
+
+5. GREETING - purely social
+   Examples: "hi", "hello", "how are you"
+   Action: respond warmly, do not call any tool
+
+INSTRUCTION HANDLERS (no tool call needed, use previous answer):
+- "summarize" / "give me a summary" → summarize previous answer in 3-4 sentences
+- "make it shorter" / "brief" / "briefly" → shorten previous answer
+- "more detail" / "elaborate" / "expand" → expand on previous answer
+- "bullet points" / "use bullets" / "list format" → reformat as bullets
+- "give me a table" / "tabular form" → reformat as table
+- "translate to urdu" / "in urdu" / "urdu mein" → translate previous answer to Urdu
+- "explain simply" / "simple words" / "layman terms" / "easy language" → simplify previous answer
+- "no citations" / "without citations" / "remove citations" → reformat without [n] markers
+- "what does that mean?" / "explain that" → explain previous answer in simpler terms
+- "give me an example" → provide example based on previous answer
+
+MIXED INPUT (question + instruction together):
+- "what is the penalty? give me a table" → search for penalty, return result as table
+- "compare constitution and rules and summarize" → run conflict detection, summarize result
+- Execute the action first, then apply the formatting instruction to the result
+
+URDU AND MIXED LANGUAGE SUPPORT:
+- "document mein kya likha hai?" → search documents
+- "conflicts check karo" → run conflict detection
+- "summary do" → summarize previous answer
+- "yeh samjhao" → explain previous answer simply
+- "sab documents check karo" → check all documents for conflicts
+- Understand intent in mixed Urdu/English and respond in the same language the user used
+
 Your role:
+- Follow user instructions: when the user asks you to do something (list, compare, check, search, etc.), carry it out using the right tool(s)
 - Answer questions about legal documents, policies, and regulations
 - Compare document versions to track changes
 - Detect conflicts between different policies
 - Provide accurate, well-cited compliance information
+
+TYPING MISTAKES & INFORMAL INPUT:
+- Interpret user intent even when there are minor typos or informal wording (e.g. "undestrand" → understand, "documant" → document, "constituion" → constitution)
+- When calling tools, use the intended meaning; for search_documents you may pass a corrected or normalized query if the typo is clear
+- Document names are resolved automatically (fuzzy matching), so "ajk rules" or "constitute" can match actual document titles
+
+UNDERSTAND INSTRUCTIONS:
+- Follow the user's instructions and intent. If they ask for a comparison, list, search, or conflict check, do that
+- Prioritize what the user asked for and choose the right tool(s) for their goal
+- If the user gives a multi-part request, address all parts or clarify
 
 CONSISTENCY & ACCURACY REQUIREMENTS:
 - For similar queries, provide consistent answers using the same sources
@@ -753,17 +756,47 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 
 Tool Selection Guidelines:
 - Use search_documents for general questions about document content or answering FROM documents
-- Use compare_document_versions when asked about version differences or changes WITHIN the same document
-- Use detect_policy_conflicts when asked if documents conflict or contradict
+- USE compare_document_versions for ANY of these: "what changed in [anything]?", "what are the changes in [anything]?", "any updates in [anything]?", "has [anything] changed?", "show history of [anything]", "compare versions of [anything]", "what is different in [anything]?", "what was updated in [anything]?", "latest changes in [anything]?", "evolution of [anything]", "what is new in [anything]?", "is it same in all versions?", or user mentions a document/category name + change/update/history/version/difference word → ALWAYS use compare_document_versions; do NOT ask the user for versions if they don't specify them
+- IMPORTANT for compare_document_versions: Works WITHIN a category (all versions of same logical document) — pass whatever the user said as input, system resolves automatically → do NOT try to figure out if it's a category vs filename yourself → default compare_all=true unless user specifies exact versions
+- Use detect_policy_conflicts ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories — do NOT use for version comparisons within the same document
 - Use list_available_documents when user asks what documents exist
-- Use track_policy_changes when user asks "what changed", "how has this evolved", "show me the history", "what was updated", "differences across versions", or "policy timeline"
 - Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
 - Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents", or "what topics are not covered"
 - Call multiple tools if needed for comprehensive, well-sourced answers
 
 Tool Disambiguation:
-- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document. Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
+- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document (by category). Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
 - find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
+- detect_policy_conflicts vs compare_document_versions: Use detect_policy_conflicts for comparing DIFFERENT documents/policies for contradictions ACROSS categories. Use compare_document_versions for comparing VERSIONS of the SAME logical document (same category).
+
+FIRST MESSAGE / NO GREETING REQUIRED:
+- Answer the user's question immediately. Do NOT require or wait for a greeting first.
+- If the user's first (or any) message is a factual question (e.g. recommendations, policy content, what changed, conflicts), call the appropriate tool right away (e.g. search_documents, compare_document_versions, detect_policy_conflicts). Do not ask them to say hello first.
+
+GREETING HANDLING (only when the message is purely a greeting):
+- ONLY if the user message is purely a greeting (hi, hello, hey, how are you, good morning, good day, greetings, hiya, or similar casual opener with no actual question)
+- Do NOT call any tool for that message
+- Respond warmly and ask how you can help with legal compliance
+
+FOLLOW-UP CONTEXT:
+- Always read conversation history before deciding which tool to call
+- "is it same in all versions?" → extract topic from previous message → call compare_document_versions
+- "any conflicts?" → extract topic from previous message → call detect_policy_conflicts
+- "what changed?" (about version history of ONE document) → extract document from previous message → call compare_document_versions
+- Never ask user to repeat information already in conversation history
+
+CONFLICT FOLLOW-UPS (do NOT call compare_document_versions):
+- If the user just received a conflict report and now asks "what were the values?", "what were the change values?", "what values differed?", "list the conflicting values", "what were the specific numbers?", or similar, they mean the CONFLICTING VALUES from that report (e.g. OEE 85% vs 90%, MTTR 3.0 vs 2.5 hrs), NOT version-to-version changes.
+- Do NOT call compare_document_versions or say "only one version available." Use the previous assistant message (the conflict summary) from conversation history and extract/list the specific values that conflicted between the two documents (targets, percentages, counts, etc.) in a clear list or table. If the previous message does not contain those values, say so and offer to re-run conflict detection with full detail.
+
+REFORMAT / NO CITATIONS REQUESTS:
+- If the user asks to omit citations (e.g. "no citations", "don't give citations", "without citations") OR to reformat as a paragraph (e.g. "make it a paragraph", "summarize as a paragraph", "give me a paragraph of this"), do NOT call any tool and do NOT say "I cannot find this information."
+- Use the most recent assistant message in the conversation history: rewrite that content as one or two clear paragraphs, with no citation markers like [1], [2], no "Sources & Citations" section, and no inline references. Keep all the substantive information (conflicts, summary, action items) in flowing prose.
+- If there is no previous assistant message to reformat, say briefly that you need a previous answer to reformat and ask them to run the query again first.
+
+AMBIGUITY HANDLING:
+- If query is too vague and context does not help → ask one specific clarifying question
+- Never call a tool with guessed arguments when not confident
 
 Response Requirements:
 - Be precise and cite sources when available [Document Name, Section/Page]
@@ -776,12 +809,17 @@ Response Requirements:
 - If tool finds NO relevant information, say so clearly rather than fabricating
 
 Example GOOD answer: "According to the Remote Work Policy v1.0, Section 3.2, the probation period is 90 days."
-Example BAD answer: "I believe the probation period is probably around 90 days." ❌`
-      },
-      {
-        role: "user",
-        content: userQuery
-      }
+Example BAD answer: "I believe the probation period is probably around 90 days." ❌`;
+
+    const maxHistoryMessages = 10;
+    const recentHistory = conversationHistoryParam?.length
+      ? conversationHistoryParam.slice(-maxHistoryMessages)
+      : [];
+
+    let conversationHistory: any[] = [
+      { role: "system", content: systemContent },
+      ...recentHistory.map(msg => ({ role: msg.role, content: msg.content })),
+      { role: "user", content: userQuery }
     ];
 
     let iteration = 0;
@@ -823,7 +861,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           log('TOOL_START', friendlyNames[toolName] || `Running ${toolName}...`);
 
           // Execute in parallel
-          const result = await this.executeTool(toolName, toolArgs, adminId);
+          const result = await this.executeTool(toolName, toolArgs, adminId, recentHistory);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
           log('TOOL_DONE', `Completed ${toolName.replace(/_/g, ' ')}`);
@@ -904,29 +942,40 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
     logger.info('Total citations collected', { total: uniqueCitations.length, relevant: finalCitations.length });
 
-    // Calculate actual confidence from tool results
+    // Confidence: from tool results, or for greeting/no-tool responses use high confidence
     let aggregatedConfidence = 0;
-
-    // Extract confidence from tool results
-    for (const [toolCallId, metadata] of this.toolResultsMetadata.entries()) {
-      if (metadata.result?.confidence !== undefined) {
-        aggregatedConfidence = Math.max(aggregatedConfidence, metadata.result.confidence);
+    if (toolCalls.length > 0) {
+      // Extract confidence from tool results
+      for (const [toolCallId, metadata] of this.toolResultsMetadata.entries()) {
+        if (metadata.result?.confidence !== undefined) {
+          aggregatedConfidence = Math.max(aggregatedConfidence, metadata.result.confidence);
+        }
       }
+
+      // If no confidence found, estimate based on evidence
+      if (aggregatedConfidence === 0) {
+        if (finalCitations.length >= 5) {
+          aggregatedConfidence = 90;  // Many citations = high confidence
+        } else if (finalCitations.length >= 3) {
+          aggregatedConfidence = 80;  // Several citations = good confidence
+        } else if (finalCitations.length >= 1) {
+          aggregatedConfidence = 70;  // Some citations = medium confidence
+        } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
+          aggregatedConfidence = 95; // Listing operations are always accurate
+        } else {
+          aggregatedConfidence = 60; // Default moderate confidence
+        }
+      }
+    } else {
+      // No tools called: do not calculate or show confidence for greeting replies
+      const isGreetingReply = /^(hi|hello|hey|hi there|hello there|greetings)[\s!.,]|how can I (help|assist)|what can I (help|assist)|how may I (help|assist)|happy to help|here to help|assist you with/i.test(finalAnswer.trim().slice(0, 200));
+      aggregatedConfidence = isGreetingReply ? 0 : 95;
     }
 
-    // If no confidence found, estimate based on evidence
-    if (aggregatedConfidence === 0) {
-      if (finalCitations.length >= 5) {
-        aggregatedConfidence = 90;  // Many citations = high confidence
-      } else if (finalCitations.length >= 3) {
-        aggregatedConfidence = 80;  // Several citations = good confidence
-      } else if (finalCitations.length >= 1) {
-        aggregatedConfidence = 70;  // Some citations = medium confidence
-      } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
-        aggregatedConfidence = 95; // Listing operations are always accurate
-      } else {
-        aggregatedConfidence = 60; // Default moderate confidence
-      }
+    // Do not show high confidence for error/fallback answers (e.g. retrieval issues, document not recognized)
+    const isErrorOrFallbackAnswer = /\b(issues? with|not being recognized|please confirm|cannot find|unable to (retrieve|find)|could not (retrieve|find)|not (found|recognized)|insufficient information|no (relevant )?information)\b/i.test(finalAnswer);
+    if (isErrorOrFallbackAnswer) {
+      aggregatedConfidence = 0;
     }
 
     return {

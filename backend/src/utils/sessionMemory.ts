@@ -1,3 +1,7 @@
+/**
+ * In-memory session store. Used only for session clear (sessionController).
+ * Not wired into the agent pipeline — DB-based conversation history is used instead.
+ */
 type SessionMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;

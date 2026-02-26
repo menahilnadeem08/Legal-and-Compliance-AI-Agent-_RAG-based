@@ -37,6 +37,7 @@ export interface DetectedConflict {
 export interface ConflictAnalysisResult {
   query: string;
   documents_analyzed: string[];
+  documents_resolved?: Array<{ userTerm: string; actualFilename: string }>;
   conflicts_found: number;
   conflicts: DetectedConflict[];
   summary: string;
@@ -46,6 +47,9 @@ export interface ConflictAnalysisResult {
     confidence: number;
   };
 }
+
+const MIN_MATCH_CONFIDENCE = 0.3;
+const CATEGORY_MATCH_SCORE = 0.8;
 
 export class ConflictDetectionService {
   private reranker: Reranker;
@@ -94,6 +98,142 @@ Return ONLY the JSON object or null if you cannot extract document information.`
       logger.error('Failed to parse conflict query', { error });
       return null;
     }
+  }
+
+  /**
+   * Normalize a string for matching: lowercase, trim, collapse spaces
+   */
+  private normalizeTerm(s: string): string {
+    return (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Normalize filename for robust matching: collapse spaces, normalize spaces around parentheses
+   * so "X (1).pdf" and "X(1).pdf" both match.
+   */
+  private normalizeFilenameForMatch(s: string): string {
+    return (s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/\s*\(\s*/g, '(')
+      .replace(/\s*\)\s*/g, ')');
+  }
+
+  /**
+   * Tokenize into words (alphanumeric segments)
+   */
+  private tokenize(s: string): string[] {
+    return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+  }
+
+  /**
+   * Word overlap score: fraction of term words that appear in filename
+   */
+  private wordOverlapScore(term: string, filename: string): number {
+    const termWords = new Set(this.tokenize(term));
+    const fileWords = new Set(this.tokenize(filename));
+    if (termWords.size === 0) return 0;
+    let matches = 0;
+    for (const w of termWords) {
+      if (fileWords.has(w)) matches++;
+    }
+    return matches / termWords.size;
+  }
+
+  /**
+   * Resolve user-provided document names to actual filenames using exact, contains, word overlap, and category matching.
+   * Returns resolved map, unresolved list, and resolutionLog for display.
+   */
+  async resolveDocumentNames(
+    userProvidedNames: string[],
+    adminId?: number
+  ): Promise<{
+    resolvedMap: Map<string, string>;
+    unresolved: string[];
+    resolutionLog: Array<{ userTerm: string; actualFilename: string }>;
+    resolvedFilenames: string[];
+  }> {
+    const resolutionLog: Array<{ userTerm: string; actualFilename: string }> = [];
+    const unresolved: string[] = [];
+    const resolvedMap = new Map<string, string>();
+
+    let sql = `SELECT id, filename, category FROM documents WHERE is_active = true`;
+    const params: (string | number)[] = [];
+    if (adminId != null) {
+      sql += ` AND admin_id = $1`;
+      params.push(adminId);
+    }
+    const result = await pool.query(sql, params);
+    const allDocs: { id: string; filename: string; category: string | null }[] = result.rows;
+
+    if (allDocs.length === 0) {
+      userProvidedNames.forEach(term => unresolved.push(term));
+      return { resolvedMap, unresolved, resolutionLog, resolvedFilenames: [] };
+    }
+
+    for (const userTerm of userProvidedNames) {
+      const normalized = this.normalizeTerm(userTerm);
+      let bestScore = 0;
+      let bestDoc: { filename: string } | null = null;
+
+      for (const doc of allDocs) {
+        const fileLower = this.normalizeTerm(doc.filename);
+        const fileNorm = this.normalizeFilenameForMatch(doc.filename);
+        const termNorm = this.normalizeFilenameForMatch(userTerm);
+        const catLower = doc.category ? this.normalizeTerm(doc.category) : '';
+
+        // 1. Exact match (including filename with parentheses / spacing variants) — must always win over word-overlap
+        if (
+          fileLower === normalized ||
+          catLower === normalized ||
+          fileNorm === termNorm
+        ) {
+          // Use score 2 so exact match beats word-overlap (1.0) and contains (0.7)
+          if (2 > bestScore) {
+            bestScore = 2;
+            bestDoc = doc;
+          }
+          continue;
+        }
+
+        // 2. Contains: filename contains term or term contains significant part of filename
+        const fileContainsTerm = fileLower.includes(normalized) || fileNorm.includes(termNorm);
+        const termContainsFile = (normalized.includes(fileLower) || termNorm.includes(fileNorm)) && fileLower.length >= 2;
+        if (fileContainsTerm || termContainsFile) {
+          const score = 0.7;
+          if (score > bestScore) {
+            bestScore = score;
+            bestDoc = doc;
+          }
+        }
+
+        // 3. Word overlap
+        const overlapScore = this.wordOverlapScore(userTerm, doc.filename);
+        if (overlapScore > bestScore) {
+          bestScore = overlapScore;
+          bestDoc = doc;
+        }
+
+        // 4. Category match: category equals or contains normalized user term
+        if (catLower && (catLower === normalized || catLower.includes(normalized) || normalized.includes(catLower))) {
+          if (CATEGORY_MATCH_SCORE > bestScore) {
+            bestScore = CATEGORY_MATCH_SCORE;
+            bestDoc = doc;
+          }
+        }
+      }
+
+      if (bestDoc && bestScore >= MIN_MATCH_CONFIDENCE) {
+        resolvedMap.set(userTerm, bestDoc.filename);
+        resolutionLog.push({ userTerm, actualFilename: bestDoc.filename });
+      } else {
+        unresolved.push(userTerm);
+      }
+    }
+
+    const resolvedFilenames = resolutionLog.map(r => r.actualFilename);
+    return { resolvedMap, unresolved, resolutionLog, resolvedFilenames };
   }
 
   /**
@@ -363,9 +503,39 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     logger.info('Documents to analyze', { documents: parsed.documents });
     if (parsed.topic) logger.info('Focus topic', { topic: parsed.topic });
 
-    // Get relevant chunks
-    const chunksMap = await this.getDocumentChunks(
+    // Resolve user-provided names to actual filenames (fuzzy + category)
+    const { resolutionLog, unresolved, resolvedFilenames } = await this.resolveDocumentNames(
       parsed.documents,
+      adminId
+    );
+
+    if (unresolved.length > 0) {
+      const suggestResult = await pool.query(
+        `SELECT filename FROM documents WHERE is_active = true ${adminId != null ? 'AND admin_id = $1' : ''} ORDER BY filename LIMIT 15`,
+        adminId != null ? [adminId] : []
+      );
+      const suggestions = suggestResult.rows.map((r: { filename: string }) => r.filename).join(', ') || 'No documents found';
+      throw new Error(
+        `Could not match "${unresolved.join('", "')}". Did you mean: ${suggestions}?`
+      );
+    }
+
+    for (const { userTerm, actualFilename } of resolutionLog) {
+      logger.info("Interpreted user term as document", { userTerm, actualFilename });
+    }
+
+    // Require at least 2 distinct documents (same file resolved twice is invalid)
+    const distinctFilenames = [...new Set(resolvedFilenames)];
+    if (distinctFilenames.length < 2) {
+      throw new Error(
+        `Conflict detection requires two different documents. Both terms resolved to the same file: "${distinctFilenames[0] || 'unknown'}". ` +
+        'Please specify two distinct document names (e.g. "X.pdf" and "Y.pdf").'
+      );
+    }
+
+    // Get relevant chunks using resolved actual filenames
+    const chunksMap = await this.getDocumentChunks(
+      distinctFilenames,
       parsed.topic,
       15, // chunks per document
       adminId
@@ -373,8 +543,8 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
 
     if (chunksMap.size < 2) {
       const foundDocs = Array.from(chunksMap.keys());
-      const missingDocs = parsed.documents.filter(d => !foundDocs.includes(d));
-      
+      const missingDocs = resolvedFilenames.filter(d => !foundDocs.includes(d));
+
       throw new Error(
         `Could not find all requested documents. Found: ${foundDocs.join(', ')}. ` +
         `Missing: ${missingDocs.join(', ')}`
@@ -394,6 +564,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     return {
       query,
       documents_analyzed: Array.from(chunksMap.keys()),
+      documents_resolved: resolutionLog.length > 0 ? resolutionLog : undefined,
       conflicts_found: conflicts.length,
       conflicts: conflicts.sort((a, b) => {
         const severityOrder = { high: 0, medium: 1, low: 2 };
@@ -411,14 +582,15 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   /**
    * Batch conflict detection across all documents
    */
-  async detectAllConflicts(topic?: string): Promise<ConflictAnalysisResult[]> {
-    // Get all latest documents
+  async detectAllConflicts(topic?: string, adminId?: number): Promise<ConflictAnalysisResult[]> {
+    // Get all latest documents for this admin (or all if adminId not provided)
     const docsResult = await pool.query(
-      `SELECT DISTINCT filename FROM documents WHERE is_active = true ORDER BY filename`
+      `SELECT DISTINCT filename FROM documents WHERE is_active = true AND (admin_id = $1 OR $1 IS NULL) ORDER BY filename`,
+      [adminId ?? null]
     );
 
-    const documents = docsResult.rows.map(r => r.filename);
-    
+    const documents = docsResult.rows.map((r: { filename: string }) => r.filename);
+
     if (documents.length < 2) {
       throw new Error('Need at least 2 documents for conflict detection');
     }
@@ -433,7 +605,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
           : `Check conflicts between ${documents[i]} and ${documents[j]}`;
 
         try {
-          const result = await this.detectConflicts(query);
+          const result = await this.detectConflicts(query, adminId);
           if (result.conflicts_found > 0) {
             results.push(result);
           }
@@ -443,6 +615,17 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
       }
     }
 
-    return results;
+    // Deduplicate by canonical pair key (A|B === B|A)
+    const seen = new Set<string>();
+    const deduplicated: ConflictAnalysisResult[] = [];
+    for (const result of results) {
+      const docs = result.documents_analyzed ?? [];
+      const key = docs.slice().sort().join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduplicated.push(result);
+    }
+
+    return deduplicated;
   }
 }

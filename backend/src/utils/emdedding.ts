@@ -1,8 +1,18 @@
-import { embeddings } from '../config/openai';
+import { embeddings, EMBEDDING_DIMENSIONS } from '../config/openai';
 import logger from './logger';
 
 /** Max texts per OpenAI embed request (stay under token/input limits) */
 const BATCH_SIZE = 100;
+
+function validateEmbeddingDimension(vector: number[], index?: number): void {
+  if (vector.length !== EMBEDDING_DIMENSIONS) {
+    const ctx = index !== undefined ? ` at index ${index}` : '';
+    throw new Error(
+      `Embedding dimension mismatch${ctx}: got ${vector.length}, expected ${EMBEDDING_DIMENSIONS}. ` +
+      'Ensure OpenAI config uses dimensions: 1536 and model text-embedding-3-small.'
+    );
+  }
+}
 
 /**
  * Generate embedding for a single text (e.g. query at runtime).
@@ -20,20 +30,27 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 /**
  * Generate embeddings for multiple texts via batched API calls.
  * Uses embedDocuments() so each request sends up to BATCH_SIZE texts (fewer round-trips than one-by-one).
+ * Sanitizes inputs: OpenAI rejects arrays containing empty strings, so we replace empty/invalid with a space.
  */
 export async function generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   try {
     const results: number[][] = [];
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      const batch = texts.slice(i, i + BATCH_SIZE);
+      const rawBatch = texts.slice(i, i + BATCH_SIZE);
+      const batch = rawBatch.map((t) => {
+        if (typeof t !== 'string') return ' ';
+        const s = t.trim();
+        return s.length > 0 ? s : ' ';
+      });
       const batchEmbeddings = await embeddings.embedDocuments(batch);
+      batchEmbeddings.forEach((vec, idx) => validateEmbeddingDimension(vec, results.length + idx));
       results.push(...batchEmbeddings);
     }
     logger.debug('Batch embeddings complete', { total: texts.length, batches: Math.ceil(texts.length / BATCH_SIZE) });
     return results;
   } catch (error) {
     logger.error('Batch embedding generation error', { error });
-    throw new Error('Failed to generate batch embeddings');
+    throw error instanceof Error ? error : new Error('Failed to generate batch embeddings');
   }
 }

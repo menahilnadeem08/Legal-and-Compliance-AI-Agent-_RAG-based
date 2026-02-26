@@ -200,13 +200,13 @@ export async function updateConversation(
 
     if (title !== undefined) {
       query += `, title = $${paramIndex}`;
-      params.splice(params.length - 1, 0, title);
+      params.push(title);
       paramIndex++;
     }
 
     if (metadata !== undefined) {
       query += `, metadata = $${paramIndex}`;
-      params.splice(params.length - 1, 0, JSON.stringify(metadata));
+      params.push(JSON.stringify(metadata));
       paramIndex++;
     }
 

@@ -158,8 +158,8 @@ export default function UploadPage() {
                 disabled={categoriesLoading}
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               >
-                {(categories.length ? categories : DEFAULT_CATEGORY_NAMES.map((name, i) => ({ id: i, name, type: "default" as const }))).map((cat) => (
-                  <option key={typeof cat.id !== "undefined" ? cat.id : cat.name} value={cat.name}>
+                {(categories.length ? categories : DEFAULT_CATEGORY_NAMES.map((name, i) => ({ id: i, name, type: "default" as const }))).map((cat, index) => (
+                  <option key={`${cat.type}-${cat.id ?? cat.name}-${index}`} value={cat.name}>
                     {cat.name} {cat.type === "custom" ? "(custom)" : ""}
                   </option>
                 ))}
