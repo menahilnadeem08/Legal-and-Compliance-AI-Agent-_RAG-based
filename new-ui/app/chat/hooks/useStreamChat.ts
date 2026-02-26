@@ -30,7 +30,12 @@ export interface UseStreamChatOptions {
 }
 
 export interface UseStreamChatResult {
-  runStream: (query: string, convId: string, isFirstMessage: boolean) => Promise<void>;
+  runStream: (
+    query: string,
+    convId: string,
+    isFirstMessage: boolean,
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>
+  ) => Promise<void>;
   isStreaming: boolean;
   /** Content streaming in for the current pending message (show in same bubble) */
   streamingContent: string;
@@ -61,7 +66,12 @@ export function useStreamChat(options: UseStreamChatOptions): UseStreamChatResul
   }, []);
 
   const runStream = useCallback(
-    async (query: string, convId: string, isFirstMessage: boolean) => {
+    async (
+      query: string,
+      convId: string,
+      isFirstMessage: boolean,
+      conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>
+    ) => {
       const token = getToken();
       if (!token) {
         onUnauthorized();
@@ -88,6 +98,12 @@ export function useStreamChat(options: UseStreamChatOptions): UseStreamChatResul
       setIsStreaming(true);
       abortRef.current = new AbortController();
 
+      const history =
+        conversationHistory?.slice(-10).map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: typeof m.content === "string" ? m.content : "",
+        })) ?? [];
+
       let finalAnswer: StreamAnswer | null = null;
       let lastStreamedContent = "";
 
@@ -98,7 +114,7 @@ export function useStreamChat(options: UseStreamChatOptions): UseStreamChatResul
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify({ query, conversationHistory: history }),
           signal: abortRef.current.signal,
         });
 

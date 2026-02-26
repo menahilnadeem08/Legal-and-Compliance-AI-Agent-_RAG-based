@@ -70,7 +70,9 @@ export function ChatMessage({
               <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">
                 <ReactMarkdown>{stripCitationNumbers(assistant.content)}</ReactMarkdown>
               </div>
-              {assistant.confidence !== undefined && assistant.confidence !== null && (
+              {assistant.confidence !== undefined &&
+                assistant.confidence !== null &&
+                assistant.confidence > 0 && (
                 <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800/50 overflow-hidden bg-slate-50 dark:bg-slate-800/50">
                   <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400">
                     <Scale className="h-4 w-4 flex-shrink-0" />

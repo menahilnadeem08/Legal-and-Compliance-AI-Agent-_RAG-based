@@ -108,6 +108,19 @@ Return ONLY the JSON object or null if you cannot extract document information.`
   }
 
   /**
+   * Normalize filename for robust matching: collapse spaces, normalize spaces around parentheses
+   * so "X (1).pdf" and "X(1).pdf" both match.
+   */
+  private normalizeFilenameForMatch(s: string): string {
+    return (s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/\s*\(\s*/g, '(')
+      .replace(/\s*\)\s*/g, ')');
+  }
+
+  /**
    * Tokenize into words (alphanumeric segments)
    */
   private tokenize(s: string): string[] {
@@ -166,20 +179,27 @@ Return ONLY the JSON object or null if you cannot extract document information.`
 
       for (const doc of allDocs) {
         const fileLower = this.normalizeTerm(doc.filename);
+        const fileNorm = this.normalizeFilenameForMatch(doc.filename);
+        const termNorm = this.normalizeFilenameForMatch(userTerm);
         const catLower = doc.category ? this.normalizeTerm(doc.category) : '';
 
-        // 1. Exact match
-        if (fileLower === normalized || catLower === normalized) {
-          if (1 > bestScore) {
-            bestScore = 1;
+        // 1. Exact match (including filename with parentheses / spacing variants) — must always win over word-overlap
+        if (
+          fileLower === normalized ||
+          catLower === normalized ||
+          fileNorm === termNorm
+        ) {
+          // Use score 2 so exact match beats word-overlap (1.0) and contains (0.7)
+          if (2 > bestScore) {
+            bestScore = 2;
             bestDoc = doc;
           }
           continue;
         }
 
         // 2. Contains: filename contains term or term contains significant part of filename
-        const fileContainsTerm = fileLower.includes(normalized);
-        const termContainsFile = normalized.includes(fileLower) && fileLower.length >= 2;
+        const fileContainsTerm = fileLower.includes(normalized) || fileNorm.includes(termNorm);
+        const termContainsFile = (normalized.includes(fileLower) || termNorm.includes(fileNorm)) && fileLower.length >= 2;
         if (fileContainsTerm || termContainsFile) {
           const score = 0.7;
           if (score > bestScore) {
@@ -504,9 +524,18 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
       logger.info("Interpreted user term as document", { userTerm, actualFilename });
     }
 
+    // Require at least 2 distinct documents (same file resolved twice is invalid)
+    const distinctFilenames = [...new Set(resolvedFilenames)];
+    if (distinctFilenames.length < 2) {
+      throw new Error(
+        `Conflict detection requires two different documents. Both terms resolved to the same file: "${distinctFilenames[0] || 'unknown'}". ` +
+        'Please specify two distinct document names (e.g. "X.pdf" and "Y.pdf").'
+      );
+    }
+
     // Get relevant chunks using resolved actual filenames
     const chunksMap = await this.getDocumentChunks(
-      resolvedFilenames,
+      distinctFilenames,
       parsed.topic,
       15, // chunks per document
       adminId

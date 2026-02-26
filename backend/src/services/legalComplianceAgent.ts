@@ -556,11 +556,13 @@ Be specific about business/compliance impact.`;
         default:
           throw new Error(`Unknown tool: ${toolName}`);
       }
-    } catch (error: any) {
-      logger.error('Tool execution error', { toolName, error });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      logger.error('Tool execution error', { toolName, message, stack });
       return {
         error: true,
-        message: error.message,
+        message: message || 'An unexpected error occurred',
         tool: toolName
       };
     }
@@ -741,6 +743,7 @@ ${result.llm_summary}`,
 - If unsure about any aspect, explicitly state the limitation
 
 Your role:
+- Follow user instructions: when the user asks you to do something (list, compare, check, search, etc.), carry it out using the right tool(s)
 - Answer questions about legal documents, policies, and regulations
 - Compare document versions to track changes
 - Detect conflicts between different policies
@@ -778,17 +781,30 @@ Tool Disambiguation:
 - gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document. Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
 - find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
 
-GREETING HANDLING:
-- If user says hi, hello, hey, how are you, good morning, good day, greetings, hiya, or any similar greeting or casual opener
-- Do NOT call any tool
+FIRST MESSAGE / NO GREETING REQUIRED:
+- Answer the user's question immediately. Do NOT require or wait for a greeting first.
+- If the user's first (or any) message is a factual question (e.g. recommendations, policy content, what changed, conflicts), call the appropriate tool right away (e.g. search_documents, compare_document_versions, detect_policy_conflicts). Do not ask them to say hello first.
+
+GREETING HANDLING (only when the message is purely a greeting):
+- ONLY if the user message is purely a greeting (hi, hello, hey, how are you, good morning, good day, greetings, hiya, or similar casual opener with no actual question)
+- Do NOT call any tool for that message
 - Respond warmly and ask how you can help with legal compliance
 
 FOLLOW-UP CONTEXT:
 - Always read conversation history before deciding which tool to call
 - "is it same in all versions?" → extract topic from previous message → call compare_document_versions
 - "any conflicts?" → extract topic from previous message → call detect_policy_conflicts
-- "what changed?" → extract document from previous message → call compare_document_versions
+- "what changed?" (about version history of ONE document) → extract document from previous message → call compare_document_versions
 - Never ask user to repeat information already in conversation history
+
+CONFLICT FOLLOW-UPS (do NOT call compare_document_versions):
+- If the user just received a conflict report and now asks "what were the values?", "what were the change values?", "what values differed?", "list the conflicting values", "what were the specific numbers?", or similar, they mean the CONFLICTING VALUES from that report (e.g. OEE 85% vs 90%, MTTR 3.0 vs 2.5 hrs), NOT version-to-version changes.
+- Do NOT call compare_document_versions or say "only one version available." Use the previous assistant message (the conflict summary) from conversation history and extract/list the specific values that conflicted between the two documents (targets, percentages, counts, etc.) in a clear list or table. If the previous message does not contain those values, say so and offer to re-run conflict detection with full detail.
+
+REFORMAT / NO CITATIONS REQUESTS:
+- If the user asks to omit citations (e.g. "no citations", "don't give citations", "without citations") OR to reformat as a paragraph (e.g. "make it a paragraph", "summarize as a paragraph", "give me a paragraph of this"), do NOT call any tool and do NOT say "I cannot find this information."
+- Use the most recent assistant message in the conversation history: rewrite that content as one or two clear paragraphs, with no citation markers like [1], [2], no "Sources & Citations" section, and no inline references. Keep all the substantive information (conflicts, summary, action items) in flowing prose.
+- If there is no previous assistant message to reformat, say briefly that you need a previous answer to reformat and ask them to run the query again first.
 
 AMBIGUITY HANDLING:
 - If query is too vague and context does not help → ask one specific clarifying question
@@ -938,7 +954,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
     logger.info('Total citations collected', { total: uniqueCitations.length, relevant: finalCitations.length });
 
-    // Do not calculate confidence for greeting / no-tool responses
+    // Confidence: from tool results, or for greeting/no-tool responses use high confidence
     let aggregatedConfidence = 0;
     if (toolCalls.length > 0) {
       // Extract confidence from tool results
@@ -962,6 +978,16 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           aggregatedConfidence = 60; // Default moderate confidence
         }
       }
+    } else {
+      // No tools called: do not calculate or show confidence for greeting replies
+      const isGreetingReply = /^(hi|hello|hey|hi there|hello there|greetings)[\s!.,]|how can I (help|assist)|what can I (help|assist)|how may I (help|assist)|happy to help|here to help|assist you with/i.test(finalAnswer.trim().slice(0, 200));
+      aggregatedConfidence = isGreetingReply ? 0 : 95;
+    }
+
+    // Do not show high confidence for error/fallback answers (e.g. retrieval issues, document not recognized)
+    const isErrorOrFallbackAnswer = /\b(issues? with|not being recognized|please confirm|cannot find|unable to (retrieve|find)|could not (retrieve|find)|not (found|recognized)|insufficient information|no (relevant )?information)\b/i.test(finalAnswer);
+    if (isErrorOrFallbackAnswer) {
+      aggregatedConfidence = 0;
     }
 
     return {

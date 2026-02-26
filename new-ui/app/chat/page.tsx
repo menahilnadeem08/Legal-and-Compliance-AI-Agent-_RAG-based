@@ -33,6 +33,8 @@ function ChatContent() {
   const [input, setInput] = useState("");
   const [userName, setUserName] = useState("Your Name");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /** When we just created this conversation, skip load so we don't overwrite the first message + pending reply. */
+  const skipLoadForConversationIdRef = useRef<string | null>(null);
 
   const {
     runStream,
@@ -86,6 +88,10 @@ function ChatContent() {
     const id = conversationIdFromUrl || null;
     setCurrentConversationId(id);
     if (id) {
+      if (skipLoadForConversationIdRef.current === id) {
+        skipLoadForConversationIdRef.current = null;
+        return;
+      }
       loadConversation(id);
     } else {
       setMessages([]);
@@ -258,6 +264,7 @@ function ChatContent() {
     if (!convId) {
       convId = await createConversation();
       if (convId) {
+        skipLoadForConversationIdRef.current = convId;
         router.replace(`/chat?conversation=${convId}`);
         setCurrentConversationId(convId);
       } else return;
@@ -277,7 +284,7 @@ function ChatContent() {
     }
 
     setInput("");
-    await runStream(query, convId, isFirstMessage);
+    await runStream(query, convId, isFirstMessage, messages);
   }
 
   useEffect(() => {

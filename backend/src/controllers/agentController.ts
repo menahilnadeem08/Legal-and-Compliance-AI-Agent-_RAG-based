@@ -36,7 +36,10 @@ export const agentQuery = asyncHandler(async (req: AuthenticatedRequest, res: Re
  */
 export const agentQueryStream = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { query } = req.body;
+    const { query, conversationHistory } = req.body as {
+      query: string;
+      conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    };
 
     if (!query) {
       return res.status(400).json({ success: false, message: 'Query is required' });
@@ -46,6 +49,12 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
     if (!adminId) {
       return res.status(500).json({ success: false, message: 'User role not properly configured' });
     }
+
+    const history = Array.isArray(conversationHistory)
+      ? conversationHistory.slice(-10).filter(
+          (m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+        )
+      : undefined;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -63,7 +72,7 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
     };
 
     try {
-      const result = await agent.processQuery(query, adminId, 5, sendLog);
+      const result = await agent.processQuery(query, adminId, 5, sendLog, history);
 
       res.write(`data: ${JSON.stringify({ type: 'answer', answer: result })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);

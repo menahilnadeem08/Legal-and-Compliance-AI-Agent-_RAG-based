@@ -1,8 +1,18 @@
-import { embeddings } from '../config/openai';
+import { embeddings, EMBEDDING_DIMENSIONS } from '../config/openai';
 import logger from './logger';
 
 /** Max texts per OpenAI embed request (stay under token/input limits) */
 const BATCH_SIZE = 100;
+
+function validateEmbeddingDimension(vector: number[], index?: number): void {
+  if (vector.length !== EMBEDDING_DIMENSIONS) {
+    const ctx = index !== undefined ? ` at index ${index}` : '';
+    throw new Error(
+      `Embedding dimension mismatch${ctx}: got ${vector.length}, expected ${EMBEDDING_DIMENSIONS}. ` +
+      'Ensure OpenAI config uses dimensions: 1536 and model text-embedding-3-small.'
+    );
+  }
+}
 
 /**
  * Generate embedding for a single text (e.g. query at runtime).
@@ -28,12 +38,13 @@ export async function generateEmbeddingsBatch(texts: string[]): Promise<number[]
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE);
       const batchEmbeddings = await embeddings.embedDocuments(batch);
+      batchEmbeddings.forEach((vec, idx) => validateEmbeddingDimension(vec, results.length + idx));
       results.push(...batchEmbeddings);
     }
     logger.debug('Batch embeddings complete', { total: texts.length, batches: Math.ceil(texts.length / BATCH_SIZE) });
     return results;
   } catch (error) {
     logger.error('Batch embedding generation error', { error });
-    throw new Error('Failed to generate batch embeddings');
+    throw error instanceof Error ? error : new Error('Failed to generate batch embeddings');
   }
 }
