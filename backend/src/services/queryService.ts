@@ -300,49 +300,71 @@ export class QueryService {
       ...options
     };
 
-    const [queryEmbedding, keywordResults] = await Promise.all([
-      embeddings.embedQuery(query),
-      opts.useBM25 ? this.bm25Scorer.score(query, opts.keywordTopK, adminId) : Promise.resolve([])
-    ]);
+    // 1. Get query variants (original + 2–3 rewrites); fallback to [query] on failure
+    let variants: string[];
+    try {
+      variants = await this.queryRewriter.rewrite(query);
+    } catch {
+      variants = [query];
+    }
+    logger.debug('Query variants', { count: variants.length });
 
-    const vectorResults = await this.vectorSearch(queryEmbedding, opts.vectorTopK, adminId);
-
-    this.bm25Scorer.normalizeScores(keywordResults);
+    // 2. Run vector + BM25 search for each variant in parallel
+    const variantResults = await Promise.all(
+      variants.map(async (q) => {
+        const [queryEmbedding, keywordResults] = await Promise.all([
+          embeddings.embedQuery(q),
+          opts.useBM25 ? this.bm25Scorer.score(q, opts.keywordTopK, adminId) : Promise.resolve([])
+        ]);
+        const vectorResults = await this.vectorSearch(queryEmbedding, opts.vectorTopK, adminId);
+        return { vectorResults, keywordResults };
+      })
+    );
 
     const normalizeVector = (score: number) => Math.max(0, Math.min(1, score));
-    vectorResults.forEach(r => r.similarity = normalizeVector(r.similarity));
-
     const combined = new Map<string, RetrievedChunk>();
 
-    for (const result of vectorResults) {
-      if (result.similarity >= opts.minVectorSimilarity) {
+    // 3. Merge all variant results: same key = document_name + chunk_index; keep HIGHEST score per chunk
+    for (const { vectorResults, keywordResults } of variantResults) {
+      this.bm25Scorer.normalizeScores(keywordResults);
+      vectorResults.forEach(r => { r.similarity = normalizeVector(r.similarity); });
+
+      const variantMap = new Map<string, RetrievedChunk>();
+      for (const result of vectorResults) {
+        if (result.similarity >= opts.minVectorSimilarity) {
+          const key = `${result.document_name}-${result.chunk_index}`;
+          variantMap.set(key, {
+            ...result,
+            similarity: result.similarity * opts.vectorWeight,
+            vector_score: result.similarity,
+            keyword_score: 0
+          });
+        }
+      }
+      for (const result of keywordResults) {
         const key = `${result.document_name}-${result.chunk_index}`;
-        combined.set(key, {
-          ...result,
-          similarity: result.similarity * opts.vectorWeight,
-          vector_score: result.similarity,
-          keyword_score: 0
-        });
+        const existing = variantMap.get(key);
+        if (existing) {
+          existing.similarity += result.similarity * opts.keywordWeight;
+          existing.keyword_score = result.similarity;
+        } else {
+          variantMap.set(key, {
+            ...result,
+            similarity: result.similarity * opts.keywordWeight,
+            vector_score: 0,
+            keyword_score: result.similarity
+          });
+        }
+      }
+      for (const [key, chunk] of variantMap) {
+        const current = combined.get(key);
+        if (!current || chunk.similarity > current.similarity) {
+          combined.set(key, chunk);
+        }
       }
     }
 
-    for (const result of keywordResults) {
-      const key = `${result.document_name}-${result.chunk_index}`;
-      const existing = combined.get(key);
-
-      if (existing) {
-        existing.similarity += result.similarity * opts.keywordWeight;
-        existing.keyword_score = result.similarity;
-      } else {
-        combined.set(key, {
-          ...result,
-          similarity: result.similarity * opts.keywordWeight,
-          vector_score: 0,
-          keyword_score: result.similarity
-        });
-      }
-    }
-
+    // 4. Sort by similarity descending, slice to topK, return to MMR reranker
     const results = Array.from(combined.values())
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, topK);
