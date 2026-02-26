@@ -11,7 +11,7 @@ import {
   MessageSquare,
   Upload,
   FileText,
-  Shield,
+  UserPlus,
   FolderTree,
   Moon,
   Sun,
@@ -27,7 +27,7 @@ const navLinks: { href: string; label: string; icon: typeof LayoutDashboard; adm
   { href: "/upload", label: "Upload", icon: Upload, adminOnly: true },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/categories", label: "Categories", icon: FolderTree, adminOnly: true },
-  { href: "/admin", label: "Admin", icon: Shield, adminOnly: true },
+  { href: "/admin", label: "Add Employee", icon: UserPlus, adminOnly: true },
 ];
 
 export function AppNav() {
