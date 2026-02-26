@@ -226,7 +226,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Use ONLY when user asks what changed, evolved, or differs WITHIN the same document over time across versions. Also use when user asks 'is it same in all versions?' or 'did this change between versions?'",
+          description: "Use when user asks what changed, evolved, or differs WITHIN the same document across versions. If user does not specify versions or says 'compare all versions', 'show all changes', or 'full history' → set compare_all to true to compare every consecutive version pair. Otherwise provide version1 and version2.",
           parameters: {
             type: "object",
             properties: {
@@ -236,14 +236,18 @@ export class LegalComplianceAgent {
               },
               version1: {
                 type: "string",
-                description: "First version (supports 'latest', 'previous', or version numbers like '2.4')"
+                description: "First version (supports 'latest', 'previous', or version numbers like '2.4'). Omit when compare_all is true."
               },
               version2: {
                 type: "string",
-                description: "Second version (supports 'latest', 'previous', or version numbers)"
+                description: "Second version. Omit when compare_all is true."
+              },
+              compare_all: {
+                type: "boolean",
+                description: "If true, compare all available versions (consecutive pairs). Use when user says 'compare all versions', 'show all changes', 'full history', or does not specify two versions."
               }
             },
-            required: ["document_name", "version1", "version2"]
+            required: ["document_name"]
           }
         }
       },
@@ -390,8 +394,16 @@ export class LegalComplianceAgent {
           return searchResult;
 
         case "compare_document_versions":
+          if (args.compare_all) {
+            const allResult = await this.versionService.compareAllVersions(args.document_name, adminId);
+            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
+            if (allResult.success) {
+              return allResult;
+            }
+            throw new Error(allResult.error || 'Compare all versions failed');
+          }
           const versionResult = await this.versionService.processComparison(
-            `compare ${args.document_name} version ${args.version1} and ${args.version2}`
+            `compare ${args.document_name} version ${args.version1 ?? 'latest'} and ${args.version2 ?? 'previous'}`
           );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
@@ -588,7 +600,22 @@ Be specific about business/compliance impact.`;
           citations: result.citations
         };
 
-      case "compare_document_versions":
+      case "compare_document_versions": {
+        if (result.all_versions && result.comparisons?.length) {
+          const lines = [`Document: ${result.document_name} (all version pairs)\n`];
+          const allCitations: any[] = [];
+          for (const { label, comparison } of result.comparisons) {
+            const stats = comparison.statistics || {};
+            lines.push(`${label}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change. ${comparison.summary ?? ''}`);
+            if (comparison.document_name) {
+              allCitations.push(...this.extractVersionCitations(comparison));
+            }
+          }
+          return {
+            text: `Version Comparison (all versions):\n${lines.join('\n')}`,
+            citations: allCitations
+          };
+        }
         return {
           text: `Version Comparison Results:
 Document: ${result.document_name}
@@ -598,6 +625,7 @@ Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
 Summary: ${result.summary}`,
           citations: this.extractVersionCitations(result)
         };
+      }
 
       case "detect_policy_conflicts": {
         const comparedLine = result.documents_resolved && result.documents_resolved.length >= 2

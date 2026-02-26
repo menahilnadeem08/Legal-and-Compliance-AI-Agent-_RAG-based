@@ -3,6 +3,7 @@ import { LegalComplianceAgent } from '../services/legalComplianceAgent';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { getAdminIdForUser } from '../utils/adminIdUtils';
 import { AuthenticatedRequest } from '../types';
+import * as conversationService from '../services/conversationService';
 import logger from '../utils/logger';
 
 const agent = new LegalComplianceAgent();
@@ -36,9 +37,10 @@ export const agentQuery = asyncHandler(async (req: AuthenticatedRequest, res: Re
  */
 export const agentQueryStream = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { query, conversationHistory } = req.body as {
+    const { query, conversationHistory, conversationId } = req.body as {
       query: string;
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      conversationId?: number | string;
     };
 
     if (!query) {
@@ -50,11 +52,26 @@ export const agentQueryStream = async (req: AuthenticatedRequest, res: Response)
       return res.status(500).json({ success: false, message: 'User role not properly configured' });
     }
 
-    const history = Array.isArray(conversationHistory)
-      ? conversationHistory.slice(-10).filter(
-          (m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
-        )
-      : undefined;
+    let history: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
+    if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+      history = conversationHistory.slice(-10).filter(
+        (m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+      );
+    }
+    if ((!history || history.length === 0) && conversationId != null && req.user?.id != null) {
+      const convId = typeof conversationId === 'string' ? parseInt(conversationId, 10) : conversationId;
+      if (!isNaN(convId)) {
+        try {
+          const messages = await conversationService.getRecentMessages(convId, req.user.id, 10);
+          history = messages.map((m) => ({
+            role: (m.role === 'user' || m.role === 'assistant' ? m.role : 'user') as 'user' | 'assistant',
+            content: typeof m.content === 'string' ? m.content : '',
+          }));
+        } catch {
+          // ignore; history stays empty
+        }
+      }
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');

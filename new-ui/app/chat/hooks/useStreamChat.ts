@@ -114,7 +114,7 @@ export function useStreamChat(options: UseStreamChatOptions): UseStreamChatResul
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ query, conversationHistory: history }),
+          body: JSON.stringify({ query, conversationHistory: history, conversationId: convId }),
           signal: abortRef.current.signal,
         });
 
