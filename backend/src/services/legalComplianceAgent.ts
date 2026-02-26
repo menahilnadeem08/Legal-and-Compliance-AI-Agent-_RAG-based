@@ -226,7 +226,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Use when user asks what changed, evolved, or differs WITHIN the same document across versions. If user does not specify versions or says 'compare all versions', 'show all changes', or 'full history' → set compare_all to true to compare every consecutive version pair. Otherwise provide version1 and version2.",
+          description: "Use when user asks what changed, evolved, or differs WITHIN the same document across versions. Also use when user asks how a policy evolved, what changed over time, show me the history, policy timeline, or full evolution of a document. If user does not specify versions or says 'compare all versions', 'show all changes', or 'full history' → set compare_all to true to compare every consecutive version pair. Otherwise provide version1 and version2.",
           parameters: {
             type: "object",
             properties: {
@@ -299,31 +299,6 @@ export class LegalComplianceAgent {
               document_name: {
                 type: "string",
                 description: "Name of the document (supports fuzzy matching)"
-              }
-            },
-            required: ["document_name"]
-          }
-        }
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "track_policy_changes",
-          description: "Use when user asks for a full evolution timeline of ONE document across all versions (e.g. 'how has this policy evolved', 'show me the history', 'timeline of changes'). Do NOT use for comparing exactly two versions (use compare_document_versions) or for conflicts between documents (use detect_policy_conflicts).",
-          parameters: {
-            type: "object",
-            properties: {
-              document_name: {
-                type: "string",
-                description: "Name of the document to track"
-              },
-              from_version: {
-                type: "string",
-                description: "Starting version (optional, defaults to earliest)"
-              },
-              to_version: {
-                type: "string",
-                description: "Ending version (optional, defaults to latest)"
               }
             },
             required: ["document_name"]
@@ -468,99 +443,6 @@ export class LegalComplianceAgent {
             versions: versions
           };
 
-        case "track_policy_changes":
-          // Find actual document name
-          const actualDocName = await this.documentService.findDocumentByName(args.document_name, adminId);
-          if (!actualDocName) {
-            throw new Error(`Document "${args.document_name}" not found`);
-          }
-
-          // Get full version history with metadata
-          const versionHistory = await this.documentService.getDocumentVersionHistory(actualDocName, adminId);
-          let versionsList = [...versionHistory.versions].sort(
-            (a: any, b: any) => new Date(a.upload_date).getTime() - new Date(b.upload_date).getTime()
-          );
-
-          // Filter by from_version/to_version if provided
-          if (args.from_version) {
-            const fromIdx = versionsList.findIndex((v: any) => v.version === args.from_version);
-            if (fromIdx === -1) throw new Error(`Version "${args.from_version}" not found`);
-            versionsList = versionsList.slice(fromIdx);
-          }
-          if (args.to_version) {
-            const toIdx = versionsList.findIndex((v: any) => v.version === args.to_version);
-            if (toIdx === -1) throw new Error(`Version "${args.to_version}" not found`);
-            versionsList = versionsList.slice(0, toIdx + 1);
-          }
-
-          // Build timeline by comparing consecutive versions
-          const timeline: any[] = [];
-          for (let i = 0; i < versionsList.length - 1; i++) {
-            const v1 = versionsList[i];
-            const v2 = versionsList[i + 1];
-
-            const comparison = await this.documentService.compareVersionsDetailed(actualDocName, v1.version, v2.version, adminId);
-
-            // Determine severity based on change statistics
-            let severity = 'low';
-            if (comparison.statistics.change_percentage > 30) severity = 'high';
-            else if (comparison.statistics.change_percentage > 10) severity = 'medium';
-
-            timeline.push({
-              from: v1.version,
-              to: v2.version,
-              date: new Date(v2.upload_date).toISOString().split('T')[0],
-              summary: comparison.summary,
-              changes_added: comparison.statistics.chunks_added,
-              changes_removed: comparison.statistics.chunks_removed,
-              changes_modified: comparison.statistics.chunks_modified,
-              change_percentage: comparison.statistics.change_percentage,
-              severity: severity,
-              impact_analysis: comparison.impact_analysis,
-              key_changes: comparison.changes
-                .filter((c: any) => c.change_type !== 'unchanged')
-                .slice(0, 5)
-                .map((c: any) => ({
-                  type: c.change_type,
-                  section: c.section_name || 'N/A',
-                  page: c.page_number
-                }))
-            });
-          }
-
-          // Generate overall evolution summary
-          if (timeline.length > 0) {
-            const timelineSummary = timeline
-              .map(t => `v${t.from} → v${t.to} (${t.date}): ${t.changes_added} added, ${t.changes_removed} removed, ${t.changes_modified} modified (${t.change_percentage.toFixed(0)}% change)`)
-              .join('\n');
-
-            const overallSummaryPrompt = `You are a legal compliance expert. Summarize the evolution of "${actualDocName}" across versions:
-
-${timelineSummary}
-
-Provide a concise executive summary (2-3 bullet points) highlighting:
-1. Major shifts and trends in the policy
-2. Key milestones in its evolution
-3. Overall direction of policy changes
-
-Be specific about business/compliance impact.`;
-
-            const overallResponse = await llm.invoke(overallSummaryPrompt);
-            const overallSummary = overallResponse.content.toString();
-
-            const result = {
-              document_name: actualDocName,
-              timeline,
-              overall_summary: overallSummary,
-              total_versions_tracked: versionsList.length
-            };
-
-            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
-            return result;
-          } else {
-            throw new Error('Only one version exists; no changes to track');
-          }
-
         case "find_related_documents":
           const relatedDocs = await this.documentService.findRelatedDocuments(
             args.document_name,
@@ -674,18 +556,6 @@ ${result.conflicts.map((c: any, i: number) =>
         return {
           text: `Versions of ${result.document_name}:\n${result.versions.join(', ')}`,
           citations: this.extractVersionListCitations(result)
-        };
-
-      case "track_policy_changes":
-        const timelineText = result.timeline
-          .map((t: any) => `v${t.from} → v${t.to} (${t.date}) [${t.severity}]: +${t.changes_added} -${t.changes_removed} ~${t.changes_modified}\n${t.summary}`)
-          .join('\n\n');
-        return {
-          text: `Policy Evolution Timeline for ${result.document_name}:\n\n${timelineText}\n\nOverall Evolution:\n${result.overall_summary}`,
-          citations: this.extractVersionCitations({  // Reuse version citation extractor
-            document_name: result.document_name,
-            changes: result.timeline.flatMap((t: any) => t.key_changes || [])
-          })
         };
 
       case "find_related_documents":
@@ -863,10 +733,9 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 
 Tool Selection Guidelines:
 - Use search_documents for general questions about document content or answering FROM documents
-- Use compare_document_versions when asked about version differences or changes WITHIN the same document
+- Use compare_document_versions when asked about version differences or changes WITHIN the same document; for how has this evolved, show me the history, policy timeline → use compare_document_versions with compare_all=true
 - Use detect_policy_conflicts when asked if documents conflict or contradict
 - Use list_available_documents when user asks what documents exist
-- Use track_policy_changes when user asks "what changed", "how has this evolved", "show me the history", "what was updated", "differences across versions", or "policy timeline"
 - Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
 - Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents", or "what topics are not covered"
 - Call multiple tools if needed for comprehensive, well-sourced answers

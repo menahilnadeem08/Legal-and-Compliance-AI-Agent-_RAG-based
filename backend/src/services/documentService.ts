@@ -208,49 +208,6 @@ export class DocumentService {
   }
 
   /**
-   * Get all versions of a document by name, with latest marked
-   */
-  async getDocumentVersionHistory(documentName: string, adminId?: number): Promise<DocumentVersionHistory> {
-    let query = `SELECT d.id, d.filename, d.category, d.version, d.upload_date, d.is_active,
-              COUNT(c.id) as chunk_count
-       FROM documents d
-       LEFT JOIN chunks c ON d.id = c.document_id
-       WHERE d.filename = $1`;
-    
-    if (adminId) {
-      query += ` AND d.admin_id = $2`;
-    }
-    
-    query += ` GROUP BY d.id
-       ORDER BY d.upload_date DESC`;
-    
-    const params = adminId ? [documentName, adminId] : [documentName];
-    const result = await pool.query(query, params);
-
-    if (result.rows.length === 0) {
-      throw new Error(`Document "${documentName}" not found`);
-    }
-
-    const versions = result.rows as DocumentVersion[];
-    const latest = versions.find(v => v.is_active);
-
-    // Generate deprecation warnings
-    const deprecation_warnings: string[] = [];
-    versions.slice(1).forEach((version, idx) => {
-      deprecation_warnings.push(
-        `Version ${version.version} (uploaded ${new Date(version.upload_date).toLocaleDateString()}) is outdated. Latest version is ${latest?.version}.`
-      );
-    });
-
-    return {
-      document_name: documentName,
-      versions,
-      latest: latest!,
-      deprecation_warnings
-    };
-  }
-
-  /**
    * Get latest version of a specific document
    */
   async getLatestDocumentVersion(documentName: string, adminId?: number): Promise<DocumentVersion> {
