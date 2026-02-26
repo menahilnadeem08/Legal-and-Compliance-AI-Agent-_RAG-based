@@ -69,7 +69,10 @@ export class LegalComplianceAgent {
    * Extract citations from version comparison results
    */
   private extractVersionCitations(comparison: any): any[] {
-    if (!comparison.changes || comparison.changes.length === 0) {
+    if (!comparison?.changes || comparison.changes.length === 0) {
+      return [];
+    }
+    if (!comparison.version1 || !comparison.version2) {
       return [];
     }
 
@@ -226,28 +229,28 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Use when user asks what changed, evolved, or differs WITHIN the same document across versions. Also use when user asks how a policy evolved, what changed over time, show me the history, policy timeline, or full evolution of a document. If user does not specify versions or says 'compare all versions', 'show all changes', or 'full history' → set compare_all to true to compare every consecutive version pair. Otherwise provide version1 and version2.",
+          description: "Use when user asks what changed, evolved, or differs WITHIN the same document over time. Works by CATEGORY — all versions of the same logical document are grouped by category. User may say category name OR document name — pass whatever they said as input, system resolves automatically. If user does not specify versions → set compare_all=true. Triggers: 'what changed in X', 'any updates in X', 'show history of X', 'compare versions of X', 'what is different in X', 'has X changed', 'what was updated in X', 'evolution of X', 'latest changes in X'.",
           parameters: {
             type: "object",
             properties: {
-              document_name: {
+              input: {
                 type: "string",
-                description: "Name of the document (supports fuzzy matching)"
+                description: "The document or category the user is referring to. Can be a category name, document name, or any informal reference like 'NOC', 'constitution', 'hr rules'. System resolves automatically."
               },
               version1: {
                 type: "string",
-                description: "First version (supports 'latest', 'previous', or version numbers like '2.4'). Omit when compare_all is true."
+                description: "Optional. First version number, or 'latest', 'previous'. Omit if comparing all versions."
               },
               version2: {
                 type: "string",
-                description: "Second version. Omit when compare_all is true."
+                description: "Optional. Second version number. Omit if comparing all versions."
               },
               compare_all: {
                 type: "boolean",
-                description: "If true, compare all available versions (consecutive pairs). Use when user says 'compare all versions', 'show all changes', 'full history', or does not specify two versions."
+                description: "Set true when user does not specify versions or asks for full history. Default to true when versions not specified."
               }
             },
-            required: ["document_name"]
+            required: ["input"]
           }
         }
       },
@@ -386,23 +389,30 @@ export class LegalComplianceAgent {
           return searchResult;
         }
 
-        case "compare_document_versions":
-          if (args.compare_all) {
-            const allResult = await this.versionService.compareAllVersions(args.document_name, adminId);
+        case "compare_document_versions": {
+          const input = args.input;
+          const compare_all = args.compare_all !== false; // Default to true
+          
+          if (compare_all) {
+            const allResult = await this.versionService.compareAllVersions(input, adminId);
             logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
-            if (allResult.success) {
-              return allResult;
+            if ('error' in allResult) {
+              throw new Error(allResult.error || 'Compare all versions failed');
             }
-            throw new Error(allResult.error || 'Compare all versions failed');
+            return allResult;
           }
+          
+          // Compare specific two versions
           const versionResult = await this.versionService.processComparison(
-            `compare ${args.document_name} version ${args.version1 ?? 'latest'} and ${args.version2 ?? 'previous'}`
+            `compare ${input} version ${args.version1 ?? 'latest'} and ${args.version2 ?? 'previous'}`,
+            adminId
           );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
             return versionResult.comparison;
           }
           throw new Error(versionResult.error || 'Version comparison failed');
+        }
 
         case "detect_policy_conflicts":
           const query = args.topic
@@ -501,19 +511,32 @@ export class LegalComplianceAgent {
         };
 
       case "compare_document_versions": {
-        if (result.all_versions && result.comparisons?.length) {
-          const lines = [`Document: ${result.document_name} (all version pairs)\n`];
+        // compareAllVersions returns { category, comparisons: [{ from_version, to_version, changes }] } with no version1/version2 at top level
+        const isCompareAll = Array.isArray(result.comparisons) && result.comparisons.length > 0 && !result.version1;
+        if (isCompareAll) {
+          const docName = result.document_name ?? result.category ?? 'Document';
+          const lines = [`Document: ${docName} (all version pairs)\n`];
           const allCitations: any[] = [];
-          for (const { label, comparison } of result.comparisons) {
+          for (const item of result.comparisons) {
+            const comparison = item.changes ?? item;
+            const label = item.from_version != null && item.to_version != null
+              ? `v${item.from_version} → v${item.to_version}`
+              : 'Versions';
             const stats = comparison.statistics || {};
             lines.push(`${label}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change. ${comparison.summary ?? ''}`);
-            if (comparison.document_name) {
+            if (comparison.document_name || comparison.version1) {
               allCitations.push(...this.extractVersionCitations(comparison));
             }
           }
           return {
             text: `Version Comparison (all versions):\n${lines.join('\n')}`,
             citations: allCitations
+          };
+        }
+        if (!result.version1 || !result.version2) {
+          return {
+            text: result.message ?? result.error ?? 'Version comparison could not be completed.',
+            citations: []
           };
         }
         return {
@@ -733,16 +756,18 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 
 Tool Selection Guidelines:
 - Use search_documents for general questions about document content or answering FROM documents
-- Use compare_document_versions when asked about version differences or changes WITHIN the same document; for how has this evolved, show me the history, policy timeline → use compare_document_versions with compare_all=true
-- Use detect_policy_conflicts when asked if documents conflict or contradict
+- USE compare_document_versions for ANY of these: "what changed in [anything]?", "what are the changes in [anything]?", "any updates in [anything]?", "has [anything] changed?", "show history of [anything]", "compare versions of [anything]", "what is different in [anything]?", "what was updated in [anything]?", "latest changes in [anything]?", "evolution of [anything]", "what is new in [anything]?", "is it same in all versions?", or user mentions a document/category name + change/update/history/version/difference word → ALWAYS use compare_document_versions; do NOT ask the user for versions if they don't specify them
+- IMPORTANT for compare_document_versions: Works WITHIN a category (all versions of same logical document) — pass whatever the user said as input, system resolves automatically → do NOT try to figure out if it's a category vs filename yourself → default compare_all=true unless user specifies exact versions
+- Use detect_policy_conflicts ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories — do NOT use for version comparisons within the same document
 - Use list_available_documents when user asks what documents exist
 - Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
 - Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents", or "what topics are not covered"
 - Call multiple tools if needed for comprehensive, well-sourced answers
 
 Tool Disambiguation:
-- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document. Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
+- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document (by category). Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
 - find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
+- detect_policy_conflicts vs compare_document_versions: Use detect_policy_conflicts for comparing DIFFERENT documents/policies for contradictions ACROSS categories. Use compare_document_versions for comparing VERSIONS of the SAME logical document (same category).
 
 FIRST MESSAGE / NO GREETING REQUIRED:
 - Answer the user's question immediately. Do NOT require or wait for a greeting first.

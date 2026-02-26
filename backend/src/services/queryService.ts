@@ -555,10 +555,22 @@ Answer (be specific and cite sources):`;
     if (this.isVersionComparisonQuery(query)) {
       logger.info('Potential version comparison detected, attempting intelligent parsing');
 
-      const result = await this.versionComparisonService.processComparison(query);
+      // processComparison requires adminId, so only attempt if available
+      if (!adminId) {
+        logger.warn('Version comparison query but no adminId provided, falling back to regular search');
+      } else {
+        const result = await this.versionComparisonService.processComparison(query, adminId);
 
-      if (result.success) {
-        const comparison = result.comparison;
+        if (result.success) {
+          const comparison = result.comparison;
+          if (!comparison?.version1 || !comparison?.version2) {
+            logger.warn('Version comparison succeeded but missing version1/version2', { comparisonKeys: comparison ? Object.keys(comparison) : [] });
+            return {
+              answer: 'Version comparison could not be completed (missing version data). Please try specifying versions explicitly, e.g. "compare constitution of pakistan version latest and previous".',
+              citations: [],
+              confidence: 0
+            };
+          }
 
         const answer = `# Version Comparison: ${comparison.document_name}
 
@@ -600,6 +612,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
       } else if (result.error) {
         // If it looked like a comparison but failed, fall through to regular RAG
         logger.warn('Version comparison parsing failed, falling back to RAG', { error: result.error });
+      }
       }
     }
 
