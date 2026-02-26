@@ -8,7 +8,6 @@ import {
   LogOut,
   FileText,
   MessageSquare,
-  Settings,
   Gavel,
   Moon,
   Sun,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken, getAuthUser, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,6 +26,8 @@ export default function DashboardPage() {
     email: string;
   } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [documentCount, setDocumentCount] = useState<number>(0);
+  const [conversationCount, setConversationCount] = useState<number>(0);
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -39,6 +41,23 @@ export default function DashboardPage() {
     });
     setAuthChecked(true);
   }, [router]);
+
+  useEffect(() => {
+    if (!authChecked || !getAuthToken()) return;
+    (async () => {
+      const [docRes, convRes] = await Promise.all([
+        api.get<{ documents?: unknown[] }>("/documents"),
+        api.get<{ conversations?: unknown[]; total?: number }>("/conversations"),
+      ]);
+      if (docRes.success && docRes.data?.documents) {
+        setDocumentCount(docRes.data.documents.length);
+      }
+      if (convRes.success) {
+        const count = convRes.data?.total ?? convRes.data?.conversations?.length ?? 0;
+        setConversationCount(count);
+      }
+    })();
+  }, [authChecked]);
 
   const handleLogout = () => {
     clearAuth();
@@ -112,7 +131,7 @@ export default function DashboardPage() {
             >
               <FileText className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Documents</p>
-              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">0</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{documentCount}</p>
               <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">View library →</p>
             </Link>
             <Link
@@ -121,7 +140,7 @@ export default function DashboardPage() {
             >
               <MessageSquare className="w-8 h-8 text-indigo-600 dark:text-indigo-400 mb-3" />
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Queries</p>
-              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">0</p>
+              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{conversationCount}</p>
               <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">Open Chat →</p>
             </Link>
             {isAdminUser() && (
@@ -137,13 +156,12 @@ export default function DashboardPage() {
             )}
             <Link
               href="/profile"
-              className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/10 rounded-lg p-6 border border-emerald-200 dark:border-emerald-800 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors block"
+              className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 rounded-lg p-6 border border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors block"
             >
-              <Settings className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mb-3" />
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Settings</p>
-              <p className="text-emerald-600 dark:text-emerald-400 hover:underline text-sm font-medium mt-1">
-                Profile
-              </p>
+              <User className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Profile</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">Account</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">View profile →</p>
             </Link>
           </div>
 
