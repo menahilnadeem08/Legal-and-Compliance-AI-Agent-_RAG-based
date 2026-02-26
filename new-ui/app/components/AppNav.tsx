@@ -65,7 +65,7 @@ export function AppNav() {
             <span className="font-bold text-lg">Legal RAG</span>
           </Link>
 
-          <div className="hidden md:flex items-center justify-center gap-1 flex-1">
+          <div className="hidden md:flex items-center gap-1">
             {showLinks.map(({ href, label, icon: Icon }) => {
               const isActive =
                 pathname === href ||
@@ -113,7 +113,7 @@ export function AppNav() {
             <button
               type="button"
               onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm font-medium"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
               aria-label="Log out"
             >
               <LogOut className="w-4 h-4" />
