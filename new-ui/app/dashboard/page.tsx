@@ -8,15 +8,17 @@ import {
   LogOut,
   FileText,
   MessageSquare,
-  Settings,
   Gavel,
   Moon,
   Sun,
   User,
   Upload,
+  FolderOpen,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken, getAuthUser, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { api } from "@/app/utils/apiClient";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,6 +28,10 @@ export default function DashboardPage() {
     email: string;
   } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [documentCount, setDocumentCount] = useState<number>(0);
+  const [conversationCount, setConversationCount] = useState<number>(0);
+  const [categoryCount, setCategoryCount] = useState<number>(0);
+  const [employeeCount, setEmployeeCount] = useState<number>(0);
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -39,6 +45,36 @@ export default function DashboardPage() {
     });
     setAuthChecked(true);
   }, [router]);
+
+  useEffect(() => {
+    if (!authChecked || !getAuthToken()) return;
+    (async () => {
+      const [docRes, convRes] = await Promise.all([
+        api.get<{ documents?: unknown[] }>("/documents"),
+        api.get<{ conversations?: unknown[]; total?: number }>("/conversations"),
+      ]);
+      if (docRes.success && docRes.data?.documents) {
+        setDocumentCount(docRes.data.documents.length);
+      }
+      if (convRes.success) {
+        const count = convRes.data?.total ?? convRes.data?.conversations?.length ?? 0;
+        setConversationCount(count);
+      }
+      if (isAdminUser()) {
+        const [catRes, empRes] = await Promise.all([
+          api.get<{ categories?: unknown[] }>("/categories"),
+          api.get<{ employees?: unknown[] }>("/admin/employees"),
+        ]);
+        if (catRes.success && catRes.data?.categories) {
+          setCategoryCount(catRes.data.categories.length);
+        }
+        if (empRes.success && empRes.data) {
+          const list = empRes.data.employees;
+          setEmployeeCount(Array.isArray(list) ? list.length : 0);
+        }
+      }
+    })();
+  }, [authChecked]);
 
   const handleLogout = () => {
     clearAuth();
@@ -105,29 +141,29 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          <div className="flex flex-wrap justify-center gap-6 mb-12">
             <Link
               href="/documents"
-              className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 rounded-lg p-6 border border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors block"
+              className="w-full sm:w-[280px] bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 rounded-lg p-6 border border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors block"
             >
               <FileText className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Documents</p>
-              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">0</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{documentCount}</p>
               <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">View library →</p>
             </Link>
             <Link
               href="/chat"
-              className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-900/10 rounded-lg p-6 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors block"
+              className="w-full sm:w-[280px] bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-900/10 rounded-lg p-6 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors block"
             >
               <MessageSquare className="w-8 h-8 text-indigo-600 dark:text-indigo-400 mb-3" />
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Queries</p>
-              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">0</p>
+              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{conversationCount}</p>
               <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">Open Chat →</p>
             </Link>
             {isAdminUser() && (
               <Link
                 href="/upload"
-                className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-900/10 rounded-lg p-6 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 transition-colors block"
+                className="w-full sm:w-[280px] bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-900/10 rounded-lg p-6 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 transition-colors block"
               >
                 <Upload className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-3" />
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Documents upload</p>
@@ -135,15 +171,36 @@ export default function DashboardPage() {
                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Add document →</p>
               </Link>
             )}
+            {isAdminUser() && (
+              <Link
+                href="/categories"
+                className="w-full sm:w-[280px] bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/10 rounded-lg p-6 border border-emerald-200 dark:border-emerald-800 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors block"
+              >
+                <FolderOpen className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mb-3" />
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Categories</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{categoryCount}</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">View all →</p>
+              </Link>
+            )}
+            {isAdminUser() && (
+              <Link
+                href="/admin"
+                className="w-full sm:w-[280px] bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/10 rounded-lg p-6 border border-amber-200 dark:border-amber-800 hover:border-amber-400 dark:hover:border-amber-600 transition-colors block"
+              >
+                <Users className="w-8 h-8 text-amber-600 dark:text-amber-400 mb-3" />
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Add Employee</p>
+                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{employeeCount}</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Manage team →</p>
+              </Link>
+            )}
             <Link
               href="/profile"
-              className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/10 rounded-lg p-6 border border-emerald-200 dark:border-emerald-800 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors block"
+              className="w-full sm:w-[280px] bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 rounded-lg p-6 border border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors block"
             >
-              <Settings className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mb-3" />
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Settings</p>
-              <p className="text-emerald-600 dark:text-emerald-400 hover:underline text-sm font-medium mt-1">
-                Profile
-              </p>
+              <User className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Profile</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">Account</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">View profile →</p>
             </Link>
           </div>
 
