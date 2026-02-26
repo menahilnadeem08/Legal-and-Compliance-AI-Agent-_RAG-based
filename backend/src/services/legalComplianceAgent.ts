@@ -382,16 +382,34 @@ export class LegalComplianceAgent {
   /**
    * Execute tool functions
    */
-  private async executeTool(toolName: string, args: any, adminId: number): Promise<any> {
+  private async executeTool(
+    toolName: string,
+    args: any,
+    adminId: number,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<any> {
     const startTime = Date.now();
     logger.info('Tool start', { toolName, argsPreview: JSON.stringify(args).substring(0, 60) });
 
     try {
       switch (toolName) {
-        case "search_documents":
-          const searchResult = await this.queryService.processQuery(args.query, adminId);
+        case "search_documents": {
+          let sessionContext: string | undefined;
+          if (conversationHistory && conversationHistory.length >= 2) {
+            const lastExchange = conversationHistory.slice(-4);
+            sessionContext = 'Previous exchange(s):\n' + lastExchange
+              .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+              .join('\n');
+          }
+          const searchResult = await this.queryService.processQuery(
+            args.query,
+            adminId,
+            false,
+            sessionContext
+          );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return searchResult;
+        }
 
         case "compare_document_versions":
           if (args.compare_all) {
@@ -949,7 +967,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
           log('TOOL_START', friendlyNames[toolName] || `Running ${toolName}...`);
 
           // Execute in parallel
-          const result = await this.executeTool(toolName, toolArgs, adminId);
+          const result = await this.executeTool(toolName, toolArgs, adminId, recentHistory);
           const formattedResult = this.formatToolResult(toolName, result, toolCall.id);
 
           log('TOOL_DONE', `Completed ${toolName.replace(/_/g, ' ')}`);

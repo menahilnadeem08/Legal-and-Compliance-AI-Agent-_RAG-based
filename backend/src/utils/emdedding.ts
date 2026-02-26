@@ -30,13 +30,19 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 /**
  * Generate embeddings for multiple texts via batched API calls.
  * Uses embedDocuments() so each request sends up to BATCH_SIZE texts (fewer round-trips than one-by-one).
+ * Sanitizes inputs: OpenAI rejects arrays containing empty strings, so we replace empty/invalid with a space.
  */
 export async function generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   try {
     const results: number[][] = [];
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      const batch = texts.slice(i, i + BATCH_SIZE);
+      const rawBatch = texts.slice(i, i + BATCH_SIZE);
+      const batch = rawBatch.map((t) => {
+        if (typeof t !== 'string') return ' ';
+        const s = t.trim();
+        return s.length > 0 ? s : ' ';
+      });
       const batchEmbeddings = await embeddings.embedDocuments(batch);
       batchEmbeddings.forEach((vec, idx) => validateEmbeddingDimension(vec, results.length + idx));
       results.push(...batchEmbeddings);
