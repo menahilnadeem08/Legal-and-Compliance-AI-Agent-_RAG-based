@@ -938,28 +938,29 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
     logger.info('Total citations collected', { total: uniqueCitations.length, relevant: finalCitations.length });
 
-    // Calculate actual confidence from tool results
+    // Do not calculate confidence for greeting / no-tool responses
     let aggregatedConfidence = 0;
-
-    // Extract confidence from tool results
-    for (const [toolCallId, metadata] of this.toolResultsMetadata.entries()) {
-      if (metadata.result?.confidence !== undefined) {
-        aggregatedConfidence = Math.max(aggregatedConfidence, metadata.result.confidence);
+    if (toolCalls.length > 0) {
+      // Extract confidence from tool results
+      for (const [toolCallId, metadata] of this.toolResultsMetadata.entries()) {
+        if (metadata.result?.confidence !== undefined) {
+          aggregatedConfidence = Math.max(aggregatedConfidence, metadata.result.confidence);
+        }
       }
-    }
 
-    // If no confidence found, estimate based on evidence
-    if (aggregatedConfidence === 0) {
-      if (finalCitations.length >= 5) {
-        aggregatedConfidence = 90;  // Many citations = high confidence
-      } else if (finalCitations.length >= 3) {
-        aggregatedConfidence = 80;  // Several citations = good confidence
-      } else if (finalCitations.length >= 1) {
-        aggregatedConfidence = 70;  // Some citations = medium confidence
-      } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
-        aggregatedConfidence = 95; // Listing operations are always accurate
-      } else {
-        aggregatedConfidence = 60; // Default moderate confidence
+      // If no confidence found, estimate based on evidence
+      if (aggregatedConfidence === 0) {
+        if (finalCitations.length >= 5) {
+          aggregatedConfidence = 90;  // Many citations = high confidence
+        } else if (finalCitations.length >= 3) {
+          aggregatedConfidence = 80;  // Several citations = good confidence
+        } else if (finalCitations.length >= 1) {
+          aggregatedConfidence = 70;  // Some citations = medium confidence
+        } else if (toolCalls.includes('list_available_documents') || toolCalls.includes('get_document_versions')) {
+          aggregatedConfidence = 95; // Listing operations are always accurate
+        } else {
+          aggregatedConfidence = 60; // Default moderate confidence
+        }
       }
     }
 
