@@ -582,14 +582,15 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   /**
    * Batch conflict detection across all documents
    */
-  async detectAllConflicts(topic?: string): Promise<ConflictAnalysisResult[]> {
-    // Get all latest documents
+  async detectAllConflicts(topic?: string, adminId?: number): Promise<ConflictAnalysisResult[]> {
+    // Get all latest documents for this admin (or all if adminId not provided)
     const docsResult = await pool.query(
-      `SELECT DISTINCT filename FROM documents WHERE is_active = true ORDER BY filename`
+      `SELECT DISTINCT filename FROM documents WHERE is_active = true AND (admin_id = $1 OR $1 IS NULL) ORDER BY filename`,
+      [adminId ?? null]
     );
 
-    const documents = docsResult.rows.map(r => r.filename);
-    
+    const documents = docsResult.rows.map((r: { filename: string }) => r.filename);
+
     if (documents.length < 2) {
       throw new Error('Need at least 2 documents for conflict detection');
     }
@@ -604,7 +605,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
           : `Check conflicts between ${documents[i]} and ${documents[j]}`;
 
         try {
-          const result = await this.detectConflicts(query);
+          const result = await this.detectConflicts(query, adminId);
           if (result.conflicts_found > 0) {
             results.push(result);
           }
@@ -614,6 +615,17 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
       }
     }
 
-    return results;
+    // Deduplicate by canonical pair key (A|B === B|A)
+    const seen = new Set<string>();
+    const deduplicated: ConflictAnalysisResult[] = [];
+    for (const result of results) {
+      const docs = result.documents_analyzed ?? [];
+      const key = docs.slice().sort().join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduplicated.push(result);
+    }
+
+    return deduplicated;
   }
 }
