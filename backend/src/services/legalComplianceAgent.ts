@@ -209,7 +209,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "search_documents",
-          description: "Search across legal documents using RAG (Retrieval-Augmented Generation). Use this for general questions about document content, policies, regulations, or compliance requirements.",
+          description: "Use for direct factual questions about document content, policies, rules, definitions. Do NOT use for greetings, version comparisons, or conflict checks.",
           parameters: {
             type: "object",
             properties: {
@@ -226,7 +226,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Compare two versions of the SAME document to identify changes, additions, deletions, and modifications. Use when user asks about version differences, updates, or changes between document versions.",
+          description: "Use ONLY when user asks what changed, evolved, or differs WITHIN the same document over time across versions. Also use when user asks 'is it same in all versions?' or 'did this change between versions?'",
           parameters: {
             type: "object",
             properties: {
@@ -251,7 +251,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "detect_policy_conflicts",
-          description: "Detect conflicts, contradictions, or inconsistencies between DIFFERENT documents. Use when user asks if policies conflict, contradict each other, or have inconsistencies.",
+          description: "Use ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories. Do NOT use for version comparisons within the same document.",
           parameters: {
             type: "object",
             properties: {
@@ -276,7 +276,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "list_available_documents",
-          description: "List all documents available in the system with their versions. Use when user wants to know what documents exist or explore available policies.",
+          description: "Use when user asks what documents exist, what is available, or what categories are present.",
           parameters: {
             type: "object",
             properties: {},
@@ -288,7 +288,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "get_document_versions",
-          description: "Get all available versions of a specific document. Use when user wants to see version history or available versions.",
+          description: "Use when user asks which versions exist, version history, or available version numbers for a specific document. Do NOT use to compare content between versions (use compare_document_versions for that).",
           parameters: {
             type: "object",
             properties: {
@@ -305,7 +305,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "track_policy_changes",
-          description: "Track how a policy or document has evolved across all versions over time. Returns a chronological timeline of changes, what was added/removed/modified in each version, severity of changes, and AI summary of the evolution. Use when user asks 'what changed', 'how has this policy evolved', 'show me the history'.",
+          description: "Use when user asks for a full evolution timeline of ONE document across all versions (e.g. 'how has this policy evolved', 'show me the history', 'timeline of changes'). Do NOT use for comparing exactly two versions (use compare_document_versions) or for conflicts between documents (use detect_policy_conflicts).",
           parameters: {
             type: "object",
             properties: {
@@ -330,7 +330,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "find_related_documents",
-          description: "Find documents that are semantically related to a given document using embedding similarity. Returns ranked list of related documents with relationship scores and shared topics. Use when user asks 'what documents relate to X', 'find similar policies', 'what else covers this topic'.",
+          description: "Use when user asks which documents relate to a given document, find similar policies, or what else covers a topic (discovery of related documents). Do NOT use to answer a factual question from document content (use search_documents) or to find conflicts (use detect_policy_conflicts).",
           parameters: {
             type: "object",
             properties: {
@@ -351,7 +351,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "gap_analysis",
-          description: "Compare two documents and identify topics, obligations, or clauses that exist in one but are missing in the other. Returns coverage scores and recommendations. Use when user asks 'what is missing from', 'does this contract cover', 'compare coverage between', 'what does Doc A have that Doc B doesnt'.",
+          description: "Use ONLY when user asks what is missing, not covered, or absent compared to another document. Do NOT use for version-by-version changes within one document.",
           parameters: {
             type: "object",
             properties: {
@@ -597,18 +597,22 @@ Summary: ${result.summary}`,
           citations: this.extractVersionCitations(result)
         };
 
-      case "detect_policy_conflicts":
+      case "detect_policy_conflicts": {
+        const comparedLine = result.documents_resolved && result.documents_resolved.length >= 2
+          ? `I compared ${result.documents_resolved.map((r: { userTerm: string; actualFilename: string }) => `${r.actualFilename} (matched from '${r.userTerm}')`).join(' and ')}.\n\n`
+          : '';
         return {
-          text: `Conflict Detection Results:
+          text: `${comparedLine}Conflict Detection Results:
 Documents: ${result.documents_analyzed.join(', ')}
 Conflicts Found: ${result.conflicts_found}
 Summary: ${result.summary}
-${result.conflicts.map((c: any, i: number) => 
-  `\nConflict ${i+1} [${c.severity}]: ${c.description}`
-).join('')}`,
+${result.conflicts.map((c: any, i: number) =>
+          `\nConflict ${i+1} [${c.severity}]: ${c.description}`
+        ).join('')}`,
           conflicts: result.conflicts,
           citations: this.extractConflictCitations(result)
         };
+      }
 
       case "list_available_documents":
         return {
@@ -704,13 +708,15 @@ ${result.llm_summary}`,
   }
 
   /**
-   * Main agent processing with function calling and UNIVERSAL citation tracking
+   * Main agent processing with function calling and UNIVERSAL citation tracking.
+   * Optional conversationHistory: when provided, last 3-5 exchanges are included so follow-up questions have context.
    */
   async processQuery(
     userQuery: string,
     adminId: number,
     maxIterations: number = 5,
-    onLog?: (stage: string, message: string) => void
+    onLog?: (stage: string, message: string) => void,
+    conversationHistoryParam?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<AgentResult> {
     const log = onLog || (() => {});
     logger.info('Legal Compliance Agent starting', { query: userQuery });
@@ -724,10 +730,7 @@ ${result.llm_summary}`,
     const allCitations: any[] = [];
     const allConflicts: any[] = [];
 
-    let conversationHistory: any[] = [
-      {
-        role: "system",
-        content: `You are a Legal & Compliance AI Agent with access to specialized tools.
+    const systemContent = `You are a Legal & Compliance AI Agent with access to specialized tools.
 
 ⚠️ CRITICAL: HALLUCINATION PREVENTION RULES
 - NEVER generate, assume, or infer information not in retrieved documents
@@ -742,6 +745,16 @@ Your role:
 - Compare document versions to track changes
 - Detect conflicts between different policies
 - Provide accurate, well-cited compliance information
+
+TYPING MISTAKES & INFORMAL INPUT:
+- Interpret user intent even when there are minor typos or informal wording (e.g. "undestrand" → understand, "documant" → document, "constituion" → constitution)
+- When calling tools, use the intended meaning; for search_documents you may pass a corrected or normalized query if the typo is clear
+- Document names are resolved automatically (fuzzy matching), so "ajk rules" or "constitute" can match actual document titles
+
+UNDERSTAND INSTRUCTIONS:
+- Follow the user's instructions and intent. If they ask for a comparison, list, search, or conflict check, do that
+- Prioritize what the user asked for and choose the right tool(s) for their goal
+- If the user gives a multi-part request, address all parts or clarify
 
 CONSISTENCY & ACCURACY REQUIREMENTS:
 - For similar queries, provide consistent answers using the same sources
@@ -765,6 +778,22 @@ Tool Disambiguation:
 - gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document. Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
 - find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
 
+GREETING HANDLING:
+- If user says hi, hello, hey, how are you, good morning, good day, greetings, hiya, or any similar greeting or casual opener
+- Do NOT call any tool
+- Respond warmly and ask how you can help with legal compliance
+
+FOLLOW-UP CONTEXT:
+- Always read conversation history before deciding which tool to call
+- "is it same in all versions?" → extract topic from previous message → call compare_document_versions
+- "any conflicts?" → extract topic from previous message → call detect_policy_conflicts
+- "what changed?" → extract document from previous message → call compare_document_versions
+- Never ask user to repeat information already in conversation history
+
+AMBIGUITY HANDLING:
+- If query is too vague and context does not help → ask one specific clarifying question
+- Never call a tool with guessed arguments when not confident
+
 Response Requirements:
 - Be precise and cite sources when available [Document Name, Section/Page]
 - Reference specific document sections, pages, or clauses
@@ -776,12 +805,17 @@ Response Requirements:
 - If tool finds NO relevant information, say so clearly rather than fabricating
 
 Example GOOD answer: "According to the Remote Work Policy v1.0, Section 3.2, the probation period is 90 days."
-Example BAD answer: "I believe the probation period is probably around 90 days." ❌`
-      },
-      {
-        role: "user",
-        content: userQuery
-      }
+Example BAD answer: "I believe the probation period is probably around 90 days." ❌`;
+
+    const maxHistoryMessages = 10;
+    const recentHistory = conversationHistoryParam?.length
+      ? conversationHistoryParam.slice(-maxHistoryMessages)
+      : [];
+
+    let conversationHistory: any[] = [
+      { role: "system", content: systemContent },
+      ...recentHistory.map(msg => ({ role: msg.role, content: msg.content })),
+      { role: "user", content: userQuery }
     ];
 
     let iteration = 0;

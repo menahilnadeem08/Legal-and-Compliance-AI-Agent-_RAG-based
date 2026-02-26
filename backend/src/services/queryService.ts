@@ -182,18 +182,22 @@ export class QueryService {
   }
 
   /**
-   * ENHANCED: Detect if query is about version comparison
-   * Checks for keywords like: compare, difference, changes, versions, etc.
+   * Detect if query is about version comparison.
+   * Requires BOTH a comparison word AND a version indicator to avoid false positives.
    */
   private isVersionComparisonQuery(query: string): boolean {
-    const keywords = [
-      'compare', 'comparison', 'difference', 'diff', 'changes', 'changed',
-      'version', 'versions', 'between', 'vs', 'versus', 'update', 'updated',
-      'latest', 'previous', 'old', 'new'
-    ];
-
     const lowerQuery = query.toLowerCase();
-    return keywords.some(keyword => lowerQuery.includes(keyword));
+    const comparisonWords = [
+      'compare', 'comparison', 'difference', 'diff', 'changes', 'changed',
+      'vs', 'versus'
+    ];
+    const versionIndicators = [
+      'v1', 'v2', 'version 1', 'version 2', 'version 1.', 'version 2.',
+      'first version', 'second version', 'versions 1', 'versions 2'
+    ];
+    const hasComparison = comparisonWords.some(w => lowerQuery.includes(w));
+    const hasVersionIndicator = versionIndicators.some(v => lowerQuery.includes(v));
+    return hasComparison && hasVersionIndicator;
   }
 
   private compress(chunks: RetrievedChunk[], maxTokens: number = 4000): RetrievedChunk[] {
