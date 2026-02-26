@@ -47,11 +47,22 @@ async function apiClient<T = unknown>(
           : undefined
       : undefined;
 
-  const response = await fetch(`${getApiBase()}${endpoint}`, {
-    method,
-    headers: requestHeaders,
-    ...(fetchBody !== undefined && { body: fetchBody }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}${endpoint}`, {
+      method,
+      headers: requestHeaders,
+      ...(fetchBody !== undefined && { body: fetchBody }),
+    });
+  } catch (err) {
+    const message =
+      err instanceof TypeError && (err.message === "Failed to fetch" || err.message?.includes("fetch"))
+        ? "Could not reach the server. Make sure the backend is running and NEXT_PUBLIC_API_URL is correct."
+        : err instanceof Error
+          ? err.message
+          : "Network error.";
+    return { success: false, message };
+  }
 
   if (response.status === 401) {
     clearAuth();
@@ -66,8 +77,15 @@ async function apiClient<T = unknown>(
     };
   }
 
-  const data: ApiResponse<T> = await response.json();
-  return data;
+  try {
+    const data: ApiResponse<T> = await response.json();
+    return data;
+  } catch {
+    return {
+      success: false,
+      message: response.ok ? "Invalid response from server." : `Request failed (${response.status}).`,
+    };
+  }
 }
 
 export const api = {

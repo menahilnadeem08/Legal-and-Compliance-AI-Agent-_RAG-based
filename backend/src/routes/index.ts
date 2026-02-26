@@ -4,7 +4,8 @@ import {
   listDocuments, 
   deleteDocument,
   activateDocument,
-  deactivateDocument
+  deactivateDocument,
+  downloadDocument
 } from '../controllers/documentController';
 import { agentQuery, agentQueryStream } from '../controllers/agentController';
 import { clearSessionController } from '../controllers/sessionController';
@@ -140,6 +141,8 @@ router.delete('/documents/:id',
   handleValidationErrors,
   asyncHandler(deleteDocument as any)
 );
+
+router.get('/documents/:id/download', validate(documentIdParamSchema), asyncHandler(downloadDocument as any));
 
 // ===== Conversation Routes =====
 router.post('/conversations', createConversation as any);

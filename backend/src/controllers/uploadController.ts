@@ -1,13 +1,17 @@
 import { Request, Response } from 'express';
 import { UploadService } from '../services/uploadService';
+import { DocumentService } from '../services/documentService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { AuthenticatedRequest } from '../types';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { isSupabaseConfigured } from '../config/supabase';
+import { uploadDocumentToSupabase } from '../services/supabaseStorage';
 
 const upload = multer({ dest: 'uploads/' });
 const uploadService = new UploadService();
+const documentService = new DocumentService();
 
 export const uploadMiddleware = upload.single('file');
 
@@ -65,8 +69,21 @@ export const uploadController = asyncHandler(async (req: AuthenticatedRequest, r
     req.user.id // Pass admin_id
   );
 
-  // Clean up uploaded file on success (image may already be removed by OCR service)
-  if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+  if (isSupabaseConfigured) {
+    try {
+      const supabaseFilepath = await uploadDocumentToSupabase(
+        req.file.path,
+        req.user.id,
+        documentId,
+        req.file.originalname
+      );
+      await documentService.updateDocumentFilepath(documentId, req.user.id, supabaseFilepath);
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    } catch (err) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      throw err;
+    }
+  }
 
   // Standardized response
   return res.status(200).json({

@@ -219,6 +219,45 @@ function ChatContent() {
     }
   }
 
+  async function handleCitationClick(citation: Citation) {
+    try {
+      const response = await api.get<{ documents?: { id: string; filename?: string }[] }>("/documents");
+      if (!response.success || !response.data?.documents?.length) {
+        toast.error("Could not load documents");
+        return;
+      }
+      const docs = response.data.documents;
+      const name = (citation.document_name ?? "").trim();
+      const id = citation.document_id ?? null;
+      const doc = id
+        ? docs.find((d) => d.id === id)
+        : docs.find((d) => (d.filename ?? "") === name || (name && (d.filename ?? "").toLowerCase() === name.toLowerCase()));
+      if (!doc) {
+        toast.error("Document not found");
+        return;
+      }
+      const token = getAuthTokenForApi();
+      if (!token) {
+        toast.error("Please sign in to open the document");
+        return;
+      }
+      toast.info("Opening document in new tab...");
+      const res = await fetch(`${getApiBase()}/documents/${doc.id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        toast.error("Could not load document");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch {
+      toast.error("Could not open document");
+    }
+  }
+
   async function deleteConversation(convId: string) {
     try {
       const response = await api.delete(`/conversations/${convId}`);
@@ -356,6 +395,7 @@ function ChatContent() {
                         message={msg}
                         isPending={msg.id === pendingMessageId}
                         streamingContent={msg.id === pendingMessageId ? streamingContent : undefined}
+                        onCitationClick={handleCitationClick}
                       />
                     </div>
                   ))}

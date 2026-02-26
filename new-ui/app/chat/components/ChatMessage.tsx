@@ -15,6 +15,8 @@ export interface ChatMessageProps {
   /** When this message is the pending one, pass live streamed content to show in same bubble */
   isPending?: boolean;
   streamingContent?: string;
+  /** Called when user clicks a citation to open the cited document */
+  onCitationClick?: (citation: Citation) => void;
 }
 
 /** Single message bubble: user, or assistant (thinking | streaming | complete | error) */
@@ -22,6 +24,7 @@ export function ChatMessage({
   message,
   isPending = false,
   streamingContent = "",
+  onCitationClick,
 }: ChatMessageProps) {
   if (message.role === "user") {
     return (
@@ -98,36 +101,39 @@ export function ChatMessage({
             </p>
             <ul className="space-y-2">
               {assistant.citations.map((c: Citation, i: number) => (
-                <li
-                  key={i}
-                  className="flex gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-2.5 text-xs"
-                >
-                  <span className="font-bold text-blue-600 dark:text-blue-400 flex-shrink-0">
-                    [{i + 1}]
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-800 dark:text-slate-200">
-                      {c.document_name ?? "Document"}
-                    </p>
-                    {c.section != null && String(c.section) !== "" && (
-                      <p className="text-slate-500 dark:text-slate-400 mt-0.5">
-                        Section: {c.section}
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => onCitationClick?.(c)}
+                    className="w-full flex gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-2.5 text-xs text-left hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:border-blue-300 dark:hover:border-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+                  >
+                    <span className="font-bold text-blue-600 dark:text-blue-400 flex-shrink-0">
+                      [{i + 1}]
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-800 dark:text-slate-200">
+                        {c.document_name ?? "Document"}
                       </p>
-                    )}
-                    {c.content && (
-                      <p className="text-slate-500 dark:text-slate-400 mt-1 italic line-clamp-2">
-                        &quot;
-                        {typeof c.content === "string"
-                          ? c.content.length > 120
-                            ? c.content.substring(0, 120) + "…"
-                            : c.content
-                          : String(c.content).length > 120
-                            ? String(c.content).substring(0, 120) + "…"
-                            : String(c.content)}
-                        &quot;
-                      </p>
-                    )}
-                  </div>
+                      {c.section != null && String(c.section) !== "" && (
+                        <p className="text-slate-500 dark:text-slate-400 mt-0.5">
+                          Section: {c.section}
+                        </p>
+                      )}
+                      {c.content && (
+                        <p className="text-slate-500 dark:text-slate-400 mt-1 italic line-clamp-2">
+                          &quot;
+                          {typeof c.content === "string"
+                            ? c.content.length > 120
+                              ? c.content.substring(0, 120) + "…"
+                              : c.content
+                            : String(c.content).length > 120
+                              ? String(c.content).substring(0, 120) + "…"
+                              : String(c.content)}
+                          &quot;
+                        </p>
+                      )}
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>

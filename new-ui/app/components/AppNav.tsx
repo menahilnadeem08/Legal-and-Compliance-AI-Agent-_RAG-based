@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -32,6 +33,11 @@ const navLinks: { href: string; label: string; icon: typeof LayoutDashboard; adm
 export function AppNav() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setIsAdmin(isAdminUser());
+  }, []);
 
   async function handleLogout() {
     const refresh = getRefreshToken();
@@ -45,7 +51,7 @@ export function AppNav() {
     if (typeof window !== "undefined") window.location.href = "/auth/login";
   }
 
-  const showLinks = navLinks.filter((link) => !link.adminOnly || isAdminUser());
+  const showLinks = navLinks.filter((link) => !link.adminOnly || isAdmin === true);
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
