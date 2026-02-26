@@ -293,7 +293,7 @@ export class QueryService {
     const opts = {
       vectorWeight: 0.6,
       keywordWeight: 0.4,
-      minVectorSimilarity: 0.1,
+      minVectorSimilarity: 0.2,
       vectorTopK: Math.ceil(topK * 1.5),
       keywordTopK: Math.ceil(topK * 1.5),
       useBM25: true,
@@ -364,8 +364,14 @@ export class QueryService {
       }
     }
 
-    // 4. Sort by similarity descending, slice to topK, return to MMR reranker
-    const results = Array.from(combined.values())
+    // Post-merge filter: keep only chunks with sufficient vector or keyword relevance
+    const filtered = Array.from(combined.values()).filter(
+      (chunk) =>
+        (chunk.vector_score ?? 0) >= 0.2 || (chunk.keyword_score ?? 0) >= 0.3
+    );
+
+    // Sort by similarity descending, slice to topK, return to MMR reranker
+    const results = filtered
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, topK);
 
