@@ -6,6 +6,7 @@ import { getAuthToken, getAuthTokenForApi, getApiBase, getAuthUser, clearAuth, g
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 import { AppNav } from "@/app/components/AppNav";
+import { PageTour } from "@/app/components/PageTour";
 import { ConversationList, type ConversationItem } from "./components/ConversationList";
 import { ChatMessage } from "./components/ChatMessage";
 import { useStreamChat } from "./hooks/useStreamChat";
@@ -344,8 +345,39 @@ function ChatContent() {
     return null;
   }
 
+  const chatTourSteps = [
+    {
+      element: "[data-tour='chat-new-conversation']",
+      popover: {
+        title: "New Conversation",
+        description: "Start a new chat anytime. Each conversation is saved and you can return to it later.",
+        side: "right" as const,
+        align: "start" as const,
+      },
+    },
+    {
+      element: "[data-tour='chat-suggestions']",
+      popover: {
+        title: "Quick Suggestions",
+        description: "Click a suggestion to use it as your query, or type your own question about legal or compliance topics.",
+        side: "top" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='chat-input']",
+      popover: {
+        title: "Ask Anything",
+        description: "Type your question here and press Enter or click Send. Answers are grounded in your organization's approved documents.",
+        side: "top" as const,
+        align: "center" as const,
+      },
+    },
+  ];
+
   return (
     <div className="flex flex-col h-screen min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <PageTour pageId="chat" steps={chatTourSteps} runOnMount />
       <AppNav />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <ConversationList
@@ -375,7 +407,7 @@ function ChatContent() {
                   <p className="text-slate-600 dark:text-slate-400 max-w-md mb-8">
                     Your answers are grounded in your organization&apos;s approved legal and compliance documentation.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl w-full">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl w-full" data-tour="chat-suggestions">
                     {SUGGESTIONS.map(({ label, icon: Icon }) => (
                       <button
                         key={label}
@@ -406,7 +438,7 @@ function ChatContent() {
               )}
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <form onSubmit={handleSubmit} className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0" data-tour="chat-input">
               <div className="flex gap-2 max-w-3xl mx-auto">
                 <input
                   type="text"

@@ -64,7 +64,7 @@ export function ConversationList({
       </Link>
 
       {/* New Conversation */}
-      <div className="p-3 border-b border-slate-200 dark:border-slate-800">
+      <div className="p-3 border-b border-slate-200 dark:border-slate-800" data-tour="chat-new-conversation">
         <button
           type="button"
           onClick={onNewConversation}

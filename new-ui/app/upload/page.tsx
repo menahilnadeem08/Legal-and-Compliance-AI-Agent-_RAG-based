@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
+import { PageTour } from "@/app/components/PageTour";
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { getAuthToken, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
@@ -112,8 +113,39 @@ export default function UploadPage() {
     }
   };
 
+  const uploadTourSteps = [
+    {
+      element: "[data-tour='upload-file']",
+      popover: {
+        title: "Select File",
+        description: "Choose a PDF or DOCX file from your computer. Supported formats ensure compatibility with the RAG system.",
+        side: "bottom",
+        align: "center",
+      },
+    },
+    {
+      element: "[data-tour='upload-category']",
+      popover: {
+        title: "Choose Category",
+        description: "Select a category for your document. Categories help organize and filter documents. Manage categories in the Categories page.",
+        side: "bottom",
+        align: "center",
+      },
+    },
+    {
+      element: "[data-tour='upload-submit']",
+      popover: {
+        title: "Upload",
+        description: "Click to upload your document. A new version will be created if one already exists in this category.",
+        side: "top",
+        align: "center",
+      },
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <PageTour pageId="upload" steps={uploadTourSteps} runOnMount />
       <AppNav />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 className="text-3xl font-bold mb-2">Upload Document</h1>
@@ -128,7 +160,7 @@ export default function UploadPage() {
                 File
               </label>
               <div className="flex items-center gap-3">
-                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-800/50 cursor-pointer transition-colors">
+                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-800/50 cursor-pointer transition-colors" data-tour="upload-file">
                   <Upload className="w-6 h-6 text-slate-500 dark:text-slate-400" />
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {file ? file.name : "Choose PDF or DOCX"}
@@ -147,7 +179,7 @@ export default function UploadPage() {
               </p>
             </div>
 
-            <div>
+            <div data-tour="upload-category">
               <label htmlFor="document-category" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Category
               </label>
@@ -204,6 +236,7 @@ export default function UploadPage() {
           <button
             type="submit"
             disabled={submitState === "loading"}
+            data-tour="upload-submit"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium"
           >
             {submitState === "loading" ? (
