@@ -80,7 +80,7 @@ export default function HomePage() {
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
             <button
-              onClick={() => router.push("/auth/register")}
+              onClick={() => router.push("/auth/admin/signup")}
               className="px-8 py-4 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg font-semibold border border-slate-300 dark:border-slate-600"
             >
               Admin Access
@@ -253,7 +253,7 @@ export default function HomePage() {
                 Employee Login
               </button>
               <button
-                onClick={() => router.push("/auth/register")}
+                onClick={() => router.push("/auth/admin/signup")}
                 className="px-8 py-4 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg font-semibold border border-slate-300 dark:border-slate-600"
               >
                 Join as Admin
