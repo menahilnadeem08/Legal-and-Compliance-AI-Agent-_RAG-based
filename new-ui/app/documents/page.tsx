@@ -217,8 +217,8 @@ export default function DocumentsPage() {
       popover: {
         title: "Filter Documents",
         description: "View all documents, only the latest versions, or outdated ones. Latest versions are used by the AI for answers.",
-        side: "bottom",
-        align: "start",
+        side: "bottom" as const,
+        align: "start" as const,
       },
     },
     {
@@ -226,8 +226,8 @@ export default function DocumentsPage() {
       popover: {
         title: "Document Library",
         description: "Browse and manage your uploaded documents. Click to preview, or use the actions to activate/deactivate or delete.",
-        side: "top",
-        align: "center",
+        side: "top" as const,
+        align: "center" as const,
       },
     },
   ];

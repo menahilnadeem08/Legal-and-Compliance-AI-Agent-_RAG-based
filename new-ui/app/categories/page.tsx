@@ -163,8 +163,8 @@ export default function CategoriesPage() {
       popover: {
         title: "Add Custom Category",
         description: "Create custom categories for your documents. They will appear in the upload dropdown alongside default categories.",
-        side: "bottom",
-        align: "start",
+        side: "bottom" as const,
+        align: "start" as const,
       },
     },
     {
@@ -172,8 +172,8 @@ export default function CategoriesPage() {
       popover: {
         title: "Default Categories",
         description: "These are system categories. Toggle Hide to remove them from your upload list. They remain available to restore.",
-        side: "bottom",
-        align: "center",
+        side: "bottom" as const,
+        align: "center" as const,
       },
     },
     {
@@ -181,8 +181,8 @@ export default function CategoriesPage() {
       popover: {
         title: "Your Custom Categories",
         description: "Categories you've added. You can delete custom categories that are no longer needed.",
-        side: "top",
-        align: "center",
+        side: "top" as const,
+        align: "center" as const,
       },
     },
   ];

@@ -119,8 +119,8 @@ export default function UploadPage() {
       popover: {
         title: "Select File",
         description: "Choose a PDF or DOCX file from your computer. Supported formats ensure compatibility with the RAG system.",
-        side: "bottom",
-        align: "center",
+        side: "bottom" as const,
+        align: "center" as const,
       },
     },
     {
@@ -128,8 +128,8 @@ export default function UploadPage() {
       popover: {
         title: "Choose Category",
         description: "Select a category for your document. Categories help organize and filter documents. Manage categories in the Categories page.",
-        side: "bottom",
-        align: "center",
+        side: "bottom" as const,
+        align: "center" as const,
       },
     },
     {
@@ -137,8 +137,8 @@ export default function UploadPage() {
       popover: {
         title: "Upload",
         description: "Click to upload your document. A new version will be created if one already exists in this category.",
-        side: "top",
-        align: "center",
+        side: "top" as const,
+        align: "center" as const,
       },
     },
   ];

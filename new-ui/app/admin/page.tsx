@@ -127,8 +127,8 @@ export default function AddEmployee() {
       popover: {
         title: "Add Employee",
         description: "Click to create a new employee account. You'll set their username, email, and name. A temporary password will be sent to their email.",
-        side: "bottom",
-        align: "end",
+        side: "bottom" as const,
+        align: "end" as const,
       },
     },
     {
@@ -136,8 +136,8 @@ export default function AddEmployee() {
       popover: {
         title: "Employees List",
         description: "View all employees, their status, and manage them. Activate or deactivate accounts as needed.",
-        side: "top",
-        align: "center",
+        side: "top" as const,
+        align: "center" as const,
       },
     },
   ];
