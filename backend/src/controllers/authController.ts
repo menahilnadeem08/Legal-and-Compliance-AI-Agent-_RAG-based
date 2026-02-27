@@ -37,21 +37,29 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
 
     const loginIdentifier = username || email;
 
-    const userResult = await pool.query(
+    // First check if user exists at all (regardless of active status)
+    const userCheckResult = await pool.query(
       `SELECT id, username, email, name, role, password_hash, is_active, auth_provider, admin_id,
               is_temp_password, temp_password_expires_at, force_password_change, email_verified
        FROM users
-       WHERE ${username ? 'username' : 'email'} = $1 AND auth_provider = 'local' AND is_active = true AND role = 'employee'`,
+       WHERE ${username ? 'username' : 'email'} = $1 AND auth_provider = 'local' AND role = 'employee'`,
       [loginIdentifier]
     );
 
-    if (userResult.rows.length === 0) {
-      logger.warn('Login failed - invalid credentials (user not found)', { identifier: loginIdentifier, ip: ipAddress });
+    if (userCheckResult.rows.length === 0) {
+      logger.warn('Login failed - user not found', { identifier: loginIdentifier, ip: ipAddress });
       res.status(401).json({ success: false, message: 'Invalid credentials' });
       return;
     }
 
-    const user = userResult.rows[0];
+    const user = userCheckResult.rows[0];
+
+    // Check if account is deactivated
+    if (!user.is_active) {
+      logger.warn('Login failed - account deactivated', { identifier: loginIdentifier, ip: ipAddress });
+      res.status(403).json({ success: false, message: 'Your account has been deactivated by your admin. Please contact support.' });
+      return;
+    }
 
     if (!user.email_verified) {
       logger.warn('Login failed - email not verified', { username: user.username, ip: ipAddress });
@@ -444,7 +452,7 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
     }
 
     const userResult = await pool.query(
-      `SELECT id, email, name, username, role, auth_provider FROM users WHERE LOWER(email) = $1 AND is_active = true`,
+      `SELECT id, email, name, username, role, auth_provider, is_active FROM users WHERE LOWER(email) = $1`,
       [normalizedEmail]
     );
 
@@ -458,6 +466,12 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
     }
 
     const user = userResult.rows[0];
+
+    // Check if account is deactivated
+    if (!user.is_active) {
+      res.status(403).json({ success: false, message: 'Your account has been deactivated by your admin. Please contact support.' });
+      return;
+    }
 
     // Validate that the user's role matches the requested role
     if (user.role !== role) {

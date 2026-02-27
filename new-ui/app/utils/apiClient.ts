@@ -52,7 +52,8 @@ async function refreshAccessToken(): Promise<boolean> {
     const data = await response.json();
     if (data.success && data.data?.accessToken) {
       const user = getAuthUser();
-      setAuth(data.data.accessToken, user || {}, data.data.refreshToken, "manual");
+      const provider = getAuthProvider() ?? "manual";
+      setAuth(data.data.accessToken, user || {}, data.data.refreshToken, provider);
       return true;
     }
     return false;
@@ -112,11 +113,12 @@ async function apiClient<T = unknown>(
   }
 
   if (response.status === 401) {
-    const authProvider = getAuthProvider();
-    const isManualAuth = authProvider === "manual";
+    // Try to refresh token for both manual and Google auth when we have a refresh token.
+    // Access tokens expire after ~15 min; NextAuth refetch may not run in time before an API call.
+    const hasRefreshToken = !!getRefreshToken();
+    const shouldTryRefresh = hasRefreshToken && !skipAuthRedirectOn401;
 
-    // For manual auth (employee/admin login), try to refresh token
-    if (isManualAuth && !skipAuthRedirectOn401) {
+    if (shouldTryRefresh) {
       if (!isRefreshing) {
         isRefreshing = true;
         const refreshSuccess = await refreshAccessToken();
@@ -144,7 +146,7 @@ async function apiClient<T = unknown>(
       }
     }
 
-    // For Google OAuth or if refresh failed, redirect to login
+    // If refresh failed or we have no refresh token, redirect to login
     if (!skipAuthRedirectOn401) {
       const role = getAuthUser()?.role;
       clearAuth();

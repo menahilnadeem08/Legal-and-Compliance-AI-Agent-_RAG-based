@@ -29,7 +29,7 @@ function AuthSync() {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider refetchInterval={13 * 60}>
+    <SessionProvider refetchInterval={14 * 60}>
       <AuthSync />
       {children}
     </SessionProvider>
