@@ -61,7 +61,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      setAuth(data.accessToken, data.user, data.refreshToken);
+      setAuth(data.accessToken, data.user, data.refreshToken, "manual");
       toast.success("Signed in successfully.");
       router.push("/admin");
     } catch (err) {

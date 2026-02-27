@@ -6,6 +6,7 @@ import { EmailService } from '../utils/emailService';
 import { TempPasswordService } from '../services/tempPasswordService';
 import { AuditLogRepository } from '../repositories/auditLogRepository';
 import logger from '../utils/logger';
+import { clearUserCache } from '../middleware/rbacMiddleware';
 
 // Create employee user (admin only)
 // Generates temporary password and sends welcome email
@@ -192,6 +193,9 @@ export async function deactivateEmployee(req: AuthenticatedRequest, res: Respons
       res.status(404).json({ success: false, message: 'Employee not found' });
       return;
     }
+
+    // Immediately clear cache so next request hits DB and gets is_active=false
+    clearUserCache(id as string);
 
     logger.warn('Employee deactivated', { id, deletedBy: req.user.id });
     res.status(200).json({ success: true, message: 'Employee deactivated successfully', data: { employee: result.rows[0] } });

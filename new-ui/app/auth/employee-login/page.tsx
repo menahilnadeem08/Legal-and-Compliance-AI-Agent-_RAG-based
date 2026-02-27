@@ -63,7 +63,7 @@ export default function EmployeeLoginPage() {
         return;
       }
 
-      setAuth(data.accessToken, data.user, data.refreshToken);
+      setAuth(data.accessToken, data.user, data.refreshToken, "manual");
 
       if (data.forcePasswordChange) {
         if (typeof window !== "undefined") {

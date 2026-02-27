@@ -43,7 +43,14 @@ export function getAuthUser(): { id?: number; username?: string; email?: string;
   }
 }
 
-export function setAuth(accessToken: string, user: object, refreshToken?: string): void {
+export function getAuthProvider(): 'google' | 'manual' | null {
+  if (typeof window === "undefined") return null;
+  const provider = localStorage.getItem("authProvider");
+  if (provider === "google" || provider === "manual") return provider;
+  return null;
+}
+
+export function setAuth(accessToken: string, user: object, refreshToken?: string, authProvider: 'google' | 'manual' = 'manual'): void {
   if (typeof window === "undefined") return;
   if (!accessToken) {
     console.error('[AUTH] setAuth called with empty accessToken');
@@ -51,8 +58,9 @@ export function setAuth(accessToken: string, user: object, refreshToken?: string
   }
   localStorage.setItem("accessToken", accessToken);
   localStorage.setItem("authUser", JSON.stringify(user));
+  localStorage.setItem("authProvider", authProvider);
   if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
-  console.log('[AUTH] Token stored:', { role: (user as any)?.role, hasToken: true });
+  console.log('[AUTH] Token stored:', { role: (user as any)?.role, authProvider, hasToken: true });
 }
 
 export function clearAuth(): void {
@@ -60,6 +68,7 @@ export function clearAuth(): void {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("authUser");
+  localStorage.removeItem("authProvider");
 }
 
 export function isAuthenticated(): boolean {

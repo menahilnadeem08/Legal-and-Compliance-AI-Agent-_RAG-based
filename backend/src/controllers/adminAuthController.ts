@@ -157,6 +157,23 @@ export async function adminLogin(req: AuthenticatedRequest, res: Response): Prom
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
 
+    // Set httpOnly cookies for manual auth (token also in response for frontend transition)
+    const isSecure = process.env.NODE_ENV === 'production';
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api/auth/refresh',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+
     logger.info('Admin login success', { username: user.username, email: user.email });
     res.status(200).json({
       success: true,

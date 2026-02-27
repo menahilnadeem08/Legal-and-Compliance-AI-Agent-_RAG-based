@@ -94,6 +94,23 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
         const accessToken = generateAccessToken(tokenPayload);
         const refreshToken = await createSession(user.id);
 
+        // Set httpOnly cookies for manual auth (token also in response for frontend transition)
+        const isSecure = process.env.NODE_ENV === 'production';
+        res.cookie('accessToken', accessToken, {
+          httpOnly: true,
+          secure: isSecure,
+          sameSite: 'strict',
+          path: '/api',
+          maxAge: 15 * 60 * 1000, // 15 minutes
+        });
+        res.cookie('refreshToken', refreshToken, {
+          httpOnly: true,
+          secure: isSecure,
+          sameSite: 'strict',
+          path: '/api/auth/refresh',
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        });
+
         logger.info('Login success (temp password)', { username: user.username, role: user.role, ip: ipAddress });
         res.status(200).json({
           success: true,
@@ -117,6 +134,23 @@ export async function login(req: AuthenticatedRequest, res: Response): Promise<v
     const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = await createSession(user.id);
+
+    // Set httpOnly cookies for manual auth (token also in response for frontend transition)
+    const isSecure = process.env.NODE_ENV === 'production';
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api/auth/refresh',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
 
     logger.info('Login success', { username: user.username, role: user.role, ip: ipAddress });
     res.status(200).json({
@@ -205,6 +239,10 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
     if (refreshToken) {
       await revokeSession(refreshToken);
     }
+
+    // Clear httpOnly cookies
+    res.clearCookie('accessToken', { path: '/api' });
+    res.clearCookie('refreshToken', { path: '/api/auth/refresh' });
 
     res.status(200).json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
@@ -322,7 +360,13 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
  */
 export async function refresh(req: Request, res: Response): Promise<void> {
   try {
-    const { refreshToken } = req.body;
+    // Support reading refresh token from cookies OR request body (fallback for transition)
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+
+    if (!refreshToken) {
+      res.status(401).json({ success: false, message: 'No refresh token provided' });
+      return;
+    }
 
     const session = await validateRefreshToken(refreshToken);
     if (!session) {
@@ -356,6 +400,23 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     const tokenPayload = { id: user.id, username: user.username, email: user.email, role: user.role };
     const newAccessToken = generateAccessToken(tokenPayload);
     const newRefreshToken = await rotateRefreshToken(session.id);
+
+    // Set new httpOnly cookies
+    const isSecure = process.env.NODE_ENV === 'production';
+    res.cookie('accessToken', newAccessToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      path: '/api/auth/refresh',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
 
     res.status(200).json({ success: true, message: 'Token refreshed', data: { accessToken: newAccessToken, refreshToken: newRefreshToken } });
   } catch (error) {

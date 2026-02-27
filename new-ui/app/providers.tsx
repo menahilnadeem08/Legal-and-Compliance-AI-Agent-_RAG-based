@@ -20,7 +20,7 @@ function AuthSync() {
     if (!accessToken) return;
     const stored = localStorage.getItem("accessToken");
     if (stored !== accessToken) {
-      setAuth(accessToken, { ...session.user, role: "admin" }, refreshToken);
+      setAuth(accessToken, { ...session.user, role: "admin" }, refreshToken, "google");
     }
   }, [session]);
 

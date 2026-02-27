@@ -5,6 +5,35 @@ import { AuthenticatedRequest } from '../types';
 import logger from '../utils/logger';
 import { JWT_SECRET } from '../config/secrets';
 
+// Cache for user is_active status (60 second TTL per user)
+interface UserActiveCacheEntry {
+  is_active: boolean;
+  cachedAt: number;
+}
+
+const userActiveCache = new Map<string, UserActiveCacheEntry>();
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+function getCachedUserActive(userId: string): boolean | null {
+  const cached = userActiveCache.get(userId);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.is_active;
+  }
+  // Cache expired, remove it
+  if (cached) {
+    userActiveCache.delete(userId);
+  }
+  return null;
+}
+
+function setCachedUserActive(userId: string, is_active: boolean): void {
+  userActiveCache.set(userId, { is_active, cachedAt: Date.now() });
+}
+
+export function clearUserCache(userId: string | number): void {
+  userActiveCache.delete(String(userId));
+}
+
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -28,7 +57,15 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
 
     const user = userResult.rows[0];
 
-    if (!user.is_active) {
+    // Check is_active status with caching (immediate deactivation on cached is_active=false)
+    let is_active = getCachedUserActive(user.id);
+    if (is_active === null) {
+      // Cache miss or expired, use database value
+      is_active = user.is_active;
+      setCachedUserActive(user.id, is_active as boolean);
+    }
+
+    if (!is_active) {
       logger.warn('Login failed - account inactive', { username: user.username, ip: req.ip, url: req.url });
       return res.status(401).json({ success: false, message: 'Account has been deactivated' });
     }
@@ -37,7 +74,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       const tokenIssuedAt = decoded.iat;
       const revokedAtSeconds = Math.floor(new Date(user.sessions_revoked_at).getTime() / 1000);
       if (tokenIssuedAt < revokedAtSeconds) {
-        logger.warn('Token issued before session revocation', { url: req.url, ip: req.ip });
+        logger.warn('Token issued before session revocation', { url: req.ip, ip: req.ip });
         return res.status(401).json({ success: false, message: 'Session revoked. Please log in again.' });
       }
     }
