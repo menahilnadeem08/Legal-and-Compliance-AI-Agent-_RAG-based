@@ -56,7 +56,7 @@ export class LegalComplianceAgent {
         return this.extractConflictCitations(result);
 
       case "list_available_documents":
-        return this.extractDocumentListCitations(result);
+        return this.extractDocumentListCitations(result?.documents ?? result ?? []);
 
       case "get_document_versions":
         return this.extractVersionListCitations(result);
@@ -220,7 +220,7 @@ export class LegalComplianceAgent {
     const unresolved: string[] = [];
 
     // Fetch all documents and categories for this admin
-    const allDocs = await this.documentService.listDocuments(adminId);
+    const allDocs = (await this.documentService.listDocuments(adminId)).documents;
     
     for (const input of inputs) {
       try {
@@ -521,11 +521,11 @@ export class LegalComplianceAgent {
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return conflictResult;
 
-        case "list_available_documents":
-          const docs = await this.documentService.listDocuments(adminId);
+        case "list_available_documents": {
+          const listResult = await this.documentService.listDocuments(adminId);
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           // Group by document name
-          const grouped = docs.reduce((acc: any, doc: any) => {
+          const grouped = listResult.documents.reduce((acc: any, doc: any) => {
             const key = doc.filename;
             if (!acc[key]) {
               acc[key] = {
@@ -541,19 +541,22 @@ export class LegalComplianceAgent {
             }
             return acc;
           }, {});
-          return Object.values(grouped);
+          return { documents: Object.values(grouped), confidence: listResult.confidence };
+        }
 
-        case "get_document_versions":
-          const versions = await this.documentService.getDocumentVersions(args.document_name, adminId);
+        case "get_document_versions": {
+          const versionResult = await this.documentService.getDocumentVersions(args.document_name, adminId);
           const resolvedName = await this.documentService.findDocumentByName(args.document_name, adminId);
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: resolvedName || args.document_name,
-            versions: versions
+            versions: versionResult.versions,
+            confidence: versionResult.confidence
           };
+        }
 
-        case "find_related_documents":
-          const relatedDocs = await this.documentService.findRelatedDocuments(
+        case "find_related_documents": {
+          const relatedResult = await this.documentService.findRelatedDocuments(
             args.document_name,
             adminId,
             args.limit || 5
@@ -561,8 +564,10 @@ export class LegalComplianceAgent {
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: args.document_name,
-            related_documents: relatedDocs
+            related_documents: relatedResult.related_documents,
+            confidence: relatedResult.confidence
           };
+        }
 
         case "gap_analysis":
           const gapResult = await this.gapAnalysisService.analyzeGaps(
@@ -878,13 +883,15 @@ ${result.conflicts.map((c: any, i: number) =>
         };
       }
 
-      case "list_available_documents":
+      case "list_available_documents": {
+        const docList = result?.documents ?? result ?? [];
         return {
-          text: `Available Documents:\n${result.map((d: any) => 
+          text: `Available Documents:\n${docList.map((d: any) => 
             `- ${d.name} (${d.category || 'N/A'}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
           ).join('\n')}`,
-          citations: this.extractDocumentListCitations(result)
+          citations: this.extractDocumentListCitations(docList)
         };
+      }
 
       case "get_document_versions":
         return {
@@ -1317,7 +1324,16 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
     } else {
       // No tools called: do not calculate or show confidence for greeting replies
       const isGreetingReply = /^(hi|hello|hey|hi there|hello there|greetings)[\s!.,]|how can I (help|assist)|what can I (help|assist)|how may I (help|assist)|happy to help|here to help|assist you with/i.test(finalAnswer.trim().slice(0, 200));
-      aggregatedConfidence = isGreetingReply ? 0 : 95;
+      aggregatedConfidence = 0;  // No tools ran → 0 (greeting handled above)
+    }
+
+    // Apply confidence thresholds
+    if (aggregatedConfidence < 20 && aggregatedConfidence > 0) {
+      finalAnswer = 'Insufficient information in the knowledge base.';
+      aggregatedConfidence = 0;
+    }
+    if (aggregatedConfidence >= 20 && aggregatedConfidence < 50) {
+      finalAnswer += `\n\n⚠️ Low confidence (${aggregatedConfidence}%). Please verify with source documents.`;
     }
 
     // Do not show high confidence for error/fallback answers (e.g. retrieval issues, document not recognized)

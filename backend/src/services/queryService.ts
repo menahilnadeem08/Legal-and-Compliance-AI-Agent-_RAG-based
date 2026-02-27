@@ -607,7 +607,7 @@ ${comparison.impact_analysis.low_impact_changes.slice(0, 2).map((c: string) => `
         return {
           answer,
           citations: [],
-          confidence: 100
+          confidence: result.confidence ?? 0
         };
       } else if (result.error) {
         // If it looked like a comparison but failed, fall through to regular RAG

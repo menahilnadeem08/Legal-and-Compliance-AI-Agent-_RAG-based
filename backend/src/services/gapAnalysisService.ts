@@ -105,6 +105,18 @@ export class GapAnalysisService {
       commonTopics
     );
 
+    // Calculate confidence based on results (coverage scores are 0-100)
+    const avgCoverage = (coverageScoreA + coverageScoreB) / 200; // 0-1 range
+    const gapsFound = gapsInB.length + gapsInA.length;
+    let confidence: number;
+    const baseScore = avgCoverage * 100;
+    if (gapsFound > 0) {
+      confidence = Math.min(baseScore, 80);
+    } else {
+      confidence = Math.min(baseScore + 10, 90);
+    }
+    if (avgCoverage < 0.3) confidence = Math.min(confidence, 40);
+
     return {
       document_a: actualNameA,
       document_b: actualNameB,
@@ -114,7 +126,8 @@ export class GapAnalysisService {
       coverage_score_a: coverageScoreA,
       coverage_score_b: coverageScoreB,
       critical_gaps: criticalGapsCount,
-      llm_summary: llmSummary
+      llm_summary: llmSummary,
+      confidence
     };
   }
 
