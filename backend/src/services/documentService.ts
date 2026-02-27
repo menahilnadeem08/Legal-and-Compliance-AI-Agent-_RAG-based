@@ -166,7 +166,7 @@ export class DocumentService {
     query = `SELECT version FROM documents 
        WHERE filename = $1 AND version LIKE $2`;
     if (adminId) query += ' AND admin_id = $3';
-    query += ` ORDER BY version DESC LIMIT 1`;
+    query += ` ORDER BY CAST(version AS INTEGER) DESC LIMIT 1`;
     params = adminId ? [actualName, `${versionInput}%`, adminId] : [actualName, `${versionInput}%`];
     const partial = await pool.query(query, params);
     

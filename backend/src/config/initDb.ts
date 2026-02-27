@@ -191,6 +191,13 @@ export async function initializeAuthTables() {
       ADD COLUMN IF NOT EXISTS sessions_revoked_at TIMESTAMP
     `);
 
+    // Password reset OTP (for forgot-password flow)
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS reset_otp_hash VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS reset_otp_expires_at TIMESTAMP
+    `);
+
     // Create indexes for audit_logs
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id);

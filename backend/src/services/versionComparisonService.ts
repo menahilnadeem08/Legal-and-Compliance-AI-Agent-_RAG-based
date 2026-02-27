@@ -353,7 +353,7 @@ Return ONLY the JSON object or null, nothing else.`;
           SELECT DISTINCT version
           FROM documents
           WHERE category = $1 AND admin_id = $2 AND version IS NOT NULL
-          ORDER BY version ASC
+          ORDER BY CAST(version AS INTEGER) ASC
         `;
         const availableResult = await pool.query(availableVersionsQuery, [
           resolution.category,
@@ -447,7 +447,7 @@ Return ONLY the JSON object or null, nothing else.`;
         SELECT version
         FROM documents
         WHERE category = $1 AND admin_id = $2
-        ORDER BY version DESC
+        ORDER BY CAST(version AS INTEGER) DESC
         LIMIT 1
       `;
       const result = await pool.query(query, [category, adminId]);
@@ -461,7 +461,7 @@ Return ONLY the JSON object or null, nothing else.`;
         SELECT version
         FROM documents
         WHERE category = $1 AND admin_id = $2
-        ORDER BY version DESC
+        ORDER BY CAST(version AS INTEGER) DESC
         LIMIT 2 OFFSET 1
       `;
       const result = await pool.query(query, [category, adminId]);
@@ -747,24 +747,22 @@ Return ONLY the JSON object or null, nothing else.`;
         };
       }
 
-      // Step 2: Fetch ALL versions in that category, ordered by version ASC
+      // Step 2: Fetch ALL versions in that category, ordered by version ASC (numeric order)
       const versionsQuery = `
         SELECT id, filename, version, is_active, created_at
         FROM documents
-        WHERE category = $1 AND admin_id = $2
-        ORDER BY version ASC
+        WHERE category = $1 AND admin_id = $2 AND version IS NOT NULL
+        ORDER BY CAST(version AS INTEGER) ASC
       `;
       const versionsResult = await pool.query(versionsQuery, [
         resolution.category,
         adminId
       ]);
-      // Filter out any rows with null/undefined version and ensure version is a number
-      const versions: Array<{ id: string; filename: string; version: number; is_active: boolean; created_at: Date }> = versionsResult.rows
-        .filter((row: any) => row.version != null)
-        .map((row: any) => ({
-          ...row,
-          version: typeof row.version === 'string' ? parseInt(row.version, 10) : row.version
-        }));
+      // Convert version to number
+      const versions: Array<{ id: string; filename: string; version: number; is_active: boolean; created_at: Date }> = versionsResult.rows.map((row: any) => ({
+        ...row,
+        version: typeof row.version === 'string' ? parseInt(row.version, 10) : row.version
+      }));
 
       // Step 3: Handle single version case
       if (versions.length === 1) {
@@ -802,7 +800,8 @@ Return ONLY the JSON object or null, nothing else.`;
         date: new Date(v.created_at).toISOString().split('T')[0]
       }));
 
-      // Step 5: Compare consecutive pairs: v1→v2, v2→v3, ...
+      // Step 5: Compare consecutive version pairs: v1→v2, v2→v3, ...
+      // (versions already sorted by numeric order from database query)
       const comparisons: Array<{ from_version: number; to_version: number; changes: any }> = [];
 
       for (let i = 0; i < versions.length - 1; i++) {
@@ -820,7 +819,7 @@ Return ONLY the JSON object or null, nothing else.`;
         }
 
         try {
-          // Compare documents by ID (handles different filenames in same category)
+          // Compare documents by ID
           const comparison = await this.compareDocumentsByIds(
             v1.id,
             v1.filename,
@@ -842,7 +841,9 @@ Return ONLY the JSON object or null, nothing else.`;
           logger.error('Compare pair failed in compareAllVersions', {
             category: resolution.category,
             v1: v1.version,
+            v1Filename: v1.filename,
             v2: v2.version,
+            v2Filename: v2.filename,
             error: error?.message
           });
 

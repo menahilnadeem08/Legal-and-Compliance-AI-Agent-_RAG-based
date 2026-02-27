@@ -12,7 +12,7 @@ import {
   Trash2,
   Tag,
 } from "lucide-react";
-import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { toast } from "sonner";
 
@@ -30,7 +30,7 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
     if (!isAdminUser()) {

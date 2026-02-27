@@ -13,7 +13,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Sparkles, LogOut, LayoutDashboard, Settings, Bell } from "lucide-react";
 import { toast } from "sonner";
-import { getAuthToken, clearAuth } from "@/app/utils/auth";
+import { getAuthToken, clearAuth, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -24,14 +24,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setMounted(true);
     // Only redirect to login for protected routes; "/" is public (allow when pathname is "/" or not yet resolved)
     if (pathname != null && pathname !== "/" && !getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
     }
   }, [router, pathname]);
 
   const handleLogout = () => {
     clearAuth();
     toast.success("Signed out successfully");
-    router.push("/auth/login");
+    router.push(AUTH_LOGIN_REDIRECT);
   };
 
   if (!mounted) return null;

@@ -19,28 +19,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export interface Document {
-    id: string;
-    filename: string;
-    category: string;
-    version: string;
-    upload_date: Date;
-    is_active: boolean;
-    metadata?: Record<string, any>;
-  }
-  
-  export interface Chunk {
-    id: string;
-    document_id: string;
-    content: string;
-    embedding?: number[];
-    page_number?: number;
-    section_name?: string;
-    chunk_index: number;
-    metadata?: Record<string, any>;
-  }
-  
-  export interface QueryResult {
+export interface QueryResult {
     answer: string;
     citations: Citation[];
     confidence: number;

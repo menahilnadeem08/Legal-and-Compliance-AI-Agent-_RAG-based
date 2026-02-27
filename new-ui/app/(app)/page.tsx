@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { useTheme } from "@/app/theme-provider";
 import {
   Sparkles,
@@ -72,7 +73,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <button
-              onClick={() => router.push("/auth/login")}
+              onClick={() => router.push(AUTH_LOGIN_REDIRECT)}
               className="group px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center justify-center gap-2 text-white"
             >
               Start Exploring
@@ -246,7 +247,7 @@ export default function HomePage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => router.push("/auth/login")}
+                onClick={() => router.push(AUTH_LOGIN_REDIRECT)}
                 className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-white"
               >
                 Employee Login

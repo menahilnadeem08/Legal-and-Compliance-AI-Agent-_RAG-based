@@ -41,11 +41,17 @@ export default function AdminLoginPage() {
       const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
         "/auth/admin/login",
         { email: trimmedEmail, password },
-        { requiresAuth: false }
+        { requiresAuth: false, skipAuthRedirectOn401: true }
       );
 
       if (!response.success) {
-        setError(response.message ?? "Login failed");
+        const errorMsg = response.message ?? "Login failed";
+        console.error("Admin login failed:", { 
+          message: errorMsg, 
+          response: response,
+          email: trimmedEmail
+        });
+        setError(errorMsg);
         return;
       }
 
@@ -55,7 +61,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      setAuth(data.accessToken, data.user, data.refreshToken);
+      setAuth(data.accessToken, data.user, data.refreshToken, "manual");
       toast.success("Signed in successfully.");
       router.push("/admin");
     } catch (err) {
@@ -177,6 +183,15 @@ export default function AdminLoginPage() {
               disabled={loading}
               className="space-y-1.5"
             />
+
+            <p className="text-sm text-slate-600 dark:text-slate-400 -mt-1">
+              <Link
+                href="/auth/forgot-password?returnTo=admin"
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors underline-offset-2 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </p>
 
             <button
               type="submit"

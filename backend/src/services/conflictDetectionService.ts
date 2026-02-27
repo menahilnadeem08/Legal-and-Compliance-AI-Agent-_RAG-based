@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 export interface ConflictChunk {
   content: string;
   document_name: string;
+  document_category?: string;
   document_version: string;
   section_name?: string;
   page_number?: number;
@@ -238,6 +239,7 @@ Return ONLY the JSON object or null if you cannot extract document information.`
 
   /**
    * Get relevant chunks from specific documents
+   * Lookup strategy: Try category first, fall back to filename
    */
   async getDocumentChunks(
     documentNames: string[],
@@ -248,35 +250,54 @@ Return ONLY the JSON object or null if you cannot extract document information.`
     const result = new Map<string, ConflictChunk[]>();
 
     for (const docName of documentNames) {
-      // Find document (fuzzy match)
-      let docQuery: any;
-      if (adminId) {
-        docQuery = await pool.query(
-          `SELECT DISTINCT d.id, d.filename, d.version
-           FROM documents d
-           WHERE d.is_active = true 
-           AND d.admin_id = $3
-           AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
-           LIMIT 1`,
-          [docName, `%${docName}%`, adminId]
-        );
+      let doc: any;
+      
+      // Step 1: Try category lookup first
+      const categoryQuery = await pool.query(
+        `SELECT DISTINCT d.id, d.filename, d.category, d.version
+         FROM documents d
+         WHERE d.is_active = true 
+         AND d.admin_id = $1
+         AND LOWER(d.category) = LOWER($2)
+         LIMIT 1`,
+        [adminId, docName]
+      );
+      
+      if (categoryQuery.rows.length > 0) {
+        doc = categoryQuery.rows[0];
+        logger.info('Document found by category', { docName, category: doc.category, filename: doc.filename });
       } else {
-        docQuery = await pool.query(
-          `SELECT DISTINCT d.id, d.filename, d.version
-           FROM documents d
-           WHERE d.is_active = true 
-           AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
-           LIMIT 1`,
-          [docName, `%${docName}%`]
-        );
+        // Step 2: Fall back to filename lookup
+        let docQuery: any;
+        if (adminId) {
+          docQuery = await pool.query(
+            `SELECT DISTINCT d.id, d.filename, d.category, d.version
+             FROM documents d
+             WHERE d.is_active = true 
+             AND d.admin_id = $3
+             AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
+             LIMIT 1`,
+            [docName, `%${docName}%`, adminId]
+          );
+        } else {
+          docQuery = await pool.query(
+            `SELECT DISTINCT d.id, d.filename, d.category, d.version
+             FROM documents d
+             WHERE d.is_active = true 
+             AND (LOWER(d.filename) = LOWER($1) OR LOWER(d.filename) LIKE LOWER($2))
+             LIMIT 1`,
+            [docName, `%${docName}%`]
+          );
+        }
+        
+        if (docQuery.rows.length > 0) {
+          doc = docQuery.rows[0];
+          logger.info('Document found by filename fallback', { docName, filename: doc.filename, category: doc.category });
+        } else {
+          logger.warn('Document not found by category or filename', { docName });
+          continue;
+        }
       }
-
-      if (docQuery.rows.length === 0) {
-        logger.warn('Document not found', { docName });
-        continue;
-      }
-
-      const doc = docQuery.rows[0];
 
       let chunks: any[];
 
@@ -305,9 +326,10 @@ Return ONLY the JSON object or null if you cannot extract document information.`
         )).rows;
       }
 
-      result.set(doc.filename, chunks.map(chunk => ({
+      result.set(doc.category || doc.filename, chunks.map(chunk => ({
         content: chunk.content,
         document_name: doc.filename,
+        document_category: doc.category,
         document_version: doc.version,
         section_name: chunk.section_name,
         page_number: chunk.page_number,
@@ -488,9 +510,21 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
   }
 
   /**
-   * Main entry point: Detect conflicts between documents
+   * Main entry point: Detect conflicts between documents or categories
+   * Can be called with either a query string OR categories array
    */
-  async detectConflicts(query: string, adminId?: number): Promise<ConflictAnalysisResult> {
+  async detectConflicts(
+    queryOrCategories: string | string[],
+    adminId?: number,
+    detail?: boolean
+  ): Promise<any> {
+    // Handle categories array (2+ categories)
+    if (Array.isArray(queryOrCategories)) {
+      return this.detectConflictsBetweenCategories(queryOrCategories, adminId, detail);
+    }
+
+    // Handle query string (original behavior)
+    const query = queryOrCategories;
     logger.info('Starting conflict detection', { query });
 
     // Parse query to extract documents
@@ -627,5 +661,107 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     }
 
     return deduplicated;
+  }
+
+  /**
+   * Detect conflicts between multiple categories (N-way analysis)
+   * Runs all pairs (i < j) and merges results
+   */
+  private async detectConflictsBetweenCategories(
+    categories: string[],
+    adminId?: number,
+    detail?: boolean
+  ): Promise<{
+    categories_analyzed: string[];
+    total_conflicts: number;
+    conflicts_by_pair: Array<{ pair: string; conflicts: DetectedConflict[] }>;
+    all_conflicts: DetectedConflict[];
+    summary: string;
+    analysis_metadata: {
+      chunks_analyzed: number;
+      analysis_method: string;
+      confidence: number;
+    };
+  }> {
+    if (categories.length < 2) {
+      throw new Error('Need at least 2 categories for conflict detection');
+    }
+
+    logger.info('Starting multi-category conflict detection', { categories, count: categories.length });
+
+    const conflictsByPair: Array<{ pair: string; conflicts: DetectedConflict[] }> = [];
+    const allConflicts: DetectedConflict[] = [];
+    let totalChunks = 0;
+
+    // Compare all pairs (i < j)
+    for (let i = 0; i < categories.length; i++) {
+      for (let j = i + 1; j < categories.length; j++) {
+        const cat1 = categories[i];
+        const cat2 = categories[j];
+        const pairKey = `${cat1} vs ${cat2}`;
+
+        try {
+          logger.debug('Analyzing category pair', { pair: pairKey });
+
+          // Get chunks from both categories
+          const chunksMap = await this.getDocumentChunks([cat1, cat2], undefined, 15, adminId);
+
+          if (chunksMap.size < 2) {
+            logger.warn('Could not get chunks for pair', { pair: pairKey });
+            continue;
+          }
+
+          // Analyze for conflicts
+          const conflicts = await this.analyzeConflicts(chunksMap);
+          logger.debug('Conflicts found for pair', { pair: pairKey, count: conflicts.length });
+
+          if (conflicts.length > 0) {
+            conflictsByPair.push({
+              pair: pairKey,
+              conflicts: conflicts.sort((a, b) => {
+                const severityOrder = { high: 0, medium: 1, low: 2 };
+                return severityOrder[a.severity] - severityOrder[b.severity];
+              })
+            });
+
+            allConflicts.push(...conflicts);
+          }
+
+          totalChunks += Array.from(chunksMap.values()).reduce((sum, chunks) => sum + chunks.length, 0);
+        } catch (error) {
+          logger.error('Failed to analyze category pair', { pair: pairKey, error });
+        }
+      }
+    }
+
+    // Deduplicate all conflicts by description
+    const uniqueConflicts = Array.from(
+      new Map(allConflicts.map(c => [c.description, c])).values()
+    ).sort((a, b) => {
+      const severityOrder = { high: 0, medium: 1, low: 2 };
+      return severityOrder[a.severity] - severityOrder[b.severity];
+    });
+
+    // Generate summary
+    const highCount = uniqueConflicts.filter(c => c.severity === 'high').length;
+    const mediumCount = uniqueConflicts.filter(c => c.severity === 'medium').length;
+    const lowCount = uniqueConflicts.filter(c => c.severity === 'low').length;
+
+    const summary = uniqueConflicts.length === 0
+      ? '✅ No conflicts detected across the analyzed categories.'
+      : `⚠️ **${uniqueConflicts.length} conflict${uniqueConflicts.length > 1 ? 's' : ''} detected** across ${categories.length} categories. 🔴 High: ${highCount}, 🟡 Medium: ${mediumCount}, 🟢 Low: ${lowCount}`;
+
+    return {
+      categories_analyzed: categories,
+      total_conflicts: uniqueConflicts.length,
+      conflicts_by_pair: conflictsByPair,
+      all_conflicts: uniqueConflicts,
+      summary,
+      analysis_metadata: {
+        chunks_analyzed: totalChunks,
+        analysis_method: 'LLM-based multi-category analysis',
+        confidence: uniqueConflicts.length > 0 ? 85 : 95
+      }
+    };
   }
 }

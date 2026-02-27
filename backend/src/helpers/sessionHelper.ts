@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import pool from '../config/database';
 import logger from '../utils/logger';
 
-const REFRESH_TOKEN_DURATION = '7 days';
+const REFRESH_TOKEN_DURATION = '24 hours';
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function generateRefreshToken(): string {

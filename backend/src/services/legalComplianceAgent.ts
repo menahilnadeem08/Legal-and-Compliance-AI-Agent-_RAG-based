@@ -1,3 +1,4 @@
+import pool from '../config/database';
 import { llm } from '../config/openai';
 import { QueryService } from './queryService';
 import { VersionComparisonService } from './versionComparisonService';
@@ -204,6 +205,65 @@ export class LegalComplianceAgent {
   }
 
   /**
+   * Helper: Resolve document/category inputs to categories
+   * Returns { category, activeFilename } for each input
+   * Tries category match first, falls back to filename → get its category
+   */
+  private async resolveToCategories(
+    inputs: string[],
+    adminId: number
+  ): Promise<{
+    resolved: Array<{ input: string; category: string; activeFilename: string }>;
+    unresolved: string[];
+  }> {
+    const resolved: Array<{ input: string; category: string; activeFilename: string }> = [];
+    const unresolved: string[] = [];
+
+    // Fetch all documents and categories for this admin
+    const allDocs = await this.documentService.listDocuments(adminId);
+    
+    for (const input of inputs) {
+      try {
+        // Step 1: Try category lookup
+        const categoryResult = await this.versionService.resolveCategoryFromInput(input, adminId);
+        if (categoryResult) {
+          resolved.push({
+            input,
+            category: categoryResult.category,
+            activeFilename: categoryResult.category
+          });
+          continue;
+        }
+
+        // Step 2: Fall back to filename → get its category
+        const matchedDoc = allDocs.find((doc: any) => 
+          doc.filename.toLowerCase() === input.toLowerCase() ||
+          doc.filename.toLowerCase().includes(input.toLowerCase()) ||
+          input.toLowerCase().includes(doc.filename.toLowerCase())
+        );
+        
+        if (matchedDoc) {
+          const category = matchedDoc.category || matchedDoc.filename;
+          resolved.push({
+            input,
+            category,
+            activeFilename: category
+          });
+          continue;
+        }
+
+        // Could not resolve
+        unresolved.push(input);
+      } catch (error) {
+        logger.warn('Error resolving input to category', { input, error });
+        unresolved.push(input);
+      }
+    }
+
+    return { resolved, unresolved };
+  }
+
+  /**
    * Define available tools for the agent
    */
   private getTools() {
@@ -228,54 +288,30 @@ export class LegalComplianceAgent {
       {
         type: "function" as const,
         function: {
-          name: "compare_document_versions",
-          description: "Use when user asks what changed, evolved, or differs WITHIN the same document over time. Works by CATEGORY — all versions of the same logical document are grouped by category. User may say category name OR document name — pass whatever they said as input, system resolves automatically. If user does not specify versions → set compare_all=true. Triggers: 'what changed in X', 'any updates in X', 'show history of X', 'compare versions of X', 'what is different in X', 'has X changed', 'what was updated in X', 'evolution of X', 'latest changes in X'.",
+          name: "analyze_documents",
+          description: "Unified tool for document analysis: version comparison OR conflict detection. Automatically determines action based on inputs. 1 input → version comparison. 2+ inputs → conflict detection across categories. Resolves categories/document names automatically.",
           parameters: {
             type: "object",
             properties: {
-              input: {
-                type: "string",
-                description: "The document or category the user is referring to. Can be a category name, document name, or any informal reference like 'NOC', 'constitution', 'hr rules'. System resolves automatically."
+              inputs: {
+                type: "array",
+                items: { type: "string" },
+                description: "Category or document names to analyze (e.g. 'constitution', 'Constitution of Pakistan', 'NOC')."
+              },
+              detail: {
+                type: "boolean",
+                description: "false=summary (default), true=detailed. Set true for 'explain', 'show', 'detail', 'elaborate', or follow-ups."
               },
               version1: {
                 type: "string",
-                description: "Optional. First version number, or 'latest', 'previous'. Omit if comparing all versions."
+                description: "Optional. For 1 input only: specific version to compare from (e.g. 'latest', 'previous', '2')."
               },
               version2: {
                 type: "string",
-                description: "Optional. Second version number. Omit if comparing all versions."
-              },
-              compare_all: {
-                type: "boolean",
-                description: "Set true when user does not specify versions or asks for full history. Default to true when versions not specified."
+                description: "Optional. For 1 input only: specific version to compare to."
               }
             },
-            required: ["input"]
-          }
-        }
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "detect_policy_conflicts",
-          description: "Use ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories. Do NOT use for version comparisons within the same document.",
-          parameters: {
-            type: "object",
-            properties: {
-              document1: {
-                type: "string",
-                description: "Name of first document"
-              },
-              document2: {
-                type: "string",
-                description: "Name of second document"
-              },
-              topic: {
-                type: "string",
-                description: "Optional: specific topic to focus conflict analysis on (e.g., 'data retention', 'remote work')"
-              }
-            },
-            required: ["document1", "document2"]
+            required: ["inputs"]
           }
         }
       },
@@ -389,9 +425,72 @@ export class LegalComplianceAgent {
           return searchResult;
         }
 
+        case "analyze_documents": {
+          const inputs = args.inputs || [];
+          const detail = args.detail === true;
+          const version1 = args.version1;
+          const version2 = args.version2;
+
+          // Step 1: Resolve inputs to categories
+          const { resolved, unresolved } = await this.resolveToCategories(inputs, adminId);
+          logger.debug('Resolved inputs to categories', { resolved: resolved.length, unresolved: unresolved.length });
+
+          if (unresolved.length > 0 && resolved.length === 0) {
+            // All unresolved - return available categories
+            const categoriesQuery = `
+              SELECT DISTINCT category
+              FROM documents
+              WHERE admin_id = $1 AND is_active = true AND category IS NOT NULL
+              ORDER BY category
+            `;
+            const categoriesResult = await pool.query(categoriesQuery, [adminId]);
+            const availableCategories = categoriesResult.rows
+              .map((r: any) => r.category)
+              .filter(Boolean);
+            throw new Error(
+              `Could not resolve "${unresolved.join('" and "')}", Available categories: ${availableCategories.join(', ') || 'None'}`
+            );
+          }
+
+          // Step 2: Determine action based on unique category count
+          const uniqueCategories = Array.from(new Set(resolved.map(r => r.category)));
+
+          if (uniqueCategories.length === 1) {
+            // Single category → version comparison
+            const category = uniqueCategories[0];
+            if (version1 && version2) {
+              // Compare specific versions
+              const compResult = await this.versionService.processComparison(
+                `compare ${category} version ${version1} and ${version2}`,
+                adminId
+              );
+              logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
+              if (compResult.success) {
+                return { ...compResult.comparison, detail, analysis_type: 'version_comparison' };
+              }
+              throw new Error(compResult.error || 'Version comparison failed');
+            } else {
+              // Compare all versions
+              const allResult = await this.versionService.compareAllVersions(category, adminId);
+              logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
+              if ('error' in allResult) {
+                throw new Error(allResult.error || 'Compare all versions failed');
+              }
+              return { ...allResult, detail, analysis_type: 'version_comparison' };
+            }
+          } else {
+            // Multiple categories → conflict detection
+            const categories = uniqueCategories;
+            const conflictResult = await this.conflictService.detectConflicts(categories, adminId, detail);
+            logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
+            return { ...conflictResult, detail, analysis_type: 'conflict_detection' };
+          }
+        }
+
         case "compare_document_versions": {
           const input = args.input;
           const compare_all = args.compare_all !== false; // Default to true
+          const detail = args.detail === true; // Default to false
           
           if (compare_all) {
             const allResult = await this.versionService.compareAllVersions(input, adminId);
@@ -399,7 +498,7 @@ export class LegalComplianceAgent {
             if ('error' in allResult) {
               throw new Error(allResult.error || 'Compare all versions failed');
             }
-            return allResult;
+            return { ...allResult, detail };
           }
           
           // Compare specific two versions
@@ -409,7 +508,7 @@ export class LegalComplianceAgent {
           );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
-            return versionResult.comparison;
+            return { ...versionResult.comparison, detail };
           }
           throw new Error(versionResult.error || 'Version comparison failed');
         }
@@ -510,42 +609,254 @@ export class LegalComplianceAgent {
           citations: result.citations
         };
 
+      case "analyze_documents": {
+        // Handle both version comparison and conflict detection
+        if (result.analysis_type === 'version_comparison') {
+          // Format version comparison
+          const isCompareAll = Array.isArray(result.comparisons) && result.comparisons.length > 0 && !result.version1;
+          const detail = result.detail === true;
+
+          // Helper to format change details for detail mode
+          const formatDetailedChanges = (changes: any[]): string => {
+            if (!changes || changes.length === 0) return '';
+            
+            const added = changes.filter((c: any) => c.change_type === 'added');
+            const removed = changes.filter((c: any) => c.change_type === 'removed');
+            const modified = changes.filter((c: any) => c.change_type === 'modified');
+
+            const sections: string[] = [];
+
+            if (added.length > 0) {
+              sections.push('  ADDED SECTIONS:');
+              added.forEach((item: any) => {
+                const preview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+                const truncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+                sections.push(`    + [${item.section_name}]: ${preview}${truncated}`);
+              });
+            }
+
+            if (removed.length > 0) {
+              sections.push('  REMOVED SECTIONS:');
+              removed.forEach((item: any) => {
+                const preview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+                const truncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+                sections.push(`    - [${item.section_name}]: ${preview}${truncated}`);
+              });
+            }
+
+            if (modified.length > 0) {
+              sections.push('  MODIFIED SECTIONS:');
+              modified.forEach((item: any) => {
+                const oldPreview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+                const oldTruncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+                const newPreview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+                const newTruncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+                
+                let changeLevel = 'minor';
+                if (item.similarity_score !== undefined) {
+                  if (item.similarity_score < 0.6) changeLevel = 'major';
+                  else if (item.similarity_score < 0.8) changeLevel = 'moderate';
+                }
+                
+                sections.push(`    ~ [${item.section_name}]:`);
+                sections.push(`      Before: ${oldPreview}${oldTruncated}`);
+                sections.push(`      After:  ${newPreview}${newTruncated}`);
+                sections.push(`      Change: ${changeLevel}`);
+              });
+            }
+
+            return sections.join('\n');
+          };
+
+          if (isCompareAll) {
+            const lines: string[] = [];
+            const allCitations: any[] = [];
+
+            for (const item of result.comparisons) {
+              const comparison = item.changes ?? item;
+              const label = item.from_version != null && item.to_version != null
+                ? `v${item.from_version} → v${item.to_version}`
+                : 'Versions';
+              
+              const v1Doc = result.versions?.find((v: any) => v.version === item.from_version);
+              const v2Doc = result.versions?.find((v: any) => v.version === item.to_version);
+              const docLabel = (v1Doc?.filename && v2Doc?.filename) 
+                ? ` (${v1Doc.filename} → ${v2Doc.filename})`
+                : '';
+
+              const stats = comparison.statistics || {};
+              lines.push(`${label}${docLabel}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change.`);
+
+              // Include detailed changes if detail=true
+              if (detail && comparison.changes) {
+                const detailedText = formatDetailedChanges(comparison.changes);
+                if (detailedText) {
+                  lines.push(detailedText);
+                }
+              }
+
+              if (comparison.document_name || comparison.version1) {
+                allCitations.push(...this.extractVersionCitations(comparison));
+              }
+            }
+
+            return {
+              text: `Version Comparison for ${result.category} Category:\n\n${lines.join('\n')}`,
+              citations: allCitations
+            };
+          }
+
+          if (!result.version1 || !result.version2) {
+            return {
+              text: result.message ?? result.error ?? 'Version comparison could not be completed.',
+              citations: []
+            };
+          }
+
+          const stats = result.statistics || {};
+          const summaryText = `Version Comparison:\nDocument: ${result.document_name}\nVersions: v${result.version1.version} → v${result.version2.version}\nChanges: ${stats.chunks_added} added, ${stats.chunks_removed} removed, ${stats.chunks_modified} modified\nChange Rate: ${stats.change_percentage.toFixed(1)}%`;
+
+          return {
+            text: summaryText,
+            citations: this.extractVersionCitations(result)
+          };
+        } else {
+          // Format conflict detection (multiple categories)
+          const summary = result.summary || result.all_conflicts?.length 
+            ? `Found ${result.total_conflicts || result.all_conflicts?.length || 0} conflicts`
+            : 'No conflicts detected';
+          
+          return {
+            text: summary,
+            conflicts: result.all_conflicts || result.conflicts,
+            citations: result.all_conflicts 
+              ? result.all_conflicts.flatMap((c: any) => this.extractConflictCitations({ conflicts: [c] }))
+              : this.extractConflictCitations(result)
+          };
+        }
+      }
+
       case "compare_document_versions": {
+        // Helper function to format changed sections with preview
+        const formatChangeDetails = (changes: any[], detail: boolean): string => {
+          if (!detail || !changes || changes.length === 0) {
+            return '';
+          }
+
+          const added = changes.filter((c: any) => c.change_type === 'added');
+          const removed = changes.filter((c: any) => c.change_type === 'removed');
+          const modified = changes.filter((c: any) => c.change_type === 'modified');
+
+          const sections: string[] = [];
+
+          if (added.length > 0) {
+            sections.push('ADDED SECTIONS:');
+            added.forEach((item: any) => {
+              const preview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const truncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+              sections.push(`+ [${item.section_name}]: ${preview}${truncated}`);
+            });
+          }
+
+          if (removed.length > 0) {
+            sections.push('\nREMOVED SECTIONS:');
+            removed.forEach((item: any) => {
+              const preview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const truncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+              sections.push(`- [${item.section_name}]: ${preview}${truncated}`);
+            });
+          }
+
+          if (modified.length > 0) {
+            sections.push('\nMODIFIED SECTIONS:');
+            modified.forEach((item: any) => {
+              const oldPreview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const oldTruncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+              const newPreview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const newTruncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+              
+              let changeLevel = 'minor';
+              if (item.similarity_score !== undefined) {
+                if (item.similarity_score < 0.6) changeLevel = 'major';
+                else if (item.similarity_score < 0.8) changeLevel = 'moderate';
+              }
+              
+              sections.push(`~ [${item.section_name}]:`);
+              sections.push(`  Before: ${oldPreview}${oldTruncated}`);
+              sections.push(`  After:  ${newPreview}${newTruncated}`);
+              sections.push(`  Change: ${changeLevel}`);
+            });
+          }
+
+          return sections.join('\n');
+        };
+
         // compareAllVersions returns { category, comparisons: [{ from_version, to_version, changes }] } with no version1/version2 at top level
         const isCompareAll = Array.isArray(result.comparisons) && result.comparisons.length > 0 && !result.version1;
+        const detail = result.detail === true;
+
         if (isCompareAll) {
-          const docName = result.document_name ?? result.category ?? 'Document';
-          const lines = [`Document: ${docName} (all version pairs)\n`];
+          const lines: string[] = [];
           const allCitations: any[] = [];
+
+          // Display sequential version comparisons
           for (const item of result.comparisons) {
             const comparison = item.changes ?? item;
             const label = item.from_version != null && item.to_version != null
               ? `v${item.from_version} → v${item.to_version}`
               : 'Versions';
+            
+            // Find the document names from versionsList
+            const v1Doc = result.versions?.find((v: any) => v.version === item.from_version);
+            const v2Doc = result.versions?.find((v: any) => v.version === item.to_version);
+            const docLabel = (v1Doc?.filename && v2Doc?.filename) 
+              ? ` (${v1Doc.filename} → ${v2Doc.filename})`
+              : '';
+
             const stats = comparison.statistics || {};
-            lines.push(`${label}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change. ${comparison.summary ?? ''}`);
+            
+            // Summary line (always shown)
+            lines.push(`${label}${docLabel}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change.`);
+            
+            // Detail section (only if detail=true)
+            if (detail) {
+              const changeDetails = formatChangeDetails(comparison.changes || [], true);
+              if (changeDetails) {
+                const indented = changeDetails.split('\n').map(line => `  ${line}`).join('\n');
+                lines.push(indented);
+              }
+            }
+
             if (comparison.document_name || comparison.version1) {
               allCitations.push(...this.extractVersionCitations(comparison));
             }
           }
+
           return {
-            text: `Version Comparison (all versions):\n${lines.join('\n')}`,
+            text: `Version Comparison for ${result.category} Category:\n\n${lines.join('\n')}`,
             citations: allCitations
           };
         }
+
         if (!result.version1 || !result.version2) {
           return {
             text: result.message ?? result.error ?? 'Version comparison could not be completed.',
             citations: []
           };
         }
-        return {
-          text: `Version Comparison Results:
+
+        const stats = result.statistics || {};
+        const summaryText = `Version Comparison Results:
 Document: ${result.document_name}
 Versions: ${result.version1.version} → ${result.version2.version}
-Changes: ${result.statistics.chunks_added} added, ${result.statistics.chunks_removed} removed, ${result.statistics.chunks_modified} modified
-Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
-Summary: ${result.summary}`,
+Changes: ${stats.chunks_added} added, ${stats.chunks_removed} removed, ${stats.chunks_modified} modified
+Change Rate: ${stats.change_percentage.toFixed(1)}%
+Summary: ${result.summary}`;
+
+        const detailText = detail ? `\n\n${formatChangeDetails(result.changes || [], true)}` : '';
+
+        return {
+          text: summaryText + detailText,
           citations: this.extractVersionCitations(result)
         };
       }
@@ -755,23 +1066,26 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 - Never claim certainty beyond what evidence supports
 
 Tool Selection Guidelines:
-- Use search_documents for general questions about document content or answering FROM documents
-- USE compare_document_versions for ANY of these: "what changed in [anything]?", "what are the changes in [anything]?", "any updates in [anything]?", "has [anything] changed?", "show history of [anything]", "compare versions of [anything]", "what is different in [anything]?", "what was updated in [anything]?", "latest changes in [anything]?", "evolution of [anything]", "what is new in [anything]?", "is it same in all versions?", or user mentions a document/category name + change/update/history/version/difference word → ALWAYS use compare_document_versions; do NOT ask the user for versions if they don't specify them
-- IMPORTANT for compare_document_versions: Works WITHIN a category (all versions of same logical document) — pass whatever the user said as input, system resolves automatically → do NOT try to figure out if it's a category vs filename yourself → default compare_all=true unless user specifies exact versions
-- Use detect_policy_conflicts ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories — do NOT use for version comparisons within the same document
+- Use search_documents for direct factual questions about document content
+- USE analyze_documents for document analysis tasks:
+  - 1 input (category/document name) → version history/comparison
+  - 2+ inputs (multiple categories/documents) → conflict detection
+  - Examples: "what changed in constitution?" → analyze_documents(inputs:["constitution"]), "compare constitution and rules?" → analyze_documents(inputs:["constitution", "rules"])
+  - detail=false (DEFAULT): "how many", "summary", "overview", "brief", or first-time general question
+  - detail=true: "explain", "show", "detail", "elaborate", "tell me more", or follow-ups like "explain those changes"
 - Use list_available_documents when user asks what documents exist
-- Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
-- Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents", or "what topics are not covered"
-- Call multiple tools if needed for comprehensive, well-sourced answers
+- Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic"
+- Use gap_analysis when user asks "what is missing from", "compare coverage", "what does A have that B doesn't", "gaps between documents"
+- Call multiple tools if needed for comprehensive answers
 
 Tool Disambiguation:
-- gap_analysis vs compare_document_versions: Use compare_document_versions for text-level changes between versions of the SAME document (by category). Use gap_analysis to compare topic coverage differences between TWO DIFFERENT documents.
-- find_related_documents vs search_documents: Use search_documents for answering questions FROM documents. Use find_related_documents for discovering WHICH documents are topically connected to a specific document.
-- detect_policy_conflicts vs compare_document_versions: Use detect_policy_conflicts for comparing DIFFERENT documents/policies for contradictions ACROSS categories. Use compare_document_versions for comparing VERSIONS of the SAME logical document (same category).
+- analyze_documents vs search_documents: Use search_documents for answering FROM documents. Use analyze_documents for comparing/analyzing versions or conflicts.
+- gap_analysis vs analyze_documents: Use analyze_documents for version changes within a category or conflicts across categories. Use gap_analysis for topic coverage differences.
+- find_related_documents vs search_documents: Use search_documents for answering questions. Use find_related_documents for discovering related documents.
 
 FIRST MESSAGE / NO GREETING REQUIRED:
 - Answer the user's question immediately. Do NOT require or wait for a greeting first.
-- If the user's first (or any) message is a factual question (e.g. recommendations, policy content, what changed, conflicts), call the appropriate tool right away (e.g. search_documents, compare_document_versions, detect_policy_conflicts). Do not ask them to say hello first.
+- If the user's first (or any) message is a factual question (e.g. recommendations, policy content, what changed, conflicts), call the appropriate tool right away. Do not ask them to say hello first.
 
 GREETING HANDLING (only when the message is purely a greeting):
 - ONLY if the user message is purely a greeting (hi, hello, hey, how are you, good morning, good day, greetings, hiya, or similar casual opener with no actual question)
@@ -780,19 +1094,32 @@ GREETING HANDLING (only when the message is purely a greeting):
 
 FOLLOW-UP CONTEXT:
 - Always read conversation history before deciding which tool to call
-- "is it same in all versions?" → extract topic from previous message → call compare_document_versions
-- "any conflicts?" → extract topic from previous message → call detect_policy_conflicts
-- "what changed?" (about version history of ONE document) → extract document from previous message → call compare_document_versions
+- "is it same in all versions?" → extract topic from previous message → call analyze_documents with that category
+- "any conflicts?" → extract categories from previous message → call analyze_documents with those categories
+- "what changed?" (about version history) → extract category from previous message → call analyze_documents
+
+CRITICAL: DETAIL MODE FOR analyze_documents FOLLOW-UPS:
+When user asks "explain those changes", "show me the changes", "tell me more", "elaborate on those", "show details", "expand on that", or "what was added/removed" (AFTER receiving a version comparison):
+1. Extract the input/category from the PREVIOUS ASSISTANT MESSAGE that summarized the version comparison
+2. Call analyze_documents with EXACT SAME inputs AND SET detail=true
+3. Example flow:
+   - User: "changes in constitution"
+   - Agent: analyze_documents(inputs:["constitution"], detail:false) → returns "v1→v2: 14 added, 3 removed, 5 modified"
+   - User: "explain those changes"
+   - Agent: MUST call analyze_documents(inputs:["constitution"], detail:true) → returns FULL ADDED/REMOVED/MODIFIED sections
+4. DO NOT ask "which document were you asking about?" - extract from history
+5. The detail=true parameter is REQUIRED for "explain", "show", "detail", "elaborate", "tell me more"
 - Never ask user to repeat information already in conversation history
 
-CONFLICT FOLLOW-UPS (do NOT call compare_document_versions):
-- If the user just received a conflict report and now asks "what were the values?", "what were the change values?", "what values differed?", "list the conflicting values", "what were the specific numbers?", or similar, they mean the CONFLICTING VALUES from that report (e.g. OEE 85% vs 90%, MTTR 3.0 vs 2.5 hrs), NOT version-to-version changes.
-- Do NOT call compare_document_versions or say "only one version available." Use the previous assistant message (the conflict summary) from conversation history and extract/list the specific values that conflicted between the two documents (targets, percentages, counts, etc.) in a clear list or table. If the previous message does not contain those values, say so and offer to re-run conflict detection with full detail.
+CONFLICT FOLLOW-UPS (do NOT call analyze_documents for values):
+- If the user just received a conflict report and now asks "what were the values?", "what were the change values?", "what values differed?", "list the conflicting values", or similar, they mean the CONFLICTING VALUES from that report.
+- Do NOT call analyze_documents. Use the previous assistant message from conversation history and extract/list the specific values that conflicted. If not available, offer to re-run with full detail.
 
 REFORMAT / NO CITATIONS REQUESTS:
-- If the user asks to omit citations (e.g. "no citations", "don't give citations", "without citations") OR to reformat as a paragraph (e.g. "make it a paragraph", "summarize as a paragraph", "give me a paragraph of this"), do NOT call any tool and do NOT say "I cannot find this information."
-- Use the most recent assistant message in the conversation history: rewrite that content as one or two clear paragraphs, with no citation markers like [1], [2], no "Sources & Citations" section, and no inline references. Keep all the substantive information (conflicts, summary, action items) in flowing prose.
-- If there is no previous assistant message to reformat, say briefly that you need a previous answer to reformat and ask them to run the query again first.
+- If the user asks to omit citations ("no citations", "without citations") OR to reformat as a paragraph, do NOT call any tool
+- Use the most recent assistant message in conversation history: rewrite as 1-2 clear paragraphs, with no citation markers [1], [2], no "Sources & Citations" section
+- Keep all substantive information in flowing prose
+- If there is no previous assistant message, say briefly that you need a previous answer and ask them to run the query first
 
 AMBIGUITY HANDLING:
 - If query is too vague and context does not help → ask one specific clarifying question
@@ -853,6 +1180,7 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
 
           const friendlyNames: Record<string, string> = {
             search_documents: 'Searching documents...',
+            analyze_documents: 'Analyzing documents...',
             compare_document_versions: 'Comparing document versions...',
             detect_policy_conflicts: 'Detecting policy conflicts...',
             list_available_documents: 'Listing available documents...',

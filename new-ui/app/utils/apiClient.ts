@@ -1,4 +1,4 @@
-import { getApiBase, getAuthTokenForApi, clearAuth } from "./auth";
+import { getApiBase, getAuthTokenForApi, getAuthUser, getAuthProvider, getRefreshToken, setAuth, clearAuth, getLoginRedirectForRole } from "./auth";
 
 export type ApiResponse<T = unknown> = {
   success: boolean;
@@ -14,7 +14,52 @@ type RequestOptions = {
   requiresAuth?: boolean;
   /** When true, body is sent as FormData and Content-Type is not set */
   formData?: boolean;
+  /** When true, don't auto-redirect to /auth/login on 401 errors */
+  skipAuthRedirectOn401?: boolean;
 };
+
+// Refresh token queue for handling concurrent 401 errors
+let isRefreshing = false;
+const failedQueue: Array<{ resolve: (value: boolean) => void; reject: (error: Error) => void }> = [];
+
+async function processQueue(success: boolean) {
+  failedQueue.forEach(prom => {
+    if (success) {
+      prom.resolve(true);
+    } else {
+      prom.reject(new Error("Token refresh failed"));
+    }
+  });
+  failedQueue.length = 0;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${getApiBase()}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // Send cookies automatically
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+    if (data.success && data.data?.accessToken) {
+      const user = getAuthUser();
+      setAuth(data.data.accessToken, user || {}, data.data.refreshToken, "manual");
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 async function apiClient<T = unknown>(
   endpoint: string,
@@ -26,6 +71,7 @@ async function apiClient<T = unknown>(
     headers = {},
     requiresAuth = true,
     formData = false,
+    skipAuthRedirectOn401 = false,
   } = options;
 
   const requestHeaders: Record<string, string> = { ...headers };
@@ -52,6 +98,7 @@ async function apiClient<T = unknown>(
     response = await fetch(`${getApiBase()}${endpoint}`, {
       method,
       headers: requestHeaders,
+      credentials: "include", // Send cookies automatically
       ...(fetchBody !== undefined && { body: fetchBody }),
     });
   } catch (err) {
@@ -65,9 +112,47 @@ async function apiClient<T = unknown>(
   }
 
   if (response.status === 401) {
-    clearAuth();
-    if (typeof window !== "undefined") window.location.replace("/auth/login");
-    return { success: false, message: "Session expired. Please login again." };
+    const authProvider = getAuthProvider();
+    const isManualAuth = authProvider === "manual";
+
+    // For manual auth (employee/admin login), try to refresh token
+    if (isManualAuth && !skipAuthRedirectOn401) {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        const refreshSuccess = await refreshAccessToken();
+        isRefreshing = false;
+        await processQueue(refreshSuccess);
+
+        if (refreshSuccess) {
+          // Retry the original request with new token
+          return apiClient<T>(endpoint, options);
+        }
+      } else {
+        // Already refreshing, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({
+            resolve: async (success) => {
+              if (success) {
+                resolve(await apiClient<T>(endpoint, options));
+              } else {
+                reject(new Error("Token refresh failed"));
+              }
+            },
+            reject,
+          });
+        });
+      }
+    }
+
+    // For Google OAuth or if refresh failed, redirect to login
+    if (!skipAuthRedirectOn401) {
+      const role = getAuthUser()?.role;
+      clearAuth();
+      if (typeof window !== "undefined") window.location.replace(getLoginRedirectForRole(role));
+    }
+
+    const data: ApiResponse<T> = await response.json().catch(() => ({ success: false, message: "Session expired. Please login again." }));
+    return data;
   }
 
   if (response.status === 429) {

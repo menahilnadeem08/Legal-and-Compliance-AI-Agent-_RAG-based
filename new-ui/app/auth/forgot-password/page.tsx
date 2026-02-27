@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
   ArrowRight,
@@ -16,16 +17,22 @@ import {
 import { toast } from "sonner";
 import { PasswordInput } from "@/app/components/PasswordInput";
 import { isPasswordValid } from "@/app/utils/passwordValidation";
+import { api } from "@/app/utils/apiClient";
 
 type Step = "email" | "otp" | "reset" | "done";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = useMemo(() => searchParams.get("returnTo") || "employee", [searchParams]);
+  const loginHref = returnTo === "admin" ? "/auth/admin/login" : "/auth/employee-login";
+
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -54,14 +61,27 @@ export default function ForgotPasswordPage() {
     setError("");
 
     if (step === "email") {
-      if (!email) { setError("Please enter your email address."); return; }
+      const trimmed = email.trim();
+      if (!trimmed) {
+        setError("Please enter your email address.");
+        return;
+      }
       setLoading(true);
-      await new Promise((res) => setTimeout(res, 3000));
-      setLoading(false);
-      toast.success("Code sent!", {
-        description: `A 6-digit code was sent to ${email}`,
-      });
-      setStep("otp");
+      try {
+        const response = await api.post<{ message?: string }>("/auth/forgot-password", { email: trimmed, role: returnTo as 'admin' | 'employee' }, { requiresAuth: false, skipAuthRedirectOn401: true });
+        if (!response.success) {
+          setError(response.message ?? "Failed to send code.");
+          return;
+        }
+        toast.success("Code sent!", {
+          description: "If an account exists with this email, you will receive a 6-digit code.",
+        });
+        setStep("otp");
+      } catch {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -70,14 +90,33 @@ export default function ForgotPasswordPage() {
         setError("Please enter all 6 digits.");
         return;
       }
+      const otpCode = otp.join("");
       setLoading(true);
-      await new Promise((res) => setTimeout(res, 3000));
-      setLoading(false);
-      // Mock: accept any 6-digit code
-      toast.success("Code verified!", {
-        description: "Now set your new password.",
-      });
-      setStep("reset");
+      try {
+        const response = await api.post<{ resetToken?: string }>(
+          "/auth/verify-reset-otp",
+          { email: email.trim(), otp: otpCode, role: returnTo as 'admin' | 'employee' },
+          { requiresAuth: false, skipAuthRedirectOn401: true }
+        );
+        if (!response.success) {
+          setError(response.message ?? "Invalid or expired code.");
+          return;
+        }
+        const token = response.data?.resetToken;
+        if (!token) {
+          setError("Invalid response from server.");
+          return;
+        }
+        setResetToken(token);
+        toast.success("Code verified!", {
+          description: "Now set your new password.",
+        });
+        setStep("reset");
+      } catch {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -91,23 +130,48 @@ export default function ForgotPasswordPage() {
         return;
       }
       setLoading(true);
-      await new Promise((res) => setTimeout(res, 3000));
-      setLoading(false);
-      setStep("done");
-      toast.success("Password reset!", {
-        description: "You can now sign in with your new password.",
-        duration: 5000,
-      });
+      try {
+        const response = await api.post<{ message?: string }>(
+          "/auth/reset-password",
+          { resetToken, newPassword: password, confirmPassword: confirm },
+          { requiresAuth: false, skipAuthRedirectOn401: true }
+        );
+        if (!response.success) {
+          setError(response.message ?? "Failed to reset password.");
+          return;
+        }
+        setStep("done");
+        toast.success("Password reset!", {
+          description: "You can now sign in with your new password.",
+          duration: 5000,
+        });
+      } catch {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const handleResend = async () => {
     setOtp(["", "", "", "", "", ""]);
     setError("");
-    toast.info("Code resent", {
-      description: `A new code was sent to ${email}`,
-    });
-    document.getElementById("fp-otp-0")?.focus();
+    setLoading(true);
+    try {
+      const response = await api.post<{ message?: string }>("/auth/resend-reset-otp", { email: email.trim(), role: returnTo as 'admin' | 'employee' }, { requiresAuth: false, skipAuthRedirectOn401: true });
+      if (response.success) {
+        toast.info("Code resent", {
+          description: "A new code was sent to your email.",
+        });
+        document.getElementById("fp-otp-0")?.focus();
+      } else {
+        setError(response.message ?? "Failed to resend code.");
+      }
+    } catch {
+      setError("Failed to resend code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const stepTitles: Record<Step, { title: string; subtitle: string }> = {
@@ -195,7 +259,7 @@ export default function ForgotPasswordPage() {
           {step !== "done" && (
             <button
               onClick={() => {
-                if (step === "email") router.push("/auth/login");
+                if (step === "email") router.push(loginHref);
                 else if (step === "otp") setStep("email");
                 else if (step === "reset") setStep("otp");
               }}
@@ -222,7 +286,7 @@ export default function ForgotPasswordPage() {
               </div>
               <p className="text-gray-400 mb-6">You can now sign in with your new password.</p>
               <Link
-                href="/auth/login"
+                href={loginHref}
                 className="inline-flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold py-3 px-6 rounded-xl transition-all group"
               >
                 Go to sign in
@@ -379,5 +443,13 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }
