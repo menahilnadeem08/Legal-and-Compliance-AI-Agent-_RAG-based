@@ -99,3 +99,42 @@ export const googleSignInSchema = z.object({
     image: z.string().optional(),
   }),
 });
+
+/** POST /auth/forgot-password — email + role (admin or employee) */
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string({ message: "Email is required" }).email("Invalid email format"),
+    role: z.enum(["admin", "employee"], { message: "Role must be 'admin' or 'employee'" }),
+  }),
+});
+
+/** POST /auth/verify-reset-otp — email + 6-digit OTP + role */
+export const verifyResetOtpSchema = z.object({
+  body: z.object({
+    email: z.string({ message: "Email is required" }).email("Invalid email format"),
+    otp: z.string({ message: "OTP is required" }).length(6, "OTP must be 6 digits"),
+    role: z.enum(["admin", "employee"], { message: "Role must be 'admin' or 'employee'" }),
+  }),
+});
+
+/** POST /auth/reset-password — resetToken from verify-reset-otp + new password */
+export const resetPasswordSchema = z.object({
+  body: z
+    .object({
+      resetToken: z.string({ message: "Reset token is required" }).min(1),
+      newPassword: passwordRules,
+      confirmPassword: z.string({ message: "Confirm password is required" }),
+    })
+    .refine((data) => data.newPassword === data.confirmPassword, {
+      message: "Passwords do not match",
+      path: ["confirmPassword"],
+    }),
+});
+
+/** POST /auth/resend-reset-otp — email + role (resend OTP for forgot-password) */
+export const resendResetOtpSchema = z.object({
+  body: z.object({
+    email: z.string({ message: "Email is required" }).email("Invalid email format"),
+    role: z.enum(["admin", "employee"], { message: "Role must be 'admin' or 'employee'" }),
+  }),
+});

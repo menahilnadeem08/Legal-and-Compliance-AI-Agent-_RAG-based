@@ -1,28 +1,29 @@
 import logger from './logger';
 import nodemailer from 'nodemailer';
 
-// Create transporter based on configuration
+// Create transporter based on configuration (using Gmail; SMTP block commented out)
 function createTransporter() {
   logger.info('Initializing email transporter');
 
-  if (process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-    logger.info('Using custom SMTP configuration', {
-      host: `${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`,
-      user: process.env.SMTP_USER,
-    });
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT, 10),
-      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-  }
+  // Custom SMTP (commented out – using Gmail only; uncomment to use SMTP instead)
+  // if (process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+  //   logger.info('Using custom SMTP configuration', {
+  //     host: `${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`,
+  //     user: process.env.SMTP_USER,
+  //   });
+  //   return nodemailer.createTransport({
+  //     host: process.env.SMTP_HOST,
+  //     port: parseInt(process.env.SMTP_PORT, 10),
+  //     secure: process.env.SMTP_SECURE === 'true',
+  //     auth: {
+  //       user: process.env.SMTP_USER,
+  //       pass: process.env.SMTP_PASSWORD
+  //     }
+  //   });
+  // }
 
   if (process.env.GMAIL_USER && process.env.GMAIL_PASSWORD) {
-    logger.info('Using Gmail SMTP configuration', { user: process.env.GMAIL_USER });
+    logger.info('Using Gmail configuration', { user: process.env.GMAIL_USER });
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -32,7 +33,7 @@ function createTransporter() {
     });
   }
 
-  logger.warn('No email configuration found. Set GMAIL_USER + GMAIL_PASSWORD OR SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD');
+  logger.warn('No email configuration found. Set GMAIL_USER and GMAIL_PASSWORD in .env');
   return null;
 }
 
@@ -50,6 +51,11 @@ export interface EmailMessage {
  * Supports both Gmail SMTP and custom SMTP (Office 365, custom domains, etc.)
  */
 export class EmailService {
+  /** Whether SMTP/Gmail is configured so emails can be sent. */
+  static isEmailConfigured(): boolean {
+    return transporter !== null;
+  }
+
   /**
    * Send temporary password email for employee onboarding
    * @param email - Employee email address
@@ -169,23 +175,64 @@ export class EmailService {
   }
 
   /**
+   * Send password reset OTP email (forgot password flow)
+   */
+  static async sendPasswordResetOtpEmail(
+    email: string,
+    otp: string,
+    name?: string
+  ): Promise<void> {
+    const displayName = name || email;
+    const message: EmailMessage = {
+      to: email,
+      from: process.env.SMTP_USER || process.env.GMAIL_USER || 'noreply@yourdomain.com',
+      subject: 'Legal Compliance RAG - Password Reset Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">Password Reset</h2>
+          
+          <p>Hello <strong>${displayName}</strong>,</p>
+          
+          <p>You requested a password reset. Use the code below to verify your identity and set a new password:</p>
+          
+          <div style="background-color: #f5f5f5; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; text-align: center;">
+            <p style="margin: 0 0 10px 0; color: #555;">Your reset code:</p>
+            <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; margin: 0; font-family: monospace;">${otp}</p>
+          </div>
+          
+          <p style="color: #d32f2f; font-weight: bold;">This code expires in 10 minutes.</p>
+          
+          <p style="color: #555;">If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p style="color: #999; font-size: 11px;">
+              This is an automated email, please do not reply.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await this.sendEmail(message);
+  }
+
+  /**
    * Generic email sending method using Nodemailer
    * @param message - Email message to send
    */
   private static async sendEmail(message: EmailMessage): Promise<void> {
+    logger.info('Attempting to send email', { to: message.to, from: message.from, subject: message.subject });
+
+    if (!transporter) {
+      logger.warn('Email transporter not configured', {
+        to: message.to,
+        from: message.from,
+        subject: message.subject,
+      });
+      throw new Error('EMAIL_NOT_CONFIGURED');
+    }
+
     try {
-      logger.info('Attempting to send email', { to: message.to, from: message.from, subject: message.subject });
-
-      if (!transporter) {
-        logger.warn('Email transporter not configured', {
-          to: message.to,
-          from: message.from,
-          subject: message.subject,
-        });
-        return;
-      }
-
-      // Send email
       const info = await transporter.sendMail({
         from: message.from,
         to: message.to,
@@ -202,10 +249,8 @@ export class EmailService {
         response: info.response,
       });
     } catch (error) {
-      // Log email failure but don't throw - email sending should be non-blocking
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
-      
       logger.error('Email sending failed', {
         to: message.to,
         from: message.from,
@@ -213,9 +258,7 @@ export class EmailService {
         error: errorMsg,
         stack: errorStack,
       });
-
-      // In production, implement retry logic here
-      // throw error; // Only throw if email is critical to operation
+      throw error;
     }
   }
 }

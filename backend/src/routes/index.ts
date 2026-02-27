@@ -15,7 +15,7 @@ import {
   validateDocumentUpload,
   validateDeleteDocument
 } from '../middleware/validationSchemas';
-import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword, refresh } from '../controllers/authController';
+import { handleGoogleSignIn, logout, getCurrentUser, login, changePassword, refresh, forgotPassword, verifyResetOtp, resetPassword, resendResetOtp } from '../controllers/authController';
 import { adminSignup, adminLogin, verifyOtp, resendOtp } from '../controllers/adminAuthController';
 import { createEmployee, getEmployees, deactivateEmployee, activateEmployee, resendCredentials } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/rbacMiddleware';
@@ -31,6 +31,10 @@ import {
   resendOtpSchema,
   refreshSchema,
   googleSignInSchema,
+  forgotPasswordSchema,
+  verifyResetOtpSchema,
+  resetPasswordSchema,
+  resendResetOtpSchema,
 } from '../validators/authValidators';
 import { addEmployeeSchema, employeeIdSchema } from '../validators/employeeValidators';
 import { documentIdParamSchema } from '../validators/documentValidators';
@@ -67,6 +71,12 @@ router.post('/auth/admin/verify-otp', authLimiter, validate(verifyOtpSchema), as
 router.post('/auth/admin/resend-otp', resendLimiter, validate(resendOtpSchema), asyncHandler(resendOtp as any));
 router.post('/auth/admin/login', authLimiter, validate(adminLoginSchema), asyncHandler(adminLogin as any));
 router.post('/auth/refresh', authLimiter, validate(refreshSchema), asyncHandler(refresh as any));
+
+// Forgot password (admin + employee, OTP via email)
+router.post('/auth/forgot-password', authLimiter, validate(forgotPasswordSchema), asyncHandler(forgotPassword as any));
+router.post('/auth/verify-reset-otp', authLimiter, validate(verifyResetOtpSchema), asyncHandler(verifyResetOtp as any));
+router.post('/auth/reset-password', authLimiter, validate(resetPasswordSchema), asyncHandler(resetPassword as any));
+router.post('/auth/resend-reset-otp', resendLimiter, validate(resendResetOtpSchema), asyncHandler(resendResetOtp as any));
 
 router.get('/health', (req: any, res: any) => {
   res.status(200).json({

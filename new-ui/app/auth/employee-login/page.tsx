@@ -182,6 +182,15 @@ export default function EmployeeLoginPage() {
               className="space-y-1.5"
             />
 
+            <p className="text-sm text-slate-600 dark:text-slate-400 -mt-1">
+              <Link
+                href="/auth/forgot-password?returnTo=employee"
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors underline-offset-2 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </p>
+
             <button
               type="submit"
               disabled={loading}

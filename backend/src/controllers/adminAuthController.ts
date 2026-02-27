@@ -64,7 +64,31 @@ export async function adminSignup(req: AuthenticatedRequest, res: Response): Pro
 
       const user = newUser.rows[0];
 
-      await EmailService.sendOtpEmail(email, otp, user.name || username);
+      if (!EmailService.isEmailConfigured()) {
+        if (process.env.NODE_ENV === 'development') {
+          logger.info('DEV: Email not configured. Admin signup OTP (check server logs)', { email, otp });
+        }
+        client.release();
+        res.status(503).json({
+          success: false,
+          message: process.env.NODE_ENV === 'development'
+            ? 'Email is not configured. In development, check server logs for the OTP.'
+            : 'Email is not configured. Please contact support.',
+        });
+        return;
+      }
+
+      try {
+        await EmailService.sendOtpEmail(email, otp, user.name || username);
+      } catch (emailError) {
+        client.release();
+        logger.error('Admin signup: failed to send OTP email', { error: emailError, email });
+        res.status(503).json({
+          success: false,
+          message: 'Could not send verification email. Please try again later or contact support.',
+        });
+        return;
+      }
 
       client.release();
 
@@ -239,7 +263,26 @@ export async function resendOtp(req: AuthenticatedRequest, res: Response): Promi
       [otpHash, otpExpiresAt, user.id]
     );
 
-    await EmailService.sendOtpEmail(email, otp, user.name || email);
+    if (!EmailService.isEmailConfigured()) {
+      if (process.env.NODE_ENV === 'development') {
+        logger.info('DEV: Email not configured. Admin resend OTP (check server logs)', { email, otp });
+      }
+      res.status(503).json({
+        success: false,
+        message: process.env.NODE_ENV === 'development'
+          ? 'Email is not configured. In development, check server logs for the OTP.'
+          : 'Email is not configured. Please contact support.',
+      });
+      return;
+    }
+
+    try {
+      await EmailService.sendOtpEmail(email, otp, user.name || email);
+    } catch (emailError) {
+      logger.error('Resend OTP: failed to send email', { error: emailError, email });
+      res.status(503).json({ success: false, message: 'Could not send email. Please try again later.' });
+      return;
+    }
 
     logger.info('OTP resend sent', { email });
     res.status(200).json({ success: true, message: 'OTP resent successfully' });
