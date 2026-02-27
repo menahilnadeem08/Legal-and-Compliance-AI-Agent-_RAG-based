@@ -229,13 +229,13 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "compare_document_versions",
-          description: "Use when user asks what changed, evolved, or differs WITHIN the same document over time. Works by CATEGORY — all versions of the same logical document are grouped by category. User may say category name OR document name — pass whatever they said as input, system resolves automatically. If user does not specify versions → set compare_all=true. Triggers: 'what changed in X', 'any updates in X', 'show history of X', 'compare versions of X', 'what is different in X', 'has X changed', 'what was updated in X', 'evolution of X', 'latest changes in X'.",
+          description: "Use when user asks what changed, evolved, or differs WITHIN the same document over time. CRITICAL: Pass the EXACT words the user said for the document/category name - do NOT interpret, normalize, or rephrase. System automatically resolves any user input to the correct category. If user does not specify versions → set compare_all=true. Triggers: 'what changed in X', 'any updates in X', 'show history of X', 'compare versions of X', 'what is different in X', 'has X changed', 'what was updated in X', 'evolution of X', 'latest changes in X'.",
           parameters: {
             type: "object",
             properties: {
               input: {
                 type: "string",
-                description: "The document or category the user is referring to. Can be a category name, document name, or any informal reference like 'NOC', 'constitution', 'hr rules'. System resolves automatically."
+                description: "CRITICAL: The EXACT words the user said when referring to the document or category. DO NOT interpret, normalize, abbreviate, or rephrase. Pass verbatim. Examples: if user says 'Constitution of Pakistan', pass 'Constitution of Pakistan' exactly; if user says 'NOC', pass 'NOC' exactly. System will resolve to the correct category automatically."
               },
               version1: {
                 type: "string",
@@ -248,6 +248,10 @@ export class LegalComplianceAgent {
               compare_all: {
                 type: "boolean",
                 description: "Set true when user does not specify versions or asks for full history. Default to true when versions not specified."
+              },
+              detail: {
+                type: "boolean",
+                description: "Set true when user asks to explain, show details, or elaborate on changes. Default false for count/summary questions."
               }
             },
             required: ["input"]
@@ -392,6 +396,7 @@ export class LegalComplianceAgent {
         case "compare_document_versions": {
           const input = args.input;
           const compare_all = args.compare_all !== false; // Default to true
+          const detail = args.detail === true; // Default to false
           
           if (compare_all) {
             const allResult = await this.versionService.compareAllVersions(input, adminId);
@@ -399,7 +404,7 @@ export class LegalComplianceAgent {
             if ('error' in allResult) {
               throw new Error(allResult.error || 'Compare all versions failed');
             }
-            return allResult;
+            return { ...allResult, detail };
           }
           
           // Compare specific two versions
@@ -409,7 +414,7 @@ export class LegalComplianceAgent {
           );
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           if (versionResult.success) {
-            return versionResult.comparison;
+            return { ...versionResult.comparison, detail };
           }
           throw new Error(versionResult.error || 'Version comparison failed');
         }
@@ -511,41 +516,126 @@ export class LegalComplianceAgent {
         };
 
       case "compare_document_versions": {
+        // Helper function to format changed sections with preview
+        const formatChangeDetails = (changes: any[], detail: boolean): string => {
+          if (!detail || !changes || changes.length === 0) {
+            return '';
+          }
+
+          const added = changes.filter((c: any) => c.change_type === 'added');
+          const removed = changes.filter((c: any) => c.change_type === 'removed');
+          const modified = changes.filter((c: any) => c.change_type === 'modified');
+
+          const sections: string[] = [];
+
+          if (added.length > 0) {
+            sections.push('ADDED SECTIONS:');
+            added.forEach((item: any) => {
+              const preview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const truncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+              sections.push(`+ [${item.section_name}]: ${preview}${truncated}`);
+            });
+          }
+
+          if (removed.length > 0) {
+            sections.push('\nREMOVED SECTIONS:');
+            removed.forEach((item: any) => {
+              const preview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const truncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+              sections.push(`- [${item.section_name}]: ${preview}${truncated}`);
+            });
+          }
+
+          if (modified.length > 0) {
+            sections.push('\nMODIFIED SECTIONS:');
+            modified.forEach((item: any) => {
+              const oldPreview = item.old_content ? item.old_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const oldTruncated = item.old_content && item.old_content.length > 150 ? '...' : '';
+              const newPreview = item.new_content ? item.new_content.substring(0, 150).replace(/\n/g, ' ') : '';
+              const newTruncated = item.new_content && item.new_content.length > 150 ? '...' : '';
+              
+              let changeLevel = 'minor';
+              if (item.similarity_score !== undefined) {
+                if (item.similarity_score < 0.6) changeLevel = 'major';
+                else if (item.similarity_score < 0.8) changeLevel = 'moderate';
+              }
+              
+              sections.push(`~ [${item.section_name}]:`);
+              sections.push(`  Before: ${oldPreview}${oldTruncated}`);
+              sections.push(`  After:  ${newPreview}${newTruncated}`);
+              sections.push(`  Change: ${changeLevel}`);
+            });
+          }
+
+          return sections.join('\n');
+        };
+
         // compareAllVersions returns { category, comparisons: [{ from_version, to_version, changes }] } with no version1/version2 at top level
         const isCompareAll = Array.isArray(result.comparisons) && result.comparisons.length > 0 && !result.version1;
+        const detail = result.detail === true;
+
         if (isCompareAll) {
-          const docName = result.document_name ?? result.category ?? 'Document';
-          const lines = [`Document: ${docName} (all version pairs)\n`];
+          const lines: string[] = [];
           const allCitations: any[] = [];
+
+          // Display sequential version comparisons
           for (const item of result.comparisons) {
             const comparison = item.changes ?? item;
             const label = item.from_version != null && item.to_version != null
               ? `v${item.from_version} → v${item.to_version}`
               : 'Versions';
+            
+            // Find the document names from versionsList
+            const v1Doc = result.versions?.find((v: any) => v.version === item.from_version);
+            const v2Doc = result.versions?.find((v: any) => v.version === item.to_version);
+            const docLabel = (v1Doc?.filename && v2Doc?.filename) 
+              ? ` (${v1Doc.filename} → ${v2Doc.filename})`
+              : '';
+
             const stats = comparison.statistics || {};
-            lines.push(`${label}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change. ${comparison.summary ?? ''}`);
+            
+            // Summary line (always shown)
+            lines.push(`${label}${docLabel}: ${stats.chunks_added ?? 0} added, ${stats.chunks_removed ?? 0} removed, ${stats.chunks_modified ?? 0} modified; ${(stats.change_percentage ?? 0).toFixed(1)}% change.`);
+            
+            // Detail section (only if detail=true)
+            if (detail) {
+              const changeDetails = formatChangeDetails(comparison.changes || [], true);
+              if (changeDetails) {
+                const indented = changeDetails.split('\n').map(line => `  ${line}`).join('\n');
+                lines.push(indented);
+              }
+            }
+
             if (comparison.document_name || comparison.version1) {
               allCitations.push(...this.extractVersionCitations(comparison));
             }
           }
+
           return {
-            text: `Version Comparison (all versions):\n${lines.join('\n')}`,
+            text: `Version Comparison for ${result.category} Category:\n\n${lines.join('\n')}`,
             citations: allCitations
           };
         }
+
         if (!result.version1 || !result.version2) {
           return {
             text: result.message ?? result.error ?? 'Version comparison could not be completed.',
             citations: []
           };
         }
-        return {
-          text: `Version Comparison Results:
+
+        const stats = result.statistics || {};
+        const summaryText = `Version Comparison Results:
 Document: ${result.document_name}
 Versions: ${result.version1.version} → ${result.version2.version}
-Changes: ${result.statistics.chunks_added} added, ${result.statistics.chunks_removed} removed, ${result.statistics.chunks_modified} modified
-Change Rate: ${result.statistics.change_percentage.toFixed(1)}%
-Summary: ${result.summary}`,
+Changes: ${stats.chunks_added} added, ${stats.chunks_removed} removed, ${stats.chunks_modified} modified
+Change Rate: ${stats.change_percentage.toFixed(1)}%
+Summary: ${result.summary}`;
+
+        const detailText = detail ? `\n\n${formatChangeDetails(result.changes || [], true)}` : '';
+
+        return {
+          text: summaryText + detailText,
           citations: this.extractVersionCitations(result)
         };
       }
@@ -757,7 +847,11 @@ CONSISTENCY & ACCURACY REQUIREMENTS:
 Tool Selection Guidelines:
 - Use search_documents for general questions about document content or answering FROM documents
 - USE compare_document_versions for ANY of these: "what changed in [anything]?", "what are the changes in [anything]?", "any updates in [anything]?", "has [anything] changed?", "show history of [anything]", "compare versions of [anything]", "what is different in [anything]?", "what was updated in [anything]?", "latest changes in [anything]?", "evolution of [anything]", "what is new in [anything]?", "is it same in all versions?", or user mentions a document/category name + change/update/history/version/difference word → ALWAYS use compare_document_versions; do NOT ask the user for versions if they don't specify them
-- IMPORTANT for compare_document_versions: Works WITHIN a category (all versions of same logical document) — pass whatever the user said as input, system resolves automatically → do NOT try to figure out if it's a category vs filename yourself → default compare_all=true unless user specifies exact versions
+  - DETAIL PARAMETER RULES for compare_document_versions:
+    - Set detail=false (DEFAULT) when user asks: "how many changes", "number of changes", "summary", "overview", "brief", or first-time general question like "what changed"
+    - Set detail=true when user asks: "explain", "show me", "detail", "elaborate", "what was added/removed/modified", "what exactly changed", "tell me more", or as follow-up after seeing summary (e.g., "explain those changes")
+    - When user asks "explain those changes" after receiving a summary: Extract document/category from previous message and call compare_document_versions again with detail=true using the same input — do NOT ask user to repeat document name
+- IMPORTANT for compare_document_versions: Works WITHIN a category (all versions of same logical document) — PASS THE EXACT WORDS THE USER SAID when referring to the document/category name. DO NOT interpret, normalize, or abbreviate. System resolves automatically to the correct category. Examples: user says 'Constitution of Pakistan' → pass 'Constitution of Pakistan'; user says 'NOC' → pass 'NOC'. Default compare_all=true unless user specifies exact versions.
 - Use detect_policy_conflicts ONLY when user explicitly asks about conflicts, contradictions, or inconsistencies BETWEEN different documents across different categories — do NOT use for version comparisons within the same document
 - Use list_available_documents when user asks what documents exist
 - Use find_related_documents when user asks "what documents relate to X", "find similar policies", "what else covers this topic", "documents like X", or "related contracts"
@@ -783,6 +877,7 @@ FOLLOW-UP CONTEXT:
 - "is it same in all versions?" → extract topic from previous message → call compare_document_versions
 - "any conflicts?" → extract topic from previous message → call detect_policy_conflicts
 - "what changed?" (about version history of ONE document) → extract document from previous message → call compare_document_versions
+- "explain those changes" OR "show me the changes" OR "tell me more" (after receiving a comparison summary) → call compare_document_versions with detail=true, using the same document/category from the previous comparison, DO NOT ask user to repeat
 - Never ask user to repeat information already in conversation history
 
 CONFLICT FOLLOW-UPS (do NOT call compare_document_versions):
