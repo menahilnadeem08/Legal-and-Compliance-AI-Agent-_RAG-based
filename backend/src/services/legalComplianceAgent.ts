@@ -1342,6 +1342,13 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
       aggregatedConfidence = 0;
     }
 
+    // Generic conversational replies (no substantive tool content) → 0
+    const hasGenericPhrase = /\b(I understand|If you have any other questions|feel free to ask|need information on a different topic)\b/i.test(finalAnswer);
+    const hasNoSubstantiveContent = !/\[[\d]+\]|Article|Section|clause|document|policy|regulation|constitution|amendment/i.test(finalAnswer);
+    if (hasGenericPhrase && hasNoSubstantiveContent) {
+      aggregatedConfidence = 0;
+    }
+
     return {
       answer: finalAnswer,
       tool_calls: toolCalls,

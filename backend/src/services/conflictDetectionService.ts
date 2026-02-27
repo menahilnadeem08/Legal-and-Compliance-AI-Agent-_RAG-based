@@ -696,6 +696,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     conflicts_by_pair: Array<{ pair: string; conflicts: DetectedConflict[] }>;
     all_conflicts: DetectedConflict[];
     summary: string;
+    confidence: number;
     analysis_metadata: {
       chunks_analyzed: number;
       analysis_method: string;

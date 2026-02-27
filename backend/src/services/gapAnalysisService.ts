@@ -20,6 +20,7 @@ export interface GapAnalysisResult {
   coverage_score_b: number;  // % of B's topics that are in A
   critical_gaps: number;
   llm_summary: string;
+  confidence: number;
 }
 
 export class GapAnalysisService {

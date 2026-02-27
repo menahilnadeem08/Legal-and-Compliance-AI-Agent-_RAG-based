@@ -736,7 +736,8 @@ Return ONLY the JSON object or null, nothing else.`;
     versions: Array<{ version: number; filename: string; is_active: boolean; date: string }>;
     comparisons: Array<{ from_version: number; to_version: number; changes: any }>;
     message?: string;
-  } | { error: string; suggestions?: string }> {
+    confidence: number;
+  } | { error: string; suggestions?: string; confidence: number }> {
     try {
       // Step 1: Resolve category from user input
       const resolution = await this.resolveCategoryFromInput(userInput, adminId);
