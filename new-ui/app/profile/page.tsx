@@ -130,8 +130,8 @@ export default function ProfilePage() {
       popover: {
         title: "Your Profile",
         description: "View your account details including username, email, role, and authentication method.",
-        side: "bottom",
-        align: "start",
+        side: "bottom" as const,
+        align: "start" as const,
       },
     },
     {
@@ -139,8 +139,8 @@ export default function ProfilePage() {
       popover: {
         title: "Account Actions",
         description: "Change your password (employees only) or log out of your account.",
-        side: "top",
-        align: "center",
+        side: "top" as const,
+        align: "center" as const,
       },
     },
   ];
