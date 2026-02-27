@@ -94,20 +94,6 @@ export class PipelineLogger extends EventEmitter {
       this.logs.shift();
     }
   }
-
-  /**
-   * Get all logs
-   */
-  getLogs(): LogEntry[] {
-    return [...this.logs];
-  }
-
-  /**
-   * Clear logs
-   */
-  clearLogs(): void {
-    this.logs = [];
-  }
 }
 
 // Global logger instance
