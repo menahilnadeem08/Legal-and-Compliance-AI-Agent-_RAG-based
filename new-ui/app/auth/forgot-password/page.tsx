@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,7 +21,7 @@ import { api } from "@/app/utils/apiClient";
 
 type Step = "email" | "otp" | "reset" | "done";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = useMemo(() => searchParams.get("returnTo") || "employee", [searchParams]);
@@ -92,7 +93,7 @@ export default function ForgotPasswordPage() {
       const otpCode = otp.join("");
       setLoading(true);
       try {
-        const response = await api.post<{ data?: { resetToken?: string }; message?: string }>(
+        const response = await api.post<{ resetToken?: string }>(
           "/auth/verify-reset-otp",
           { email: email.trim(), otp: otpCode, role: returnTo as 'admin' | 'employee' },
           { requiresAuth: false, skipAuthRedirectOn401: true }
@@ -442,5 +443,13 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }
