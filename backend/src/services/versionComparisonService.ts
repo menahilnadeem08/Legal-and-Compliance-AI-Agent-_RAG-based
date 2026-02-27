@@ -306,7 +306,8 @@ Return ONLY the JSON object or null, nothing else.`;
       if (!parsed) {
         return {
           error: 'Could not understand version comparison request. Please specify document name and two versions to compare.',
-          suggestions: 'Try: "compare [document name] version [X] and [Y]"'
+          suggestions: 'Try: "compare [document name] version [X] and [Y]"',
+          confidence: 0
         };
       }
 
@@ -331,7 +332,8 @@ Return ONLY the JSON object or null, nothing else.`;
           suggestions:
             availableCategories.length > 0
               ? `Available categories: ${availableCategories.join(', ')}`
-              : 'No documents found in your account.'
+              : 'No documents found in your account.',
+          confidence: 0
         };
       }
 
@@ -364,7 +366,8 @@ Return ONLY the JSON object or null, nothing else.`;
         return {
           error: `Could not resolve versions "${parsed.version1}" and/or "${parsed.version2}" for category "${resolution.category}".`,
           available_versions: availableVersions,
-          suggestions: `Available versions: ${availableVersions.join(', ')}`
+          suggestions: `Available versions: ${availableVersions.join(', ')}`,
+          confidence: 0
         };
       }
 
@@ -390,7 +393,8 @@ Return ONLY the JSON object or null, nothing else.`;
       if (!v1Doc || !v2Doc) {
         return {
           error: 'Could not fetch the specified versions for comparison.',
-          category: resolution.category
+          category: resolution.category,
+          confidence: 0
         };
       }
 
@@ -405,6 +409,15 @@ Return ONLY the JSON object or null, nothing else.`;
 
         const citations = this.extractCitations(comparison);
 
+        // Calculate confidence based on results (processComparison compares 2 versions)
+        const stats = comparison.statistics;
+        const totalChanges = (stats?.chunks_added || 0) + (stats?.chunks_removed || 0) + (stats?.chunks_modified || 0);
+        const modifiedSections = stats?.chunks_modified || 0;
+        let baseScore = 75;
+        if (totalChanges > 0) baseScore += 5;
+        if (modifiedSections > 0) baseScore += 5;
+        const confidence = Math.min(baseScore, 85);
+
         return {
           success: true,
           category: resolution.category,
@@ -412,20 +425,23 @@ Return ONLY the JSON object or null, nothing else.`;
           comparison: {
             ...comparison,
             citations
-          }
+          },
+          confidence
         };
       } catch (error: any) {
         return {
           error: 'Failed to compare versions',
           details: error.message,
-          category: resolution.category
+          category: resolution.category,
+          confidence: 0
         };
       }
     } catch (error: any) {
       logger.error('Error in processComparison', { userQuery, adminId, error });
       return {
         error: 'An error occurred during version comparison',
-        details: error?.message
+        details: error?.message,
+        confidence: 0
       };
     }
   }
@@ -720,7 +736,8 @@ Return ONLY the JSON object or null, nothing else.`;
     versions: Array<{ version: number; filename: string; is_active: boolean; date: string }>;
     comparisons: Array<{ from_version: number; to_version: number; changes: any }>;
     message?: string;
-  } | { error: string; suggestions?: string }> {
+    confidence: number;
+  } | { error: string; suggestions?: string; confidence: number }> {
     try {
       // Step 1: Resolve category from user input
       const resolution = await this.resolveCategoryFromInput(userInput, adminId);
@@ -743,7 +760,8 @@ Return ONLY the JSON object or null, nothing else.`;
           suggestions:
             availableCategories.length > 0
               ? `Available categories: ${availableCategories.join(', ')}`
-              : 'No documents found in your account.'
+              : 'No documents found in your account.',
+          confidence: 0
         };
       }
 
@@ -781,14 +799,16 @@ Return ONLY the JSON object or null, nothing else.`;
             }
           ],
           comparisons: [],
-          message: `Only one version of "${resolution.category}" exists (v${v.version}, uploaded ${dateStr}). Upload a new version to enable comparison.`
+          message: `Only one version of "${resolution.category}" exists (v${v.version}, uploaded ${dateStr}). Upload a new version to enable comparison.`,
+          confidence: 0
         };
       }
 
       if (versions.length === 0) {
         return {
           error: `No documents found for "${userInput}".`,
-          suggestions: 'Check the category name and try again.'
+          suggestions: 'Check the category name and try again.',
+          confidence: 0
         };
       }
 
@@ -866,18 +886,36 @@ Return ONLY the JSON object or null, nothing else.`;
         }
       }
 
+      // Calculate confidence based on results
+      let totalChanges = 0;
+      let modifiedSections = 0;
+      for (const comp of comparisons) {
+        const stats = comp.changes?.statistics;
+        if (stats) {
+          totalChanges += (stats.chunks_added || 0) + (stats.chunks_removed || 0) + (stats.chunks_modified || 0);
+          modifiedSections += stats.chunks_modified || 0;
+        }
+      }
+      let baseScore = 75;
+      if (versions.length >= 3) baseScore += 5;
+      if (totalChanges > 0) baseScore += 5;
+      if (modifiedSections > 0) baseScore += 5;
+      const confidence = Math.min(baseScore, 85);
+
       return {
         category: resolution.category,
         resolved_from: resolution.resolvedFrom,
         total_versions: versions.length,
         versions: versionsList,
-        comparisons
+        comparisons,
+        confidence
       };
     } catch (error: any) {
       logger.error('Error in compareAllVersions', { userInput, adminId, error });
       return {
         error: 'Failed to compare versions',
-        suggestions: error?.message || 'Please try again.'
+        suggestions: error?.message || 'Please try again.',
+        confidence: 0
       };
     }
   }

@@ -176,9 +176,9 @@ export class DocumentService {
   /**
    * GET ALL VERSIONS OF A DOCUMENT (for suggestions)
    */
-  async getDocumentVersions(documentName: string, adminId?: number): Promise<string[]> {
+  async getDocumentVersions(documentName: string, adminId?: number): Promise<{ versions: string[]; confidence: number }> {
     const actualName = await this.findDocumentByName(documentName, adminId);
-    if (!actualName) return [];
+    if (!actualName) return { versions: [], confidence: 0 };
 
     let query = `SELECT version FROM documents 
        WHERE filename = $1`;
@@ -187,10 +187,12 @@ export class DocumentService {
     
     const params = adminId ? [actualName, adminId] : [actualName];
     const result = await pool.query(query, params);
-    return result.rows.map(r => r.version);
+    const versions = result.rows.map(r => r.version);
+    const confidence = versions.length > 0 ? 95 : 90;
+    return { versions, confidence };
   }
 
-  async listDocuments(adminId?: number) {
+  async listDocuments(adminId?: number): Promise<{ documents: any[]; confidence: number }> {
     let query = `SELECT id, filename, category, version, is_active, upload_date 
        FROM documents`;
     
@@ -204,7 +206,7 @@ export class DocumentService {
       ? await pool.query(query, [adminId])
       : await pool.query(query);
     
-    return result.rows;
+    return { documents: result.rows, confidence: 95 };
   }
 
   /**
@@ -796,11 +798,11 @@ Be specific and actionable. Focus on business/legal impact.`;
     documentName: string,
     adminId: number,
     limit: number = 5
-  ): Promise<RelatedDocument[]> {
+  ): Promise<{ related_documents: RelatedDocument[]; confidence: number }> {
     // Find the actual document
     const actualName = await this.findDocumentByName(documentName, adminId);
     if (!actualName) {
-      throw new Error(`Document "${documentName}" not found`);
+      return { related_documents: [], confidence: 0 };
     }
 
     // Get source document ID
@@ -848,7 +850,7 @@ Be specific and actionable. Focus on business/legal impact.`;
     );
 
     if (otherDocsQuery.rows.length === 0) {
-      return []; // No other documents
+      return { related_documents: [], confidence: 85 }; // No other documents - accurate: nothing related
     }
 
     // Compute average embeddings for each other document and compute similarity
@@ -906,7 +908,7 @@ Be specific and actionable. Focus on business/legal impact.`;
       .slice(0, limit);
 
     if (topDocuments.length === 0) {
-      return [];
+      return { related_documents: [], confidence: 85 };
     }
 
     // Use LLM to infer relationship type and shared topics for each related document
@@ -956,7 +958,15 @@ Respond ONLY with valid JSON:
       }
     }
 
-    return result;
+    // Calculate confidence based on results
+    const avgScore = result.length > 0
+      ? result.reduce((sum, d) => sum + d.similarity_score, 0) / result.length
+      : 0;
+    let confidence = avgScore * 100;
+    if (result.length >= 3) confidence += 5;
+    confidence = Math.min(confidence, 85);
+
+    return { related_documents: result, confidence };
   }
 
   /**

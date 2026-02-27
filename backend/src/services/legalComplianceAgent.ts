@@ -56,7 +56,7 @@ export class LegalComplianceAgent {
         return this.extractConflictCitations(result);
 
       case "list_available_documents":
-        return this.extractDocumentListCitations(result);
+        return this.extractDocumentListCitations(result?.documents ?? result ?? []);
 
       case "get_document_versions":
         return this.extractVersionListCitations(result);
@@ -220,7 +220,7 @@ export class LegalComplianceAgent {
     const unresolved: string[] = [];
 
     // Fetch all documents and categories for this admin
-    const allDocs = await this.documentService.listDocuments(adminId);
+    const allDocs = (await this.documentService.listDocuments(adminId)).documents;
     
     for (const input of inputs) {
       try {
@@ -272,7 +272,7 @@ export class LegalComplianceAgent {
         type: "function" as const,
         function: {
           name: "search_documents",
-          description: "Use for direct factual questions about document content, policies, rules, definitions. Do NOT use for greetings, version comparisons, or conflict checks.",
+          description: "MANDATORY: Call this tool for ANY question about document content, legal terms, definitions, policies, rules, laws, amendments, or any factual information. This is the ONLY source of truth. NEVER answer factual questions without calling this tool first. Even if the answer seems obvious — search first. Examples that MUST use this tool: 'what is constitution?' → search for constitution content; 'what is the penalty?' → search for penalty clauses; 'what does section 12 say?' → search for section 12; 'explain notice period' → search for notice period; 'what is First Amendment?' → search YOUR documents, not training knowledge. Do NOT use for: greetings, reformatting requests",
           parameters: {
             type: "object",
             properties: {
@@ -521,11 +521,11 @@ export class LegalComplianceAgent {
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return conflictResult;
 
-        case "list_available_documents":
-          const docs = await this.documentService.listDocuments(adminId);
+        case "list_available_documents": {
+          const listResult = await this.documentService.listDocuments(adminId);
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           // Group by document name
-          const grouped = docs.reduce((acc: any, doc: any) => {
+          const grouped = listResult.documents.reduce((acc: any, doc: any) => {
             const key = doc.filename;
             if (!acc[key]) {
               acc[key] = {
@@ -541,19 +541,22 @@ export class LegalComplianceAgent {
             }
             return acc;
           }, {});
-          return Object.values(grouped);
+          return { documents: Object.values(grouped), confidence: listResult.confidence };
+        }
 
-        case "get_document_versions":
-          const versions = await this.documentService.getDocumentVersions(args.document_name, adminId);
+        case "get_document_versions": {
+          const versionResult = await this.documentService.getDocumentVersions(args.document_name, adminId);
           const resolvedName = await this.documentService.findDocumentByName(args.document_name, adminId);
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: resolvedName || args.document_name,
-            versions: versions
+            versions: versionResult.versions,
+            confidence: versionResult.confidence
           };
+        }
 
-        case "find_related_documents":
-          const relatedDocs = await this.documentService.findRelatedDocuments(
+        case "find_related_documents": {
+          const relatedResult = await this.documentService.findRelatedDocuments(
             args.document_name,
             adminId,
             args.limit || 5
@@ -561,8 +564,10 @@ export class LegalComplianceAgent {
           logger.debug('Tool completed', { toolName, elapsed: Date.now() - startTime });
           return {
             document_name: args.document_name,
-            related_documents: relatedDocs
+            related_documents: relatedResult.related_documents,
+            confidence: relatedResult.confidence
           };
+        }
 
         case "gap_analysis":
           const gapResult = await this.gapAnalysisService.analyzeGaps(
@@ -878,13 +883,15 @@ ${result.conflicts.map((c: any, i: number) =>
         };
       }
 
-      case "list_available_documents":
+      case "list_available_documents": {
+        const docList = result?.documents ?? result ?? [];
         return {
-          text: `Available Documents:\n${result.map((d: any) => 
+          text: `Available Documents:\n${docList.map((d: any) => 
             `- ${d.name} (${d.category || 'N/A'}) - Latest: v${d.latest_version}, All versions: ${d.versions.join(', ')}`
           ).join('\n')}`,
-          citations: this.extractDocumentListCitations(result)
+          citations: this.extractDocumentListCitations(docList)
         };
+      }
 
       case "get_document_versions":
         return {
@@ -984,13 +991,33 @@ ${result.llm_summary}`,
 
     const systemContent = `You are a Legal & Compliance AI Agent with access to specialized tools.
 
-⚠️ CRITICAL: HALLUCINATION PREVENTION RULES
-- NEVER generate, assume, or infer information not in retrieved documents
-- REFUSE to answer if documents don't contain sufficient evidence
-- Say "I cannot find this information in the available documents" rather than guessing
-- Do NOT use speculative language: "might", "could", "possibly", "perhaps", "likely", "probably"
-- Every factual claim MUST be directly supported by tool results
-- If unsure about any aspect, explicitly state the limitation
+⚠️ ABSOLUTE RULES - NO EXCEPTIONS:
+1. You are NOT a general assistant. You have NO knowledge of your own.
+2. For EVERY factual question you MUST call search_documents FIRST
+3. NEVER answer any factual question from memory or training knowledge
+4. Even if you know the answer — SEARCH FIRST, always
+5. If search returns nothing → say "I could not find this in uploaded documents"
+6. The ONLY exceptions (no tool needed):
+   - Pure greetings: "hi", "hello", "how are you"
+   - Reformatting previous answer: "summarize that", "make it shorter"
+   - Follow-up on previous answer: "explain that", "give me a table"
+
+WARNING: Your training knowledge about laws, constitutions, amendments, and legal terms refers to OTHER countries and OTHER documents. IGNORE your training knowledge completely. ONLY use information from search_documents results.
+
+EXAMPLES OF CORRECT BEHAVIOR:
+✅ User: "what is constitution?"
+   Agent: calls search_documents("what is constitution") → answers from result
+
+✅ User: "what is First Amendment?"
+   Agent: calls search_documents("First Amendment") → answers from YOUR documents
+   NOT from US Constitution training knowledge
+
+✅ User: "explain notice period"
+   Agent: calls search_documents("notice period") → answers from result
+
+❌ WRONG: User asks factual question → Agent answers without calling any tool
+❌ WRONG: Agent uses OpenAI training knowledge to answer legal questions
+❌ WRONG: Agent says "Based on my knowledge..." for any factual question
 
 UNDERSTANDING USER INPUT:
 Identify which type of input the user sent before deciding what to do:
@@ -1297,12 +1324,28 @@ Example BAD answer: "I believe the probation period is probably around 90 days."
     } else {
       // No tools called: do not calculate or show confidence for greeting replies
       const isGreetingReply = /^(hi|hello|hey|hi there|hello there|greetings)[\s!.,]|how can I (help|assist)|what can I (help|assist)|how may I (help|assist)|happy to help|here to help|assist you with/i.test(finalAnswer.trim().slice(0, 200));
-      aggregatedConfidence = isGreetingReply ? 0 : 95;
+      aggregatedConfidence = 0;  // No tools ran → 0 (greeting handled above)
+    }
+
+    // Apply confidence thresholds
+    if (aggregatedConfidence < 20 && aggregatedConfidence > 0) {
+      finalAnswer = 'Insufficient information in the knowledge base.';
+      aggregatedConfidence = 0;
+    }
+    if (aggregatedConfidence >= 20 && aggregatedConfidence < 50) {
+      finalAnswer += `\n\n⚠️ Low confidence (${aggregatedConfidence}%). Please verify with source documents.`;
     }
 
     // Do not show high confidence for error/fallback answers (e.g. retrieval issues, document not recognized)
     const isErrorOrFallbackAnswer = /\b(issues? with|not being recognized|please confirm|cannot find|unable to (retrieve|find)|could not (retrieve|find)|not (found|recognized)|insufficient information|no (relevant )?information)\b/i.test(finalAnswer);
     if (isErrorOrFallbackAnswer) {
+      aggregatedConfidence = 0;
+    }
+
+    // Generic conversational replies (no substantive tool content) → 0
+    const hasGenericPhrase = /\b(I understand|If you have any other questions|feel free to ask|need information on a different topic)\b/i.test(finalAnswer);
+    const hasNoSubstantiveContent = !/\[[\d]+\]|Article|Section|clause|document|policy|regulation|constitution|amendment/i.test(finalAnswer);
+    if (hasGenericPhrase && hasNoSubstantiveContent) {
       aggregatedConfidence = 0;
     }
 

@@ -595,6 +595,24 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     // Generate summary
     const summary = await this.generateConflictSummary(conflicts);
 
+    // Calculate top-level confidence (agent reads result.confidence)
+    let topLevelConfidence: number;
+    if (totalChunks === 0) {
+      topLevelConfidence = 20;
+    } else {
+      const avgChunkSimilarity = 0.6; // Default: no per-chunk similarity in conflict detection
+      const conflictsWithBothExcerpts = conflicts.filter(
+        c => (c.document_a?.excerpt?.trim().length || 0) > 10 && (c.document_b?.excerpt?.trim().length || 0) > 10
+      ).length;
+      if (conflicts.length > 0) {
+        const evidenceBonus = conflicts.length > 0 ? (conflictsWithBothExcerpts / conflicts.length) * 10 : 0;
+        topLevelConfidence = Math.min(avgChunkSimilarity * 100 + evidenceBonus, 85);
+        if (avgChunkSimilarity < 0.2) topLevelConfidence = Math.min(topLevelConfidence, 40);
+      } else {
+        topLevelConfidence = Math.min(avgChunkSimilarity * 100, 90);
+      }
+    }
+
     return {
       query,
       documents_analyzed: Array.from(chunksMap.keys()),
@@ -605,10 +623,11 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
         return severityOrder[a.severity] - severityOrder[b.severity];
       }),
       summary,
+      confidence: topLevelConfidence,
       analysis_metadata: {
         chunks_analyzed: totalChunks,
         analysis_method: 'LLM-based semantic analysis',
-        confidence: conflicts.length > 0 ? 85 : 95 // Higher confidence when no conflicts
+        confidence: topLevelConfidence
       }
     };
   }
@@ -677,6 +696,7 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
     conflicts_by_pair: Array<{ pair: string; conflicts: DetectedConflict[] }>;
     all_conflicts: DetectedConflict[];
     summary: string;
+    confidence: number;
     analysis_metadata: {
       chunks_analyzed: number;
       analysis_method: string;
@@ -751,16 +771,33 @@ ${highCount > 0 ? '\n⚠️ **CRITICAL**: High-priority conflicts require immedi
       ? '✅ No conflicts detected across the analyzed categories.'
       : `⚠️ **${uniqueConflicts.length} conflict${uniqueConflicts.length > 1 ? 's' : ''} detected** across ${categories.length} categories. 🔴 High: ${highCount}, 🟡 Medium: ${mediumCount}, 🟢 Low: ${lowCount}`;
 
+    // Calculate top-level confidence (agent reads result.confidence)
+    const avgChunkSimilarity = 0.6;
+    const conflictsWithBothExcerpts = uniqueConflicts.filter(
+      c => (c.document_a?.excerpt?.trim().length || 0) > 10 && (c.document_b?.excerpt?.trim().length || 0) > 10
+    ).length;
+    let topLevelConfidence: number;
+    if (totalChunks === 0) {
+      topLevelConfidence = 20;
+    } else if (uniqueConflicts.length > 0) {
+      const evidenceBonus = (conflictsWithBothExcerpts / uniqueConflicts.length) * 10;
+      topLevelConfidence = Math.min(avgChunkSimilarity * 100 + evidenceBonus, 85);
+      if (avgChunkSimilarity < 0.2) topLevelConfidence = Math.min(topLevelConfidence, 40);
+    } else {
+      topLevelConfidence = Math.min(avgChunkSimilarity * 100, 90);
+    }
+
     return {
       categories_analyzed: categories,
       total_conflicts: uniqueConflicts.length,
       conflicts_by_pair: conflictsByPair,
       all_conflicts: uniqueConflicts,
       summary,
+      confidence: topLevelConfidence,
       analysis_metadata: {
         chunks_analyzed: totalChunks,
         analysis_method: 'LLM-based multi-category analysis',
-        confidence: uniqueConflicts.length > 0 ? 85 : 95
+        confidence: topLevelConfidence
       }
     };
   }

@@ -15,8 +15,8 @@ export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res:
     throw new AppError('User role not properly configured', 500);
   }
   
-  const documents = await documentService.listDocuments(adminId);
-  return res.status(200).json({ success: true, data: { documents } });
+  const listResult = await documentService.listDocuments(adminId);
+  return res.status(200).json({ success: true, data: { documents: listResult.documents } });
 });
 
 export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
