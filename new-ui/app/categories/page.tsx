@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
+import { PageTour } from "@/app/components/PageTour";
 import {
   FolderTree,
   Plus,
@@ -156,8 +157,39 @@ export default function CategoriesPage() {
   const visibleDefaults = categories.filter((c) => c.type === "default");
   const customCats = categories.filter((c) => c.type === "custom");
 
+  const categoriesTourSteps = [
+    {
+      element: "[data-tour='categories-add']",
+      popover: {
+        title: "Add Custom Category",
+        description: "Create custom categories for your documents. They will appear in the upload dropdown alongside default categories.",
+        side: "bottom",
+        align: "start",
+      },
+    },
+    {
+      element: "[data-tour='categories-defaults']",
+      popover: {
+        title: "Default Categories",
+        description: "These are system categories. Toggle Hide to remove them from your upload list. They remain available to restore.",
+        side: "bottom",
+        align: "center",
+      },
+    },
+    {
+      element: "[data-tour='categories-custom']",
+      popover: {
+        title: "Your Custom Categories",
+        description: "Categories you've added. You can delete custom categories that are no longer needed.",
+        side: "top",
+        align: "center",
+      },
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <PageTour pageId="categories" steps={categoriesTourSteps} runOnMount />
       <AppNav />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
@@ -171,7 +203,7 @@ export default function CategoriesPage() {
         </div>
 
         {/* Add custom category */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 mb-8">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 mb-8" data-tour="categories-add">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Plus className="w-5 h-5" />
             Add custom category
@@ -203,7 +235,7 @@ export default function CategoriesPage() {
         ) : (
           <>
             {/* Default categories (visible) — list with hide toggle */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6" data-tour="categories-defaults">
               <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FolderTree className="w-5 h-5" />
@@ -246,7 +278,7 @@ export default function CategoriesPage() {
             </div>
 
             {/* Custom categories */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-6" data-tour="categories-custom">
               <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Tag className="w-5 h-5" />

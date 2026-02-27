@@ -8,6 +8,7 @@ import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAu
 import { api } from "@/app/utils/apiClient";
 import { mapFieldErrors } from "@/app/utils/formErrors";
 import { PasswordInput } from "@/app/components/PasswordInput";
+import { PageTour } from "@/app/components/PageTour";
 import { isPasswordValid } from "@/app/utils/passwordValidation";
 
 type UserInfo = {
@@ -123,14 +124,36 @@ export default function ProfilePage() {
     );
   }
 
+  const profileTourSteps = [
+    {
+      element: "[data-tour='profile-info']",
+      popover: {
+        title: "Your Profile",
+        description: "View your account details including username, email, role, and authentication method.",
+        side: "bottom",
+        align: "start",
+      },
+    },
+    {
+      element: "[data-tour='profile-actions']",
+      popover: {
+        title: "Account Actions",
+        description: "Change your password (employees only) or log out of your account.",
+        side: "top",
+        align: "center",
+      },
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <PageTour pageId="profile" steps={profileTourSteps} runOnMount />
       <AppNav />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 className="text-3xl font-bold mb-8">Profile</h1>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden" data-tour="profile-info">
           <div className="p-6 sm:p-8 space-y-6">
             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
               <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide">
@@ -177,7 +200,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="px-6 sm:px-8 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-3">
+          <div className="px-6 sm:px-8 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-3" data-tour="profile-actions">
             {isEmployeeUser() && (
               <button
                 type="button"

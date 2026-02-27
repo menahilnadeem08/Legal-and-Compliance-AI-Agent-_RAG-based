@@ -17,6 +17,7 @@ import { getAuthToken, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 import { DocumentPreviewModal } from "@/app/components/DocumentPreviewModal";
+import { PageTour } from "@/app/components/PageTour";
 
 type DocType = "contract" | "regulation" | "case_law" | "policy" | "guideline" | "other";
 
@@ -210,8 +211,30 @@ export default function DocumentsPage() {
     );
   }
 
+  const documentsTourSteps = [
+    {
+      element: "[data-tour='documents-tabs']",
+      popover: {
+        title: "Filter Documents",
+        description: "View all documents, only the latest versions, or outdated ones. Latest versions are used by the AI for answers.",
+        side: "bottom",
+        align: "start",
+      },
+    },
+    {
+      element: "[data-tour='documents-content']",
+      popover: {
+        title: "Document Library",
+        description: "Browse and manage your uploaded documents. Click to preview, or use the actions to activate/deactivate or delete.",
+        side: "top",
+        align: "center",
+      },
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <PageTour pageId="documents" steps={documentsTourSteps} runOnMount />
       <AppNav />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -241,7 +264,7 @@ export default function DocumentsPage() {
             {error}
           </div>
         )}
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6" data-tour="documents-tabs">
           {(
             [
               { id: "all" as const, label: "All Documents" },
@@ -275,7 +298,7 @@ export default function DocumentsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-tour="documents-content">
             {filtered.map((doc) => {
               const config = getTypeConfig(doc.type);
               const Icon = config.icon;
