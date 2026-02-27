@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
 import { User, Mail, AtSign, Shield, CheckCircle, Key, LogOut, X } from "lucide-react";
-import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser } from "@/app/utils/auth";
+import { getAuthToken, getRefreshToken, getAuthUser, getAuthTokenForApi, clearAuth, setAuth, isEmployeeUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { mapFieldErrors } from "@/app/utils/formErrors";
 import { PasswordInput } from "@/app/components/PasswordInput";
@@ -44,7 +44,7 @@ export default function ProfilePage() {
         authMethod: stored.role === "employee" ? "Local Login" : "Admin",
       });
     } else if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
     setLoading(false);
@@ -112,7 +112,7 @@ export default function ProfilePage() {
       console.error(err);
     }
     clearAuth();
-    router.replace("/auth/login");
+    router.replace(AUTH_LOGIN_REDIRECT);
   };
 
   if (loading || !user) {

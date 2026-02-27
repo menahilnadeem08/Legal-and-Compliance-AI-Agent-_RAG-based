@@ -11,7 +11,7 @@ import {
   UserX,
   Loader2,
 } from "lucide-react";
-import { getAuthToken, isEmployeeUser } from "@/app/utils/auth";
+import { getAuthToken, isEmployeeUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 
@@ -51,7 +51,7 @@ export default function AddEmployee() {
       return;
     }
     if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
   }, [router]);

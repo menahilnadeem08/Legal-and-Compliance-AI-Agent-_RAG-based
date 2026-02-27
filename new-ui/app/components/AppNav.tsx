@@ -18,7 +18,7 @@ import {
   LogOut,
   User,
 } from "lucide-react";
-import { getRefreshToken, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getRefreshToken, clearAuth, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 
 const navLinks: { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
@@ -48,7 +48,7 @@ export function AppNav() {
     }
     clearAuth();
     await signOut({ redirect: false });
-    if (typeof window !== "undefined") window.location.href = "/auth/login";
+    if (typeof window !== "undefined") window.location.href = AUTH_LOGIN_REDIRECT;
   }
 
   const showLinks = navLinks.filter((link) => !link.adminOnly || isAdmin === true);

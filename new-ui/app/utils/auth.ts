@@ -1,8 +1,16 @@
 /**
  * Auth helpers for API calls.
  * Tokens stored in localStorage: accessToken, refreshToken, authUser.
- * On 401 from API, clear storage and redirect to /auth/login.
+ * On 401: redirect to admin or employee login based on role (read before clearing auth).
  */
+export const AUTH_LOGIN_REDIRECT = "/auth/login";
+export const ADMIN_LOGIN_PATH = "/auth/admin/login";
+export const EMPLOYEE_LOGIN_PATH = "/auth/employee-login";
+
+/** Redirect path for 401: admin → admin login, otherwise → employee login. Call before clearAuth(). */
+export function getLoginRedirectForRole(role?: string | null): string {
+  return role === "admin" ? ADMIN_LOGIN_PATH : EMPLOYEE_LOGIN_PATH;
+}
 
 const API_BASE =
   (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) ||
@@ -37,9 +45,14 @@ export function getAuthUser(): { id?: number; username?: string; email?: string;
 
 export function setAuth(accessToken: string, user: object, refreshToken?: string): void {
   if (typeof window === "undefined") return;
+  if (!accessToken) {
+    console.error('[AUTH] setAuth called with empty accessToken');
+    return;
+  }
   localStorage.setItem("accessToken", accessToken);
   localStorage.setItem("authUser", JSON.stringify(user));
   if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+  console.log('[AUTH] Token stored:', { role: (user as any)?.role, hasToken: true });
 }
 
 export function clearAuth(): void {
@@ -63,11 +76,12 @@ export function isAdminUser(): boolean {
   return !!user && user.role === "admin";
 }
 
-/** If response is 401, clear auth and redirect to /auth/login. Returns true if handled. */
+/** If response is 401, clear auth and redirect to admin or employee login by role. Returns true if handled. */
 export function handle401Response(response: Response): boolean {
   if (response.status !== 401) return false;
+  const role = getAuthUser()?.role;
   clearAuth();
-  if (typeof window !== "undefined") window.location.href = "/auth/login";
+  if (typeof window !== "undefined") window.location.href = getLoginRedirectForRole(role);
   return true;
 }
 

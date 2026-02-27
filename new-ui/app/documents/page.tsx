@@ -13,7 +13,7 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
-import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 import { DocumentPreviewModal } from "@/app/components/DocumentPreviewModal";
@@ -149,7 +149,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
     fetchDocuments();

@@ -67,7 +67,7 @@ export default function ForgotPasswordPage() {
       }
       setLoading(true);
       try {
-        const response = await api.post<{ message?: string }>("/auth/forgot-password", { email: trimmed, role: returnTo as 'admin' | 'employee' }, { requiresAuth: false });
+        const response = await api.post<{ message?: string }>("/auth/forgot-password", { email: trimmed, role: returnTo as 'admin' | 'employee' }, { requiresAuth: false, skipAuthRedirectOn401: true });
         if (!response.success) {
           setError(response.message ?? "Failed to send code.");
           return;
@@ -95,7 +95,7 @@ export default function ForgotPasswordPage() {
         const response = await api.post<{ data?: { resetToken?: string }; message?: string }>(
           "/auth/verify-reset-otp",
           { email: email.trim(), otp: otpCode, role: returnTo as 'admin' | 'employee' },
-          { requiresAuth: false }
+          { requiresAuth: false, skipAuthRedirectOn401: true }
         );
         if (!response.success) {
           setError(response.message ?? "Invalid or expired code.");
@@ -133,7 +133,7 @@ export default function ForgotPasswordPage() {
         const response = await api.post<{ message?: string }>(
           "/auth/reset-password",
           { resetToken, newPassword: password, confirmPassword: confirm },
-          { requiresAuth: false }
+          { requiresAuth: false, skipAuthRedirectOn401: true }
         );
         if (!response.success) {
           setError(response.message ?? "Failed to reset password.");
@@ -157,7 +157,7 @@ export default function ForgotPasswordPage() {
     setError("");
     setLoading(true);
     try {
-      const response = await api.post<{ message?: string }>("/auth/resend-reset-otp", { email: email.trim(), role: returnTo as 'admin' | 'employee' }, { requiresAuth: false });
+      const response = await api.post<{ message?: string }>("/auth/resend-reset-otp", { email: email.trim(), role: returnTo as 'admin' | 'employee' }, { requiresAuth: false, skipAuthRedirectOn401: true });
       if (response.success) {
         toast.info("Code resent", {
           description: "A new code was sent to your email.",

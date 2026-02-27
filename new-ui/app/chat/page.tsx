@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getAuthToken, getAuthTokenForApi, getApiBase, clearAuth } from "@/app/utils/auth";
+import { getAuthToken, getAuthTokenForApi, getApiBase, getAuthUser, clearAuth, getLoginRedirectForRole } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 import { AppNav } from "@/app/components/AppNav";
@@ -46,8 +46,9 @@ function ChatContent() {
     getApiBase,
     getToken: getAuthTokenForApi,
     onUnauthorized: () => {
+      const role = getAuthUser()?.role;
       clearAuth();
-      router.replace("/auth/login");
+      router.replace(getLoginRedirectForRole(role));
     },
     saveMessage,
     toast,
@@ -67,7 +68,7 @@ function ChatContent() {
   useEffect(() => {
     const token = getAuthToken();
     if (!token) {
-      router.replace("/auth/login");
+      router.replace(getLoginRedirectForRole(getAuthUser()?.role));
       return;
     }
     setAuthenticated(true);
@@ -294,8 +295,9 @@ function ChatContent() {
 
     const token = getAuthTokenForApi();
     if (!token) {
+      const role = getAuthUser()?.role;
       clearAuth();
-      router.replace("/auth/login");
+      router.replace(getLoginRedirectForRole(role));
       return;
     }
 

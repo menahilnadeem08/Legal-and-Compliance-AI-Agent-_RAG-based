@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { getAuthToken, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 
 /** Fallback when API fails or before load; matches backend default_categories seed. */
@@ -43,7 +43,7 @@ export default function UploadPage() {
 
   useEffect(() => {
     if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
     if (!isAdminUser()) {

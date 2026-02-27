@@ -41,11 +41,17 @@ export default function AdminLoginPage() {
       const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object }>(
         "/auth/admin/login",
         { email: trimmedEmail, password },
-        { requiresAuth: false }
+        { requiresAuth: false, skipAuthRedirectOn401: true }
       );
 
       if (!response.success) {
-        setError(response.message ?? "Login failed");
+        const errorMsg = response.message ?? "Login failed";
+        console.error("Admin login failed:", { 
+          message: errorMsg, 
+          response: response,
+          email: trimmedEmail
+        });
+        setError(errorMsg);
         return;
       }
 

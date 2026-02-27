@@ -17,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getAuthToken, getAuthUser, clearAuth, isAdminUser } from "@/app/utils/auth";
+import { getAuthToken, getAuthUser, clearAuth, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 
 export default function DashboardPage() {
@@ -35,7 +35,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!getAuthToken()) {
-      router.replace("/auth/login");
+      router.replace(AUTH_LOGIN_REDIRECT);
       return;
     }
     const authUser = getAuthUser();

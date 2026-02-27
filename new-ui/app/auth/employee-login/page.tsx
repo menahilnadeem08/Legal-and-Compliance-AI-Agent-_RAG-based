@@ -26,20 +26,33 @@ export default function EmployeeLoginPage() {
     setError("");
 
     if (!username.trim() || !password) {
-      setError("Please enter username and password.");
+      setError("Please enter your username or email and password.");
       return;
     }
 
     setLoading(true);
     try {
+      const trimmedInput = username.trim();
+      // Detect if input is email or username
+      const isEmail = trimmedInput.includes('@');
+      const loginPayload = isEmail 
+        ? { email: trimmedInput, password }
+        : { username: trimmedInput, password };
+
       const response = await api.post<{ accessToken?: string; refreshToken?: string; user?: object; forcePasswordChange?: boolean }>(
         "/auth/login",
-        { username: username.trim(), password },
-        { requiresAuth: false }
+        loginPayload,
+        { requiresAuth: false, skipAuthRedirectOn401: true }
       );
 
       if (!response.success) {
-        setError(response.message ?? "Login failed");
+        const errorMsg = response.message ?? "Login failed";
+        console.error("Login failed:", { 
+          message: errorMsg, 
+          response: response,
+          username: username.trim()
+        });
+        setError(errorMsg);
         toast.error("Sign in failed.");
         return;
       }
@@ -61,7 +74,7 @@ export default function EmployeeLoginPage() {
         router.push("/auth/change-password");
       } else {
         toast.success("Signed in successfully.");
-        router.push("/");
+        router.push("/dashboard");
       }
     } catch (err) {
       setError("An error occurred during login");
@@ -149,7 +162,7 @@ export default function EmployeeLoginPage() {
 
             <div className="space-y-1.5">
               <label htmlFor="username" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Username
+                Username or Email
               </label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
@@ -161,7 +174,7 @@ export default function EmployeeLoginPage() {
                     setUsername(e.target.value);
                     setError("");
                   }}
-                  placeholder="Enter your username"
+                  placeholder="Enter your username or email"
                   autoComplete="username"
                   required
                   disabled={loading}

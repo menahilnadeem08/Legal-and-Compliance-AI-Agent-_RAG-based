@@ -286,7 +286,7 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
            is_temp_password = false,
            temp_password_expires_at = NULL,
            force_password_change = false,
-           sessions_revoked_at = NOW(),
+           sessions_revoked_at = NULL,
            updated_at = CURRENT_TIMESTAMP 
        WHERE id = $2`,
       [newPasswordHash, req.user.id]
@@ -554,7 +554,7 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
 
     const newPasswordHash = await hashPassword(newPassword);
     await pool.query(
-      `UPDATE users SET password_hash = $1, is_temp_password = false, temp_password_expires_at = NULL, force_password_change = false, sessions_revoked_at = NOW(), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      `UPDATE users SET password_hash = $1, is_temp_password = false, temp_password_expires_at = NULL, force_password_change = false, sessions_revoked_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [newPasswordHash, decoded.userId]
     );
 

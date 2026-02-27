@@ -1,4 +1,4 @@
-import { getApiBase, getAuthTokenForApi, clearAuth } from "./auth";
+import { getApiBase, getAuthTokenForApi, getAuthUser, clearAuth, getLoginRedirectForRole } from "./auth";
 
 export type ApiResponse<T = unknown> = {
   success: boolean;
@@ -14,6 +14,8 @@ type RequestOptions = {
   requiresAuth?: boolean;
   /** When true, body is sent as FormData and Content-Type is not set */
   formData?: boolean;
+  /** When true, don't auto-redirect to /auth/login on 401 errors */
+  skipAuthRedirectOn401?: boolean;
 };
 
 async function apiClient<T = unknown>(
@@ -26,6 +28,7 @@ async function apiClient<T = unknown>(
     headers = {},
     requiresAuth = true,
     formData = false,
+    skipAuthRedirectOn401 = false,
   } = options;
 
   const requestHeaders: Record<string, string> = { ...headers };
@@ -65,9 +68,13 @@ async function apiClient<T = unknown>(
   }
 
   if (response.status === 401) {
-    clearAuth();
-    if (typeof window !== "undefined") window.location.replace("/auth/login");
-    return { success: false, message: "Session expired. Please login again." };
+    if (!skipAuthRedirectOn401) {
+      const role = getAuthUser()?.role;
+      clearAuth();
+      if (typeof window !== "undefined") window.location.replace(getLoginRedirectForRole(role));
+    }
+    const data: ApiResponse<T> = await response.json().catch(() => ({ success: false, message: "Session expired. Please login again." }));
+    return data;
   }
 
   if (response.status === 429) {
