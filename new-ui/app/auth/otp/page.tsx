@@ -168,7 +168,7 @@ export default function OtpPage() {
 
           {!verified && (
             <Link
-              href="/auth/register"
+              href="/auth/admin/signup"
               className="flex items-center gap-1.5 text-gray-400 hover:text-gray-200 text-sm mb-8 transition-colors w-fit"
             >
               <ArrowLeft className="w-4 h-4" />
