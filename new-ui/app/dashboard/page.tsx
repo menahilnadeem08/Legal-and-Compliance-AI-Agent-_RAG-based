@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { getAuthToken, getAuthUser, clearAuth, isAdminUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { StartupGuide, type StartupGuideRef } from "@/app/components/StartupGuide";
+import { PageTour } from "@/app/components/PageTour";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -86,6 +87,79 @@ export default function DashboardPage() {
 
   const startupGuideRef = useRef<StartupGuideRef>(null);
 
+  const dashboardTourSteps = [
+    {
+      element: "[data-tour='welcome']",
+      route: "/dashboard",
+      popover: {
+        title: "Welcome to Legal RAG Dashboard",
+        description: "Your central hub for managing legal documents and querying your knowledge base with AI.",
+        side: "bottom" as const,
+        align: "start" as const,
+      },
+    },
+    {
+      element: "[data-tour='documents']",
+      route: "/dashboard",
+      popover: {
+        title: "Document Library",
+        description: "View all uploaded documents. Organize and manage your legal document collection.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='chat']",
+      route: "/dashboard",
+      popover: {
+        title: "Query with AI",
+        description: "Ask questions about your documents. The AI agent searches your knowledge base and provides cited answers.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='upload']",
+      route: "/dashboard",
+      popover: {
+        title: "Upload Documents",
+        description: "Add new legal documents to your knowledge base. Supports PDF and DOCX formats.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='categories']",
+      route: "/dashboard",
+      popover: {
+        title: "Manage Categories",
+        description: "Create custom categories or hide default ones. Organize documents by type or topic.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='admin']",
+      route: "/dashboard",
+      popover: {
+        title: "Team Management",
+        description: "Add and manage employees in your organization. Control access and permissions.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+    {
+      element: "[data-tour='profile']",
+      route: "/dashboard",
+      popover: {
+        title: "Account Settings",
+        description: "Manage your profile, password, and personal preferences.",
+        side: "bottom" as const,
+        align: "center" as const,
+      },
+    },
+  ];
+
   if (!mounted || !authChecked) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center">
@@ -97,6 +171,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
       <StartupGuide ref={startupGuideRef} isAdmin={isAdminUser()} runOnMount />
+      <PageTour pageId="dashboard" steps={dashboardTourSteps} runOnMount autoAdvanceOnTargetClick />
 
       {/* Navigation */}
       <nav className="fixed top-0 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-50 shadow-sm dark:shadow-slate-950/50">

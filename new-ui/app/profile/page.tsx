@@ -127,6 +127,7 @@ export default function ProfilePage() {
   const profileTourSteps = [
     {
       element: "[data-tour='profile-info']",
+      route: "/profile",
       popover: {
         title: "Your Profile",
         description: "View your account details including username, email, role, and authentication method.",
@@ -136,6 +137,7 @@ export default function ProfilePage() {
     },
     {
       element: "[data-tour='profile-actions']",
+      route: "/profile",
       popover: {
         title: "Account Actions",
         description: "Change your password (employees only) or log out of your account.",
@@ -147,7 +149,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="profile" steps={profileTourSteps} runOnMount />
+      <PageTour pageId="profile" steps={profileTourSteps} runOnMount autoAdvanceOnTargetClick />
       <AppNav />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

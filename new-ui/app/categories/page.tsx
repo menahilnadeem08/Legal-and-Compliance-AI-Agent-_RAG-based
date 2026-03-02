@@ -160,6 +160,7 @@ export default function CategoriesPage() {
   const categoriesTourSteps = [
     {
       element: "[data-tour='categories-add']",
+      route: "/categories",
       popover: {
         title: "Add Custom Category",
         description: "Create custom categories for your documents. They will appear in the upload dropdown alongside default categories.",
@@ -169,6 +170,7 @@ export default function CategoriesPage() {
     },
     {
       element: "[data-tour='categories-defaults']",
+      route: "/categories",
       popover: {
         title: "Default Categories",
         description: "These are system categories. Toggle Hide to remove them from your upload list. They remain available to restore.",
@@ -178,6 +180,7 @@ export default function CategoriesPage() {
     },
     {
       element: "[data-tour='categories-custom']",
+      route: "/categories",
       popover: {
         title: "Your Custom Categories",
         description: "Categories you've added. You can delete custom categories that are no longer needed.",
@@ -189,7 +192,7 @@ export default function CategoriesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="categories" steps={categoriesTourSteps} runOnMount />
+      <PageTour pageId="categories" steps={categoriesTourSteps} runOnMount autoAdvanceOnTargetClick />
       <AppNav />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
