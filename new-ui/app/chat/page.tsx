@@ -348,6 +348,7 @@ function ChatContent() {
   const chatTourSteps = [
     {
       element: "[data-tour='chat-new-conversation']",
+      route: "/chat",
       popover: {
         title: "New Conversation",
         description: "Start a new chat anytime. Each conversation is saved and you can return to it later.",
@@ -357,6 +358,7 @@ function ChatContent() {
     },
     {
       element: "[data-tour='chat-suggestions']",
+      route: "/chat",
       popover: {
         title: "Quick Suggestions",
         description: "Click a suggestion to use it as your query, or type your own question about legal or compliance topics.",
@@ -366,6 +368,7 @@ function ChatContent() {
     },
     {
       element: "[data-tour='chat-input']",
+      route: "/chat",
       popover: {
         title: "Ask Anything",
         description: "Type your question here and press Enter or click Send. Answers are grounded in your organization's approved documents.",
@@ -377,7 +380,7 @@ function ChatContent() {
 
   return (
     <div className="flex flex-col h-screen min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="chat" steps={chatTourSteps} runOnMount />
+      <PageTour pageId="chat" steps={chatTourSteps} runOnMount autoAdvanceOnTargetClick />
       <AppNav />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <ConversationList

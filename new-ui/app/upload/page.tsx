@@ -116,6 +116,7 @@ export default function UploadPage() {
   const uploadTourSteps = [
     {
       element: "[data-tour='upload-file']",
+      route: "/upload",
       popover: {
         title: "Select File",
         description: "Choose a PDF or DOCX file from your computer. Supported formats ensure compatibility with the RAG system.",
@@ -125,6 +126,8 @@ export default function UploadPage() {
     },
     {
       element: "[data-tour='upload-category']",
+      route: "/upload",
+      autoAdvanceOn: "change" as const,
       popover: {
         title: "Choose Category",
         description: "Select a category for your document. Categories help organize and filter documents. Manage categories in the Categories page.",
@@ -134,6 +137,7 @@ export default function UploadPage() {
     },
     {
       element: "[data-tour='upload-submit']",
+      route: "/upload",
       popover: {
         title: "Upload",
         description: "Click to upload your document. A new version will be created if one already exists in this category.",
@@ -145,7 +149,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="upload" steps={uploadTourSteps} runOnMount />
+      <PageTour pageId="upload" steps={uploadTourSteps} runOnMount autoAdvanceOnTargetClick />
       <AppNav />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 className="text-3xl font-bold mb-2">Upload Document</h1>

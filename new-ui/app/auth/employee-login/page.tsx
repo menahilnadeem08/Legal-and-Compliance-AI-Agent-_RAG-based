@@ -18,7 +18,7 @@ export default function EmployeeLoginPage() {
 
   useEffect(() => {
     const user = getAuthUser();
-    if (user && user.role === "employee") router.replace("/");
+    if (user && user.role === "employee") router.replace("/dashboard");
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {

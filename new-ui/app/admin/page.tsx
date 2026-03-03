@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/app/components/AppNav";
-import { PageTour } from "@/app/components/PageTour";
 import { AddEmployeeModal } from "@/app/admin/AddEmployeeModal";
 import {
   UserPlus,
@@ -12,7 +11,7 @@ import {
   UserX,
   Loader2,
 } from "lucide-react";
-import { getAuthToken, isEmployeeUser, AUTH_LOGIN_REDIRECT } from "@/app/utils/auth";
+import { getAuthToken, isEmployeeUser, ADMIN_LOGIN_PATH } from "@/app/utils/auth";
 import { api } from "@/app/utils/apiClient";
 import { parseAsUTC } from "@/app/utils/date";
 
@@ -48,11 +47,11 @@ export default function AddEmployee() {
 
   useEffect(() => {
     if (isEmployeeUser()) {
-      router.replace("/");
+      router.replace("/dashboard");
       return;
     }
     if (!getAuthToken()) {
-      router.replace(AUTH_LOGIN_REDIRECT);
+      router.replace(ADMIN_LOGIN_PATH);
       return;
     }
   }, [router]);
@@ -121,30 +120,8 @@ export default function AddEmployee() {
     );
   }
 
-  const adminTourSteps = [
-    {
-      element: "[data-tour='admin-add-employee']",
-      popover: {
-        title: "Add Employee",
-        description: "Click to create a new employee account. You'll set their username, email, and name. A temporary password will be sent to their email.",
-        side: "bottom" as const,
-        align: "end" as const,
-      },
-    },
-    {
-      element: "[data-tour='admin-employees-table']",
-      popover: {
-        title: "Employees List",
-        description: "View all employees, their status, and manage them. Activate or deactivate accounts as needed.",
-        side: "top" as const,
-        align: "center" as const,
-      },
-    },
-  ];
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="admin" steps={adminTourSteps} runOnMount />
       <AppNav />
       <PageContainer>
         <header className="mb-8">
@@ -176,7 +153,6 @@ export default function AddEmployee() {
             <button
               type="button"
               onClick={() => { setAddModalOpen(true); clearMessages(); }}
-              data-tour="admin-add-employee"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm"
             >
               <UserPlus className="w-4 h-4" />
@@ -191,7 +167,7 @@ export default function AddEmployee() {
               </p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden" data-tour="admin-employees-table">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>

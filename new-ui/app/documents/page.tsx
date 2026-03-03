@@ -214,6 +214,7 @@ export default function DocumentsPage() {
   const documentsTourSteps = [
     {
       element: "[data-tour='documents-tabs']",
+      route: "/documents",
       popover: {
         title: "Filter Documents",
         description: "View all documents, only the latest versions, or outdated ones. Latest versions are used by the AI for answers.",
@@ -223,6 +224,7 @@ export default function DocumentsPage() {
     },
     {
       element: "[data-tour='documents-content']",
+      route: "/documents",
       popover: {
         title: "Document Library",
         description: "Browse and manage your uploaded documents. Click to preview, or use the actions to activate/deactivate or delete.",
@@ -234,7 +236,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-      <PageTour pageId="documents" steps={documentsTourSteps} runOnMount />
+      <PageTour pageId="documents" steps={documentsTourSteps} runOnMount autoAdvanceOnTargetClick />
       <AppNav />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
